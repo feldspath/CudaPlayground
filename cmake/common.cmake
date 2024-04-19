@@ -26,7 +26,7 @@ function(ADD_GLM TARGET_NAME)
 endfunction()
 
 function(ADD_CUDA TARGET_NAME)
-	find_package(CUDAToolkit 11.6 REQUIRED)
+	find_package(CUDAToolkit 12.4 REQUIRED)
 	target_include_directories(${TARGET_NAME} PRIVATE CUDAToolkit_INCLUDE_DIRS)
 	target_link_libraries(${TARGET_NAME}
 		CUDA::cuda_driver

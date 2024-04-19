@@ -27,6 +27,26 @@ ADD_CUDA(${TARGET_NAME})
 
 
 ##############################################
+## SUBPROJECT: Sort Numbers
+##############################################
+
+set(TARGET_NAME Sort_Numbers) 
+
+add_executable(${TARGET_NAME} 
+	./modules/sort/main_sort.cpp
+	./include/unsuck_platform_specific.cpp
+)
+
+# set workdir to ../$(SolutionDir), so that .cu files can be monitored/reloaded/compiled
+set_property(TARGET ${TARGET_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "$(SolutionDir)..")
+
+target_include_directories(${TARGET_NAME} PRIVATE ./include)
+
+# add some third-party libraries
+ADD_CUDA(${TARGET_NAME})
+
+
+##############################################
 ## SUBPROJECT: Basic Triangle Rasterizer
 ##############################################
 
