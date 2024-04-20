@@ -1,6 +1,6 @@
 =====================================================================
 
-Copyright 2023 Markus Schütz and Bernhard Kerbl
+Copyright 2023 Markus Schütz
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
@@ -10,12 +10,37 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 =====================================================================
 
-Some files have special licenses, such as seascape.cu: 
+
+Some files have special licenses
+
+
+=====================================================================
+
+seascape.cu: 
 
 /*
  * "Seascape" by Alexander Alekseev aka TDM - 2014
  * License Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported License.
  * Contact: tdmaav@gmail.com
  */
+
+=====================================================================
+
+sort/GPUSorting 
+
+/******************************************************************************
+ * GPUSorting
+ * OneSweep Implementation
+ *
+ * SPDX-License-Identifier: MIT
+ * Author:  Thomas Smith 2/21/2024
+ * https://github.com/b0nes164/GPUSorting
+ * 
+ * Based off of Research by:
+ *          Andy Adinets, Nvidia Corporation
+ *          Duane Merrill, Nvidia Corporation
+ *          https://research.nvidia.com/publication/2022-06_onesweep-faster-least-significant-digit-radix-sort-gpus
+ *
+ ******************************************************************************/
 
 =====================================================================
