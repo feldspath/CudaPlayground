@@ -4,6 +4,10 @@ project(CudaPlayground)
 set(CMAKE_CXX_STANDARD 20)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+
+# add_subdirectory(./libs/openvr-master)
+
+
 include(cmake/common.cmake)
 
 ##############################################
@@ -13,8 +17,8 @@ include(cmake/common.cmake)
 set(TARGET_NAME Random_Numbers) 
 
 add_executable(${TARGET_NAME} 
-	src/main.cpp
-	include/unsuck_platform_specific.cpp
+	./modules/randomNumbers/main_randomNumbers.cpp
+	./include/unsuck_platform_specific.cpp
 )
 
 # set workdir to ../$(SolutionDir), so that .cu files can be monitored/reloaded/compiled
@@ -94,6 +98,40 @@ ADD_OPENGL(${TARGET_NAME})
 ADD_GLM(${TARGET_NAME})
 ADD_IMGUI(${TARGET_NAME})
 ADD_IMPLOT(${TARGET_NAME})
+
+##############################################
+## SUBPROJECT: VR Voxelpainter
+##############################################
+
+set(TARGET_NAME VR_Voxelpainter) 
+
+add_executable( ${TARGET_NAME}
+	./modules/VR_voxelpainter/main_vr.cpp
+	./modules/VR_Voxelpainter/OpenVRHelper.cpp
+	./src/GLRenderer.cpp
+	./include/unsuck_platform_specific.cpp
+)
+
+# set workdir to ../$(SolutionDir), so that .cu files can be monitored/reloaded/compiled
+set_property(TARGET ${TARGET_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "$(SolutionDir)..")
+
+target_include_directories(${TARGET_NAME} PRIVATE ./include)
+
+# add some third-party libraries
+ADD_CUDA(${TARGET_NAME})
+ADD_OPENGL(${TARGET_NAME})
+ADD_GLM(${TARGET_NAME})
+ADD_IMGUI(${TARGET_NAME})
+ADD_IMPLOT(${TARGET_NAME})
+target_include_directories(${TARGET_NAME} PRIVATE ./include)
+
+# I give up, let's just include OpenVR like this.
+target_include_directories(${TARGET_NAME} PRIVATE ./libs/openvr/headers)
+target_link_libraries(${TARGET_NAME} ../libs/openvr/lib/win64/openvr_api)
+add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+	COMMAND ${CMAKE_COMMAND} -E copy "$(SolutionDir)../libs/openvr/openvr_api.dll" "$(OutDir)"
+	COMMENT "POST BUILD: copying modules folder")
+
 
 ##############################################
 ## SOME FINAL STUFF

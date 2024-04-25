@@ -289,8 +289,8 @@ void initCudaProgram(
 
 	cuda_program = new CudaModularProgram({
 		.modules = {
-			"./modules/VR/voxelpainter.cu",
-			"./modules/VR/utils.cu",
+			"./modules/VR_voxelpainter/voxelpainter.cu",
+			"./modules/common/utils.cu",
 		},
 		.kernels = {"kernel"}
 	});

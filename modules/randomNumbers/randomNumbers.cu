@@ -2,7 +2,7 @@
 #include <cooperative_groups.h>
 #include <curand_kernel.h>
 
-#include "utils.h.cu"
+#include "./../common/utils.cuh"
 
 namespace cg = cooperative_groups;
 

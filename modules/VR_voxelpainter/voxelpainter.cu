@@ -1,7 +1,7 @@
 #include <cooperative_groups.h>
 #include <curand_kernel.h>
 
-#include "utils.h.cu"
+#include "../common/utils.cuh"
 #include "builtin_types.h"
 #include "helper_math.h"
 #include "HostDeviceInterface.h"

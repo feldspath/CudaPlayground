@@ -123,7 +123,7 @@ void initCudaProgram(shared_ptr<GLRenderer> renderer){
 	cuda_program = new CudaModularProgram({
 		.modules = {
 			"./modules/seascape/seascape.cu",
-			"./modules/seascape/utils.cu",
+			"./modules/common/utils.cu",
 		},
 		.kernels = {"kernel"}
 	});

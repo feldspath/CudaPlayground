@@ -104,7 +104,7 @@ void initCudaProgram(){
 	cuda_program = new CudaModularProgram({
 		.modules = {
 			"./modules/randomNumbers/randomNumbers.cu",
-			"./modules/randomNumbers/utils.cu",
+			"./modules/common/utils.cu",
 		},
 		.kernels = {"kernel"}
 	});

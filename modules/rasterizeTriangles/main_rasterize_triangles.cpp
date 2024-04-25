@@ -164,7 +164,7 @@ void initCudaProgram(
 	cuda_program = new CudaModularProgram({
 		.modules = {
 			"./modules/rasterizeTriangles/rasterize.cu",
-			"./modules/rasterizeTriangles/utils.cu",
+			"./modules/common/utils.cu",
 		},
 		.kernels = {"kernel"}
 	});

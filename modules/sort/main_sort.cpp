@@ -86,7 +86,11 @@ void runOneSweep() {
 
 	cuEventRecord(cevent_start, 0);
 	
-	// for(int i = 0; i < 100; i++){
+	int numPasses = 100;
+
+	cout << format("sorting {} numbers {} times. \n", numElements, numPasses);
+
+	for(int i = 0; i < numPasses; i++){
 
 	uint32_t size = numElements;
 
@@ -255,7 +259,7 @@ void runOneSweep() {
 		}
 		// cuCtxSynchronize();
 	}
-	// }
+	}
 
 	cuEventRecord(cevent_end, 0);
 	cuEventSynchronize(cevent_end);
@@ -264,8 +268,10 @@ void runOneSweep() {
 		float total_ms;
 		cuEventElapsedTime(&total_ms, cevent_start, cevent_end);
 
-		cout << "CUDA durations: " << endl;
-		cout << std::format("total:     {:6.1f} ms", total_ms) << endl;
+		cout << format("sorting {} numbers {} times took {:.3f} milliseconds. \n", numElements, numPasses, total_ms);
+		cout << format("on average, sorting {} numbers took {:.3f} milliseconds. \n", numElements, total_ms / float(numPasses));
+		// cout << "CUDA durations: " << endl;
+		// cout << std::format("total:     {:6.1f} ms", total_ms) << endl;
 	}
 
 	cuCtxSynchronize();
