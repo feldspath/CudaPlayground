@@ -22,8 +22,10 @@ add_executable(${TARGET_NAME}
 	./include/unsuck_platform_specific.cpp
 )
 
+if (MSVC)
 # set workdir to ../$(SolutionDir), so that .cu files can be monitored/reloaded/compiled
 set_property(TARGET ${TARGET_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "$(SolutionDir)..")
+endif()
 
 target_include_directories(${TARGET_NAME} PRIVATE ./include)
 
@@ -42,8 +44,10 @@ add_executable(${TARGET_NAME}
 	./include/unsuck_platform_specific.cpp
 )
 
+if (MSVC)
 # set workdir to ../$(SolutionDir), so that .cu files can be monitored/reloaded/compiled
 set_property(TARGET ${TARGET_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "$(SolutionDir)..")
+endif()
 
 target_include_directories(${TARGET_NAME} PRIVATE ./include)
 
@@ -63,8 +67,10 @@ add_executable( ${TARGET_NAME}
 	include/unsuck_platform_specific.cpp
 )
 
+if (MSVC)
 # set workdir to ../$(SolutionDir), so that .cu files can be monitored/reloaded/compiled
 set_property(TARGET ${TARGET_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "$(SolutionDir)..")
+endif()
 
 target_include_directories(${TARGET_NAME} PRIVATE ./include)
 
@@ -89,7 +95,9 @@ add_executable( ${TARGET_NAME}
 )
 
 # set workdir to ../$(SolutionDir), so that .cu files can be monitored/reloaded/compiled
+if (MSVC)
 set_property(TARGET ${TARGET_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "$(SolutionDir)..")
+endif()
 
 target_include_directories(${TARGET_NAME} PRIVATE ./include)
 
@@ -141,5 +149,7 @@ endif()
 ## SOME FINAL STUFF
 ##############################################
 
+if(MSVC)
 # set startup project
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT Random_Numbers)
+endif()

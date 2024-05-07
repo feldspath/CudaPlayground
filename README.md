@@ -4,7 +4,7 @@
 Requirements:
 
 * CUDA 12.4
-* Cmake 3.22
+* Cmake 3.26
 
 To create build files, use cmake like this:
 
