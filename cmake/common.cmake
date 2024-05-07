@@ -30,7 +30,9 @@ function(ADD_CUDA TARGET_NAME)
 	target_include_directories(${TARGET_NAME} PRIVATE CUDAToolkit_INCLUDE_DIRS)
 	target_link_libraries(${TARGET_NAME}
 		CUDA::cuda_driver
-		CUDA::nvrtc)
+		CUDA::nvrtc
+		CUDA::nvJitLink)
+	message(STATUS ${CUDAToolkit_LIBRARY_DIR})
 endfunction()
 
 function(ADD_OPENGL TARGET_NAME)

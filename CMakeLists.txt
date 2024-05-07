@@ -1,4 +1,5 @@
-cmake_minimum_required(VERSION 3.22)
+# cmake 3.26 is required on Linux to find CUDA::nvJitLlink library 
+cmake_minimum_required(VERSION 3.26)
 
 project(CudaPlayground)
 set(CMAKE_CXX_STANDARD 20)
@@ -103,6 +104,8 @@ ADD_IMPLOT(${TARGET_NAME})
 ## SUBPROJECT: VR Voxelpainter
 ##############################################
 
+# Only build VR_Voxelpainter for Visual Studio
+if(MSVC)
 set(TARGET_NAME VR_Voxelpainter) 
 
 add_executable( ${TARGET_NAME}
@@ -131,6 +134,7 @@ target_link_libraries(${TARGET_NAME} ../libs/openvr/lib/win64/openvr_api)
 add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E copy "$(SolutionDir)../libs/openvr/openvr_api.dll" "$(OutDir)"
 	COMMENT "POST BUILD: copying modules folder")
+endif()
 
 
 ##############################################

@@ -95,7 +95,7 @@ struct CudaModule{
 		string source = readFile(path);
 		nvrtcCreateProgram(&prog, source.c_str(), name.c_str(), 0, NULL, NULL);
 		std::vector<const char*> opts = { 
-			"--gpu-architecture=compute_89",
+			"--gpu-architecture=compute_86",
 			// "--gpu-architecture=compute_86",
 			"--use_fast_math",
 			"--extra-device-vectorization",
