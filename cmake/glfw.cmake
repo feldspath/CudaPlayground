@@ -10,7 +10,7 @@ set(GLFW_INSTALL OFF)
 FetchContent_Declare(
 		glfw
 		GIT_REPOSITORY      https://github.com/glfw/glfw.git
-		GIT_TAG             3.3.2
+		GIT_TAG             3.4
 )
 
 FetchContent_MakeAvailable(glfw)

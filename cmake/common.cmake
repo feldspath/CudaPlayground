@@ -46,25 +46,3 @@ function(ADD_OPENGL TARGET_NAME)
 	target_include_directories(${TARGET_NAME} PRIVATE ${glfw_SOURCE_DIR}/include)
 	target_link_libraries(${TARGET_NAME} glfw)
 endfunction()
-
-# function(ADD_OPENVR TARGET_NAME)
-# 
-# 	find_package(OpenVR REQUIRED)
-# 	target_link_libraries(main PRIVATE OpenVR::OpenVR)
-# 
-# #	target_include_directories(${TARGET_NAME} PRIVATE
-# #		libs/openvr/headers)
-# #
-# #	target_link_libraries(${TARGET_NAME}
-# #		CUDA::cuda_driver
-# #		CUDA::nvrtc)
-# #
-# #	target_sources(${TARGET_NAME} PRIVATE
-# #		libs/imgui/imgui.cpp
-# #		libs/imgui/imgui_demo.cpp
-# #		libs/imgui/imgui_draw.cpp
-# #		libs/imgui/imgui_tables.cpp
-# #		libs/imgui/imgui_widgets.cpp
-# #		libs/imgui/backends/imgui_impl_glfw.cpp
-# #		libs/imgui/backends/imgui_impl_opengl3.cpp)
-# endfunction()
