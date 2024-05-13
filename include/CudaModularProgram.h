@@ -37,6 +37,7 @@ struct CudaModule{
 	void cu_checked(CUresult result){
 		if(result != CUDA_SUCCESS){
 			cout << "cuda error code: " << result << endl;
+			exit(1);
 		}
 	};
 
@@ -138,6 +139,7 @@ struct CudaModule{
 			delete[] log;
 
 			if(res != NVRTC_SUCCESS){
+				exit(1);
 				return;
 			}
 		}
@@ -186,6 +188,7 @@ struct CudaModularProgram{
 	void cu_checked(CUresult result){
 		if(result != CUDA_SUCCESS){
 			cout << "cuda error code: " << result << endl;
+			exit(1);
 		}
 	};
 

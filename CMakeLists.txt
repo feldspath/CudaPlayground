@@ -108,6 +108,7 @@ ADD_GLM(${TARGET_NAME})
 ADD_IMGUI(${TARGET_NAME})
 ADD_IMPLOT(${TARGET_NAME})
 
+
 ##############################################
 ## SUBPROJECT: VR Voxelpainter
 ##############################################
@@ -143,6 +144,33 @@ add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E copy "$(SolutionDir)../libs/openvr/openvr_api.dll" "$(OutDir)"
 	COMMENT "POST BUILD: copying modules folder")
 endif()
+
+
+##############################################
+## SUBPROJECT: Voxel Rasterizer
+##############################################
+
+set(TARGET_NAME Voxel_Rasterizer) 
+
+add_executable( ${TARGET_NAME}
+	./modules/rasterizeVoxels/main_rasterize_voxels.cpp
+	./src/GLRenderer.cpp
+	include/unsuck_platform_specific.cpp
+)
+
+if (MSVC)
+# set workdir to ../$(SolutionDir), so that .cu files can be monitored/reloaded/compiled
+set_property(TARGET ${TARGET_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "$(SolutionDir)..")
+endif()
+
+target_include_directories(${TARGET_NAME} PRIVATE ./include)
+
+# add some third-party libraries
+ADD_CUDA(${TARGET_NAME})
+ADD_OPENGL(${TARGET_NAME})
+ADD_GLM(${TARGET_NAME})
+ADD_IMGUI(${TARGET_NAME})
+ADD_IMPLOT(${TARGET_NAME})
 
 
 ##############################################

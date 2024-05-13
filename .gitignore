@@ -1,6 +1,3 @@
-build/bin/
-build/obj/
-build/.vs
 libs/openvr/samples
 libs/openvr_newer
 tools/sort_points/bin/
@@ -10,9 +7,5 @@ tools/sort_points/Sort_Frugal/Debug
 tools/sort_points/Sort_Frugal/Release
 tools/sort_points/Sort_Frugal/.vs
 imgui.ini
-build/Release/laszip.exp
-build/Release/laszip.lib
-build/Debug/*
-build/laszip.dir
-build_cmake/
 build/
+.vscode/
