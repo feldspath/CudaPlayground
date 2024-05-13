@@ -23,6 +23,8 @@
 using namespace std;
 
 CUdeviceptr cptr_buffer;
+CUdeviceptr cptr_positions;
+uint32_t numVoxels;
 
 CUgraphicsResource cugl_colorbuffer;
 CudaModularProgram *cuda_program = nullptr;
@@ -105,7 +107,7 @@ void renderCUDA(shared_ptr<GLRenderer> renderer) {
     float values[16];
     memcpy(&values, &worldViewProj, sizeof(worldViewProj));
 
-    void *args[] = {&uniforms, &cptr_buffer, &output_surf};
+    void *args[] = {&uniforms, &cptr_buffer, &output_surf, &numVoxels, &cptr_positions};
 
     auto res_launch = cuLaunchCooperativeKernel(cuda_program->kernels["kernel"], numGroups, 1, 1,
                                                 workgroupSize, 1, 1, 0, 0, args);
@@ -137,6 +139,26 @@ void renderCUDA(shared_ptr<GLRenderer> renderer) {
 
 void initCudaProgram(shared_ptr<GLRenderer> renderer) {
     cuMemAlloc(&cptr_buffer, 100'000'000);
+
+    int row = 21;
+    int col = 21;
+    numVoxels = row * col;
+    cuMemAlloc(&cptr_positions, numVoxels * sizeof(float3));
+    std::vector<float3> voxel_positions(numVoxels);
+    for (int i = 0; i < row; ++i) {
+        for (int j = 0; j < col; ++j) {
+            // float3 color;
+            // if ((i + j) % 2 == 0) {
+            //     color = float3{0.0f, 1.0f, 1.0f};
+            // } else {
+            //     color = float3{1.0f, 1.0f, 0.0f};
+            // }
+            // voxels->colors[i * 10 + j] = color;
+            voxel_positions[i * col + j] = float3{i * 2.0f, j * 2.0f, 0.0f};
+        }
+    }
+
+    cuMemcpyHtoD(cptr_positions, voxel_positions.data(), voxel_positions.size() * sizeof(float3));
 
     cuda_program = new CudaModularProgram({.modules =
                                                {

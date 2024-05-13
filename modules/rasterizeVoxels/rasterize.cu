@@ -158,7 +158,7 @@ void rasterizeVoxels(Voxels *voxels, uint64_t *framebuffer, RasterizationSetting
             // project x/y to pixel coords
             // z: whatever
             // w: linear depth
-            auto toScreenCoord = [&](float3 p) {
+            auto toScreenCoord_SW = [&](float3 p) {
                 float4 pos = transform * float4{p.x, p.y, p.z, 1.0f};
 
                 pos.x = pos.x / pos.w;
@@ -170,7 +170,8 @@ void rasterizeVoxels(Voxels *voxels, uint64_t *framebuffer, RasterizationSetting
                 return imgPos;
             };
 
-            float4 voxel_screen_pos = toScreenCoord(voxels->positions[sh_voxelIndex]);
+            float3 voxel_pos_W = voxels->positions[sh_voxelIndex];
+            float4 voxel_pos_S = toScreenCoord_SW(voxel_pos_W);
 
             // cull the voxel if its position is closer than depth 0
             // if(voxel_screen_pos.w < 0.0) continue;
@@ -224,7 +225,7 @@ void rasterizeVoxels(Voxels *voxels, uint64_t *framebuffer, RasterizationSetting
 
                 float3 dir_W = make_float3(uniforms.invview * make_float4(dir_C, 0.0f));
                 Ray ray_W = Ray{camPos_W, dir_W};
-                Box box = Box{float3{0.0f, 0.0f, 0.0f}, 1.0f};
+                Box box = Box{voxel_pos_W, 1.0f};
 
                 HitInfo hitInfo_W = rayBoxIntersection(box, ray_W);
                 if (!hitInfo_W.hit)
@@ -247,7 +248,7 @@ void rasterizeVoxels(Voxels *voxels, uint64_t *framebuffer, RasterizationSetting
                 // 	color = sh_voxelIndex * 123456;
                 // }
 
-                float depth = 1.0;
+                float depth = hitInfo_W.distance;
                 uint64_t udepth = *((uint32_t *)&depth);
                 uint64_t pixel = (udepth << 32ull) | rgb8color(fragColor);
 
@@ -260,7 +261,8 @@ void rasterizeVoxels(Voxels *voxels, uint64_t *framebuffer, RasterizationSetting
 }
 
 extern "C" __global__ void kernel(const Uniforms _uniforms, unsigned int *buffer,
-                                  cudaSurfaceObject_t gl_colorbuffer) {
+                                  cudaSurfaceObject_t gl_colorbuffer, uint32_t numVoxels,
+                                  float3 *voxelPositions) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -283,12 +285,19 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, unsigned int *buffer
     grid.sync();
 
     { // generate and draw a single voxel
-        int numVoxels = 1;
         Voxels *voxels = allocator->alloc<Voxels *>(sizeof(Voxels));
-        voxels->positions = allocator->alloc<float3 *>(sizeof(float3) * numVoxels);
+        voxels->positions = voxelPositions;
         voxels->colors = allocator->alloc<float3 *>(sizeof(float3) * numVoxels);
 
-        voxels->colors[0] = make_float3(0.0f, 1.0f, 1.0f);
+        for (int i = 0; i < numVoxels; ++i) {
+            float3 color;
+            if (i % 2 == 0) {
+                color = float3{0.0f, 1.0f, 1.0f};
+            } else {
+                color = float3{1.0f, 1.0f, 0.0f};
+            }
+            voxels->colors[i] = color;
+        }
 
         voxels->count = numVoxels;
 
