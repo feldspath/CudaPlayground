@@ -41,6 +41,7 @@ function(ADD_OPENGL TARGET_NAME)
 
 	target_include_directories(${TARGET_NAME} PRIVATE libs/glew/include)
 	target_sources(${TARGET_NAME} PRIVATE libs/glew/glew.c)
+	target_compile_definitions(${TARGET_NAME} PRIVATE GLEW_STATIC)
 
 	include(cmake/glfw.cmake)
 	target_include_directories(${TARGET_NAME} PRIVATE ${glfw_SOURCE_DIR}/include)
