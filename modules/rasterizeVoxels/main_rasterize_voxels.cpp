@@ -140,8 +140,8 @@ void renderCUDA(shared_ptr<GLRenderer> renderer) {
 void initCudaProgram(shared_ptr<GLRenderer> renderer) {
     cuMemAlloc(&cptr_buffer, 100'000'000);
 
-    int row = 21;
-    int col = 21;
+    int row = 1;
+    int col = 1;
     numVoxels = row * col;
     cuMemAlloc(&cptr_positions, numVoxels * sizeof(float3));
     std::vector<float3> voxel_positions(numVoxels);

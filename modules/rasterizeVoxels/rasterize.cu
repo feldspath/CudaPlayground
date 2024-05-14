@@ -115,6 +115,40 @@ HitInfo rayBoxIntersection(Box box, Ray ray) {
     return hitInfo;
 }
 
+struct Box2D {
+    float2 low;
+    float2 high;
+};
+
+Box2D voxelClipSpaceBBox(float3 voxelPos, float voxelRadius) {
+    float s = voxelRadius * 1.732051f;
+    mat4 translation = mat4::translate(voxelPos.x, voxelPos.y, voxelPos.z);
+    mat4 scale = mat4::scale(s, s, s);
+    mat4 matT = uniforms.proj * uniforms.view * translation * scale;
+
+    float4 r1 = matT.rows[0];
+    float4 r2 = matT.rows[1];
+    float4 r3 = matT.rows[2];
+    float4 r4 = matT.rows[3];
+
+    float a = dot(r4, r4);
+    float b = -2.0f * dot(r1, r4);
+    float c = dot(r1, r1);
+
+    float d_sqrt = sqrt(b * b - 4.0f * a * c);
+    float lowx = (-b - d_sqrt) / (2.0f * a);
+    float highx = (-b + d_sqrt) / (2.0f * a);
+
+    Box2D result;
+    result.low = float2{lowx, -1.0f};
+    result.high = float2{highx, 1.0f};
+
+    // result.low = float2{-1.0f, -1.0f};
+    // result.high = float2{1.0f, 1.0f};
+
+    return result;
+}
+
 // rasterizes voxels
 // - each block grabs a voxel
 // - all threads of that block process different fragments of the voxel
@@ -177,12 +211,13 @@ void rasterizeVoxels(Voxels *voxels, uint64_t *framebuffer, RasterizationSetting
             // if(voxel_screen_pos.w < 0.0) continue;
 
             // TODO: compute screen space bbox of voxel
+            Box2D bbox = voxelClipSpaceBBox(voxel_pos_W, 1.0f);
 
             // clamp to screen
-            float min_x = 0.0f;
-            float min_y = 0.0f;
-            float max_x = uniforms.width;
-            float max_y = uniforms.height;
+            float min_x = uniforms.width * (max(-1.0f, bbox.low.x) * 0.5f + 0.5f);
+            float min_y = uniforms.height * (max(-1.0f, bbox.low.y) * 0.5f + 0.5f);
+            float max_x = uniforms.width * (min(1.0f, bbox.high.x) * 0.5f + 0.5f);
+            float max_y = uniforms.height * (min(1.0f, bbox.high.y) * 0.5f + 0.5f);
 
             int size_x = ceil(max_x) - floor(min_x);
             int size_y = ceil(max_y) - floor(min_y);
@@ -193,8 +228,8 @@ void rasterizeVoxels(Voxels *voxels, uint64_t *framebuffer, RasterizationSetting
             for (int fragOffset = 0; fragOffset < numFragments; fragOffset += block.num_threads()) {
 
                 // safety mechanism: don't draw more than <x> pixels per thread
-                if (numProcessedSamples > 5'000)
-                    break;
+                // if (numProcessedSamples > 5'000)
+                //    break;
 
                 int fragID = fragOffset + block.thread_rank();
                 int fragX = fragID % size_x;
@@ -228,8 +263,16 @@ void rasterizeVoxels(Voxels *voxels, uint64_t *framebuffer, RasterizationSetting
                 Box box = Box{voxel_pos_W, 1.0f};
 
                 HitInfo hitInfo_W = rayBoxIntersection(box, ray_W);
-                if (!hitInfo_W.hit)
+                if (!hitInfo_W.hit) {
+                    float depth = 0.0f;
+                    uint64_t udepth = *((uint32_t *)&depth);
+                    float3 fragColor = float3{1.0f, 0.0f, 0.0f};
+                    uint64_t pixel = (udepth << 32ull) | rgb8color(fragColor);
+
+                    atomicMin(&framebuffer[pixelID], pixel);
+
                     continue;
+                }
 
                 float3 lightDir_W = normalize(float3{2.0f, -1.0f, -4.0f});
                 float3 fragColor =
