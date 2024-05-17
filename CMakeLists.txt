@@ -62,6 +62,32 @@ ADD_IMPLOT(${TARGET_NAME})
 
 
 ##############################################
+## SUBPROJECT: Shapes 2D
+##############################################
+
+set(TARGET_NAME Shapes_2D) 
+
+add_executable( ${TARGET_NAME}
+	./modules/shapes2D/main_shapes_2D.cpp
+	./src/GLRenderer2D.cpp
+	include/unsuck_platform_specific.cpp
+)
+
+if (MSVC)
+# set workdir to ../$(SolutionDir), so that .cu files can be monitored/reloaded/compiled
+set_property(TARGET ${TARGET_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "$(SolutionDir)..")
+endif()
+
+target_include_directories(${TARGET_NAME} PRIVATE ./include)
+
+# add some third-party libraries
+ADD_CUDA(${TARGET_NAME})
+ADD_OPENGL(${TARGET_NAME})
+ADD_GLM(${TARGET_NAME})
+ADD_IMGUI(${TARGET_NAME})
+ADD_IMPLOT(${TARGET_NAME})
+
+##############################################
 ## SOME FINAL STUFF
 ##############################################
 
