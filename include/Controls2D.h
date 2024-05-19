@@ -11,8 +11,6 @@
 
 #include "Controls.h"
 
-using namespace std;
-
 struct Controls2D : public Controls {
     double zoom;
 
@@ -34,8 +32,6 @@ struct Controls2D : public Controls {
     void translate(glm::dvec2 translation) { pos += translation; }
 
     void onMouseButton(int button, int action, int mods) {
-        // cout << "button: " << button << ", action: " << action << ", mods: " << mods << endl;
-
         if (button == 0 && action == 1) {
             isLeftDown = true;
         } else if (action == 0) {
@@ -50,7 +46,6 @@ struct Controls2D : public Controls {
     }
 
     void onMouseMove(double xpos, double ypos) override {
-
         bool selectActive = Runtime::keyStates[342] > 0;
         if (selectActive) {
             return;
@@ -68,20 +63,7 @@ struct Controls2D : public Controls {
         mousePos = newMousePos;
     }
 
-    void onMouseScroll(double xoffset, double yoffset) override {
-        // cout << xoffset << ", " << yoffset << endl;
-
-        // +1: zoom in
-        // -1: zoom out
-
-        // if (yoffset < 0.0) {
-        //     radius = radius * 1.1;
-        // } else {
-        //     radius = radius / 1.1;
-        // }
-
-        // cout << radius << endl;
-    }
+    void onMouseScroll(double xoffset, double yoffset) override {}
 
     void update() override {
         auto w = glm::dmat4(1.0);

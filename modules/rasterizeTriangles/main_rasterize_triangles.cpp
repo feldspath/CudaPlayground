@@ -12,6 +12,7 @@
 
 #include "CudaModularProgram.h"
 #include "GLRenderer.h"
+#include "OrbitControls.h"
 #include "cudaGL.h"
 // #include "builtin_types.h"
 
@@ -19,8 +20,6 @@
 #include "unsuck.hpp"
 
 #include "HostDeviceInterface.h"
-
-using namespace std;
 
 CUdeviceptr cptr_buffer;
 CUdeviceptr cptr_positions, cptr_uvs, cptr_colors;
@@ -30,7 +29,7 @@ CUgraphicsResource cugl_colorbuffer;
 CudaModularProgram *cuda_program = nullptr;
 CUevent cevent_start, cevent_end;
 
-shared_ptr<ObjData> model;
+std::shared_ptr<ObjData> model;
 // vector<uint32_t> colors;
 
 int colorMode = COLORMODE_TEXTURE;
@@ -44,7 +43,7 @@ void initCuda() {
     cuCtxCreate(&context, 0, cuDevice);
 }
 
-void renderCUDA(shared_ptr<GLRenderer> renderer) {
+void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
 
     cuGraphicsGLRegisterImage(&cugl_colorbuffer,
                               renderer->view.framebuffer->colorAttachments[0]->handle,
@@ -91,8 +90,8 @@ void renderCUDA(shared_ptr<GLRenderer> renderer) {
     glm::mat4 rotX = glm::rotate(glm::mat4(), 3.1415f * 0.5f, glm::vec3(1.0, 0.0, 0.0));
 
     glm::mat4 world = rotX;
-    glm::mat4 view = renderer->camera->view;
-    glm::mat4 proj = renderer->camera->proj;
+    glm::mat4 view = renderer->camera->viewMatrix();
+    glm::mat4 proj = renderer->camera->projMatrix();
     glm::mat4 worldViewProj = proj * view * world;
     world = glm::transpose(world);
     view = glm::transpose(view);
@@ -137,8 +136,8 @@ void renderCUDA(shared_ptr<GLRenderer> renderer) {
     cuGraphicsUnregisterResource(cugl_colorbuffer);
 }
 
-void initCudaProgram(shared_ptr<GLRenderer> renderer, shared_ptr<ObjData> model,
-                     vector<uint32_t> &texture) {
+void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::shared_ptr<ObjData> model,
+                     std::vector<uint32_t> &texture) {
 
     cuMemAlloc(&cptr_buffer, 100'000'000);
 
@@ -168,21 +167,24 @@ void initCudaProgram(shared_ptr<GLRenderer> renderer, shared_ptr<ObjData> model,
 
 int main() {
 
-    cout << std::setprecision(2) << std::fixed;
+    std::cout << std::setprecision(2) << std::fixed;
     setlocale(LC_ALL, "en_AT.UTF-8");
 
-    auto renderer = make_shared<GLRenderer>();
+    auto renderer = std::make_shared<GLRenderer>(std::make_shared<Camera3D>(),
+                                                 std::make_shared<OrbitControls>());
 
-    renderer->controls->yaw = -2.6;
-    renderer->controls->pitch = -0.4;
-    renderer->controls->radius = 6.0;
-    renderer->controls->target = {0.0f, 0.0f, 0.0f};
+    OrbitControls &controls = *dynamic_pointer_cast<OrbitControls>(renderer->controls);
+
+    controls.yaw = -2.6;
+    controls.pitch = -0.4;
+    controls.radius = 6.0;
+    controls.target = {0.0f, 0.0f, 0.0f};
 
     initCuda();
 
     model = ObjLoader::load("./resources/spot/spot_triangulated.obj");
     auto ppmdata = readBinaryFile("./resources/spot/spot_texture.ppm", 40, 1000000000000);
-    vector<uint32_t> colors(1024 * 1024, 0);
+    std::vector<uint32_t> colors(1024 * 1024, 0);
 
     for (int i = 0; i < 1024 * 1024; i++) {
         uint32_t r = ppmdata->get<uint8_t>(3 * i + 0);

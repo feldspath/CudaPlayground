@@ -7,8 +7,6 @@
 
 #include "glm/common.hpp"
 
-using namespace std;
-
 struct Runtime {
 
     struct GuiItem {
@@ -17,10 +15,10 @@ struct Runtime {
         float max = 1.0;
         float oldValue = 0.5;
         float value = 0.5;
-        string label = "";
+        std::string label = "";
     };
 
-    inline static vector<int> keyStates = vector<int>(65536, 0);
+    inline static std::vector<int> keyStates = std::vector<int>(65536, 0);
     inline static glm::dvec2 mousePosition = {0.0, 0.0};
     inline static int mouseButtons = 0;
 

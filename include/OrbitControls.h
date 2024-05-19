@@ -10,8 +10,6 @@
 #include "Controls.h"
 #include "Runtime.h"
 
-using namespace std;
-
 struct OrbitControls : public Controls {
 
     double yaw = 0.0;

@@ -14,7 +14,7 @@ static void APIENTRY debugCallback(GLenum source, GLenum type, GLuint id, GLenum
         return;
     }
 
-    cout << "OPENGL DEBUG CALLBACK: " << message << endl;
+    std::cout << "OPENGL DEBUG CALLBACK: " << message << '\n';
 }
 
 void error_callback(int error, const char *description) {
@@ -23,8 +23,8 @@ void error_callback(int error, const char *description) {
 
 void GLRenderer::onKey(GLFWwindow *window, int key, int scancode, int action, int mods) {
 
-    cout << "key: " << key << ", scancode: " << scancode << ", action: " << action
-         << ", mods: " << mods << endl;
+    std::cout << "key: " << key << ", scancode: " << scancode << ", action: " << action
+              << ", mods: " << mods << '\n';
 
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, GLFW_TRUE);
@@ -32,7 +32,7 @@ void GLRenderer::onKey(GLFWwindow *window, int key, int scancode, int action, in
 
     Runtime::keyStates[key] = action;
 
-    cout << key << endl;
+    std::cout << key << '\n';
 }
 
 void GLRenderer::onCursorMove(GLFWwindow *window, double xpos, double ypos) {
@@ -76,7 +76,7 @@ void GLRenderer::onMouseButton(GLFWwindow *window, int button, int action, int m
     controls->onMouseButton(button, action, mods);
 }
 
-GLRenderer::GLRenderer(shared_ptr<Camera> camera, shared_ptr<Controls> controls)
+GLRenderer::GLRenderer(std::shared_ptr<Camera> camera, std::shared_ptr<Controls> controls)
     : camera(camera), controls(controls) {
 
     init();
@@ -99,7 +99,7 @@ void GLRenderer::init() {
     int numMonitors;
     GLFWmonitor **monitors = glfwGetMonitors(&numMonitors);
 
-    cout << "<create windows>" << endl;
+    std::cout << "<create windows>\n";
     if (numMonitors > 1) {
         const GLFWvidmode *modeLeft = glfwGetVideoMode(monitors[0]);
         const GLFWvidmode *modeRight = glfwGetVideoMode(monitors[1]);
@@ -133,7 +133,7 @@ void GLRenderer::init() {
 
     glfwSetWindowUserPointer(window, this);
 
-    cout << "<set input callbacks>" << endl;
+    std::cout << "<set input callbacks>\n";
     glfwSetKeyCallback(window, [](GLFWwindow *window, int key, int scancode, int action, int mods) {
         GLRenderer &renderer = *(GLRenderer *)glfwGetWindowUserPointer(window);
         renderer.onKey(window, key, scancode, action, mods);
@@ -153,9 +153,9 @@ void GLRenderer::init() {
 
     static GLRenderer *ref = this;
     glfwSetDropCallback(window, [](GLFWwindow *, int count, const char **paths) {
-        vector<string> files;
+        std::vector<std::string> files;
         for (int i = 0; i < count; i++) {
-            string file = paths[i];
+            std::string file = paths[i];
             files.push_back(file);
         }
 
@@ -173,8 +173,8 @@ void GLRenderer::init() {
         fprintf(stderr, "glew error: %s\n", glewGetErrorString(err));
     }
 
-    cout << "<glewInit done> "
-         << "(" << now() << ")" << endl;
+    std::cout << "<glewInit done> "
+              << "(" << now() << ")\n";
 
     glEnable(GL_DEBUG_OUTPUT);
     glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
@@ -192,21 +192,21 @@ void GLRenderer::init() {
     }
 }
 
-shared_ptr<Texture> GLRenderer::createTexture(int width, int height, GLuint colorType) {
+std::shared_ptr<Texture> GLRenderer::createTexture(int width, int height, GLuint colorType) {
 
     auto texture = Texture::create(width, height, colorType, this);
 
     return texture;
 }
 
-shared_ptr<Framebuffer> GLRenderer::createFramebuffer(int width, int height) {
+std::shared_ptr<Framebuffer> GLRenderer::createFramebuffer(int width, int height) {
 
     auto framebuffer = Framebuffer::create(this);
 
     GLenum status = glCheckNamedFramebufferStatus(framebuffer->handle, GL_FRAMEBUFFER);
 
     if (status != GL_FRAMEBUFFER_COMPLETE) {
-        cout << "framebuffer incomplete" << endl;
+        std::cout << "framebuffer incomplete\n";
     }
 
     framebuffer->setSize(width, height);
@@ -214,14 +214,14 @@ shared_ptr<Framebuffer> GLRenderer::createFramebuffer(int width, int height) {
     return framebuffer;
 }
 
-void GLRenderer::loop(function<void(void)> update, function<void(void)> render) {
+void GLRenderer::loop(std::function<void(void)> update, std::function<void(void)> render) {
 
     int fpsCounter = 0;
     double start = now();
     double tPrevious = start;
     double tPreviousFPSMeasure = start;
 
-    vector<float> frameTimes(1000, 0);
+    std::vector<float> frameTimes(1000, 0);
 
     while (!glfwWindowShouldClose(window)) {
 
@@ -280,9 +280,9 @@ void GLRenderer::loop(function<void(void)> update, function<void(void)> render) 
 
         { // RENDER IMGUI PERFORMANCE WINDOW
 
-            stringstream ssFPS;
+            std::stringstream ssFPS;
             ssFPS << this->fps;
-            string strFps = ssFPS.str();
+            std::string strFps = ssFPS.str();
 
             ImGui::SetNextWindowPos(ImVec2(10, 10));
             ImGui::SetNextWindowSize(windowSize_perf);
@@ -346,9 +346,9 @@ void GLRenderer::loop(function<void(void)> update, function<void(void)> render) 
     exit(EXIT_SUCCESS);
 }
 
-shared_ptr<Framebuffer> Framebuffer::create(GLRenderer *renderer) {
+std::shared_ptr<Framebuffer> Framebuffer::create(GLRenderer *renderer) {
 
-    auto fbo = make_shared<Framebuffer>();
+    auto fbo = std::make_shared<Framebuffer>();
     fbo->renderer = renderer;
 
     glCreateFramebuffers(1, &fbo->handle);
@@ -374,12 +374,13 @@ shared_ptr<Framebuffer> Framebuffer::create(GLRenderer *renderer) {
     return fbo;
 }
 
-shared_ptr<Texture> Texture::create(int width, int height, GLuint colorType, GLRenderer *renderer) {
+std::shared_ptr<Texture> Texture::create(int width, int height, GLuint colorType,
+                                         GLRenderer *renderer) {
 
     GLuint handle;
     glCreateTextures(GL_TEXTURE_2D, 1, &handle);
 
-    auto texture = make_shared<Texture>();
+    auto texture = std::make_shared<Texture>();
     texture->renderer = renderer;
     texture->handle = handle;
     texture->colorType = colorType;

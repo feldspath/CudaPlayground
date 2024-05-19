@@ -8,10 +8,6 @@
 #include <string>
 #include <unordered_map>
 
-using std::string;
-
-using namespace std;
-
 #define NVJITLINK_SAFE_CALL(h, x)                                                                  \
     do {                                                                                           \
         nvJitLinkResult result = x;                                                                \
@@ -35,13 +31,13 @@ struct CudaModule {
 
     void cu_checked(CUresult result) {
         if (result != CUDA_SUCCESS) {
-            cout << "cuda error code: " << result << endl;
+            std::cout << "cuda error code: " << result << '\n';
             exit(1);
         }
     };
 
-    string path = "";
-    string name = "";
+    std::string path = "";
+    std::string name = "";
     bool compiled = false;
     bool success = false;
 
@@ -54,7 +50,7 @@ struct CudaModule {
     // size_t nvvmSize;
     // char *nvvm = nullptr;
 
-    CudaModule(string path, string name) {
+    CudaModule(std::string path, std::string name) {
         this->path = path;
         this->name = name;
     }
@@ -62,47 +58,48 @@ struct CudaModule {
     void compile() {
         auto tStart = now();
 
-        cout << "================================================================================"
-             << endl;
-        cout << "=== COMPILING: " << fs::path(path).filename().string() << endl;
-        cout << "================================================================================"
-             << endl;
+        std::cout
+            << "================================================================================\n";
+        std::cout << "=== COMPILING: " << fs::path(path).filename().string() << '\n';
+        std::cout
+            << "================================================================================\n";
 
         success = false;
 
-        string dir = fs::path(path).parent_path().string();
+        std::string dir = fs::path(path).parent_path().string();
         // string optInclude = "-I " + dir;
 
-        string cuda_path = std::getenv("CUDA_PATH");
+        std::string cuda_path = std::getenv("CUDA_PATH");
         // string cuda_include = "-I " + cuda_path + "/include";
 
-        string optInclude = std::format("-I {}", dir).c_str();
-        string cuda_include = std::format("-I {}/include", cuda_path);
-        string cudastd_include = std::format("-I {}/include/cuda/std", cuda_path);
-        string cudastd_detail_include =
+        std::string optInclude = std::format("-I {}", dir).c_str();
+        std::string cuda_include = std::format("-I {}/include", cuda_path);
+        std::string cudastd_include = std::format("-I {}/include/cuda/std", cuda_path);
+        std::string cudastd_detail_include =
             std::format("-I {}/include/cuda/std/detail/libcxx/include", cuda_path);
-        string wtf = "-I C:/Program Files (x86)/Windows Kits/10/Include/10.0.22621.0/ucrt";
-        string wtf2 = "-I C:/Program Files/Microsoft Visual "
-                      "Studio/2022/Community/VC/Tools/MSVC/14.36.32532/include";
+        std::string wtf = "-I C:/Program Files (x86)/Windows Kits/10/Include/10.0.22621.0/ucrt";
+        std::string wtf2 = "-I C:/Program Files/Microsoft Visual "
+                           "Studio/2022/Community/VC/Tools/MSVC/14.36.32532/include";
 
         //"C:\Program Files\NVIDIA GPU Computing
         // Toolkit\CUDA\v11.8\include\cuda\std\detail\libcxx\include\iterator"
 
-        string i_cub =
-            format("-I {}", "D:/dev/workspaces/CudaPlayground/gaussian_private/libs/cccl-main/cub");
-        string i_libcuda = format(
+        std::string i_cub = std::format(
+            "-I {}", "D:/dev/workspaces/CudaPlayground/gaussian_private/libs/cccl-main/cub");
+        std::string i_libcuda = std::format(
             "-I {}",
             "D:/dev/workspaces/CudaPlayground/gaussian_private/libs/cccl-main/libcudacxx/include");
-        string i_cudastd_detail =
-            format("-I {}", "D:/dev/workspaces/CudaPlayground/gaussian_private/libs/cccl-main/"
-                            "libcudacxx/include/cuda/std/detail/libcxx/include/");
-        string i_libcudastd = format("-I {}", "D:/dev/workspaces/CudaPlayground/gaussian_private/"
-                                              "libs/cccl-main/libcudacxx/include/cuda/std");
-        string i_thrust = format(
+        std::string i_cudastd_detail =
+            std::format("-I {}", "D:/dev/workspaces/CudaPlayground/gaussian_private/libs/cccl-main/"
+                                 "libcudacxx/include/cuda/std/detail/libcxx/include/");
+        std::string i_libcudastd =
+            std::format("-I {}", "D:/dev/workspaces/CudaPlayground/gaussian_private/"
+                                 "libs/cccl-main/libcudacxx/include/cuda/std");
+        std::string i_thrust = std::format(
             "-I {}", "D:/dev/workspaces/CudaPlayground/gaussian_private/libs/cccl-main/thrust");
 
         nvrtcProgram prog;
-        string source = readFile(path);
+        std::string source = readFile(path);
         nvrtcCreateProgram(&prog, source.c_str(), name.c_str(), 0, NULL, NULL);
         std::vector<const char *> opts = {
             "--gpu-architecture=compute_75",
@@ -131,9 +128,9 @@ struct CudaModule {
         };
 
         for (auto opt : opts) {
-            cout << opt << endl;
+            std::cout << opt << '\n';
         }
-        cout << "====" << endl;
+        std::cout << "====\n";
 
         nvrtcResult res = nvrtcCompileProgram(prog, opts.size(), opts.data());
 
@@ -142,7 +139,7 @@ struct CudaModule {
             nvrtcGetProgramLogSize(prog, &logSize);
             char *log = new char[logSize];
             nvrtcGetProgramLog(prog, log);
-            std::cerr << log << std::endl;
+            std::cerr << log << '\n';
             delete[] log;
 
             if (res != NVRTC_SUCCESS) {
@@ -160,7 +157,7 @@ struct CudaModule {
         ltoir = new char[ltoirSize];
         nvrtcGetLTOIR(prog, ltoir);
 
-        cout << format("compiled ltoir. size: {} byte \n", ltoirSize);
+        std::cout << std::format("compiled ltoir. size: {} byte \n", ltoirSize);
 
         // nvrtcGetNVVMSize(prog, &nvvmSize);
         // nvvm = new char[nvvmSize];
@@ -178,50 +175,50 @@ struct CudaModule {
 struct OptionalLaunchSettings {
     uint32_t gridsize[3] = {1, 1, 1};
     uint32_t blocksize[3] = {1, 1, 1};
-    vector<void *> args;
+    std::vector<void *> args;
     bool measureDuration = false;
 };
 
 struct CudaModularProgram {
 
     struct CudaModularProgramArgs {
-        vector<string> modules;
-        vector<string> kernels;
+        std::vector<std::string> modules;
+        std::vector<std::string> kernels;
     };
 
     void cu_checked(CUresult result) {
         if (result != CUDA_SUCCESS) {
-            cout << "cuda error code: " << result << endl;
+            std::cout << "cuda error code: " << result << '\n';
             exit(1);
         }
     };
 
-    vector<CudaModule *> modules;
+    std::vector<CudaModule *> modules;
 
     CUmodule mod;
     // CUfunction kernel = nullptr;
     void *cubin;
     size_t cubinSize;
 
-    vector<std::function<void(void)>> compileCallbacks;
+    std::vector<std::function<void(void)>> compileCallbacks;
 
-    vector<string> kernelNames;
-    unordered_map<string, CUfunction> kernels;
-    unordered_map<string, CUevent> events_launch_start;
-    unordered_map<string, CUevent> events_launch_end;
-    unordered_map<string, float> last_launch_duration;
+    std::vector<std::string> kernelNames;
+    std::unordered_map<std::string, CUfunction> kernels;
+    std::unordered_map<std::string, CUevent> events_launch_start;
+    std::unordered_map<std::string, CUevent> events_launch_end;
+    std::unordered_map<std::string, float> last_launch_duration;
 
     CudaModularProgram(CudaModularProgramArgs args) {
         // CudaModularProgram(vector<string> modulePaths, vector<string> kernelNames = {}){
 
-        vector<string> modulePaths = args.modules;
-        vector<string> kernelNames = args.kernels;
+        std::vector<std::string> modulePaths = args.modules;
+        std::vector<std::string> kernelNames = args.kernels;
 
         this->kernelNames = kernelNames;
 
         for (auto modulePath : modulePaths) {
 
-            string moduleName = fs::path(modulePath).filename().string();
+            std::string moduleName = fs::path(modulePath).filename().string();
             auto module = new CudaModule(modulePath, moduleName);
 
             module->compile();
@@ -239,11 +236,11 @@ struct CudaModularProgram {
 
     void link() {
 
-        cout << "================================================================================"
-             << endl;
-        cout << "=== LINKING" << endl;
-        cout << "================================================================================"
-             << endl;
+        std::cout
+            << "================================================================================\n";
+        std::cout << "=== LINKING\n";
+        std::cout
+            << "================================================================================\n";
 
         auto tStart = now();
 
@@ -298,7 +295,7 @@ struct CudaModularProgram {
         // memset(smbuf, 0, 16);
         // sprintf(smbuf, "-arch=sm_%d\n", arch);
 
-        string strArch = std::format("-arch=sm_{}", arch);
+        std::string strArch = std::format("-arch=sm_{}", arch);
 
         const char *lopts[] = {"-dlto", strArch.c_str()};
 
@@ -358,7 +355,7 @@ struct CudaModularProgram {
         cu_checked(cuModuleLoadData(&mod, cubin));
         // cu_checked(cuModuleGetFunction(&kernel, mod, "kernel"));
 
-        for (string kernelName : kernelNames) {
+        for (std::string kernelName : kernelNames) {
             CUfunction kernel;
             cu_checked(cuModuleGetFunction(&kernel, mod, kernelName.c_str()));
 
@@ -374,7 +371,7 @@ struct CudaModularProgram {
 
     void onCompile(std::function<void(void)> callback) { compileCallbacks.push_back(callback); }
 
-    void launch(string kernelName, OptionalLaunchSettings launchArgs) {
+    void launch(std::string kernelName, OptionalLaunchSettings launchArgs) {
 
         void **args = &launchArgs.args[0];
 
@@ -387,11 +384,11 @@ struct CudaModularProgram {
             const char *str;
             cuGetErrorString(res_launch, &str);
             printf("error: %s \n", str);
-            cout << __FILE__ << " - " << __LINE__ << endl;
+            std::cout << __FILE__ << " - " << __LINE__ << '\n';
         }
     }
 
-    void launchCooperative(string kernelName, void *args[],
+    void launchCooperative(std::string kernelName, void *args[],
                            OptionalLaunchSettings launchArgs = {}) {
 
         CUevent event_start = events_launch_start[kernelName];
@@ -422,7 +419,7 @@ struct CudaModularProgram {
             const char *str;
             cuGetErrorString(res_launch, &str);
             printf("error: %s \n", str);
-            cout << __FILE__ << " - " << __LINE__ << endl;
+            std::cout << __FILE__ << " - " << __LINE__ << '\n';
         }
 
         cuEventRecord(event_end, 0);

@@ -41,7 +41,7 @@ void initCuda() {
     cuCtxCreate(&context, 0, cuDevice);
 }
 
-void renderCUDA(shared_ptr<GLRenderer> renderer) {
+void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
     cuGraphicsGLRegisterImage(&cugl_colorbuffer,
                               renderer->view.framebuffer->colorAttachments[0]->handle,
                               GL_TEXTURE_2D, CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD);
@@ -138,7 +138,7 @@ void renderCUDA(shared_ptr<GLRenderer> renderer) {
     cuGraphicsUnregisterResource(cugl_colorbuffer);
 }
 
-void initCudaProgram(shared_ptr<GLRenderer> renderer) {
+void initCudaProgram(std::shared_ptr<GLRenderer> renderer) {
     cuMemAlloc(&cptr_buffer, 100'000'000);
 
     gridRows = 20;
@@ -180,10 +180,11 @@ void initCudaProgram(shared_ptr<GLRenderer> renderer) {
 
 int main() {
 
-    cout << std::setprecision(2) << std::fixed;
+    std::cout << std::setprecision(2) << std::fixed;
     setlocale(LC_ALL, "en_AT.UTF-8");
 
-    auto renderer = make_shared<GLRenderer>(make_shared<Camera2D>(), make_shared<Controls2D>());
+    auto renderer =
+        std::make_shared<GLRenderer>(std::make_shared<Camera2D>(), std::make_shared<Controls2D>());
 
     initCuda();
 

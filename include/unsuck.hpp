@@ -20,27 +20,10 @@
 #include <thread>
 #include <vector>
 
-using std::cout;
-using std::endl;
-using std::fstream;
-using std::function;
-using std::ifstream;
-using std::ios;
-using std::make_shared;
-using std::mutex;
-using std::ofstream;
-using std::shared_ptr;
-using std::streamsize;
-using std::string;
-using std::stringstream;
-using std::thread;
-using std::to_string;
-using std::vector;
-using std::chrono::high_resolution_clock;
-
 namespace fs = std::filesystem;
 
-static long long unsuck_start_time = high_resolution_clock::now().time_since_epoch().count();
+static long long unsuck_start_time =
+    std::chrono::high_resolution_clock::now().time_since_epoch().count();
 
 static double Infinity = std::numeric_limits<double>::infinity();
 
@@ -79,11 +62,11 @@ class punct_facet : public std::numpunct<char> {
 protected:
     char do_decimal_point() const { return '.'; };
     char do_thousands_sep() const { return '\''; };
-    string do_grouping() const { return "\3"; }
+    std::string do_grouping() const { return "\3"; }
 };
 
-template <class T> inline string formatNumber(T number, int decimals = 0) {
-    stringstream ss;
+template <class T> inline std::string formatNumber(T number, int decimals = 0) {
+    std::stringstream ss;
 
     ss.imbue(std::locale(std::cout.getloc(), new punct_facet));
     ss << std::fixed << std::setprecision(decimals);
@@ -119,35 +102,35 @@ struct Buffer {
         if (data == nullptr) {
             auto memory = getMemoryData();
 
-            cout << "ERROR: malloc(" << formatNumber(size) << ") failed." << endl;
+            std::cout << "ERROR: malloc(" << formatNumber(size) << ") failed.\n";
 
             auto virtualAvailable = memory.virtual_total - memory.virtual_used;
             auto physicalAvailable = memory.physical_total - memory.physical_used;
             auto GB = 1024.0 * 1024.0 * 1024.0;
 
-            cout << "virtual memory(total): " << formatNumber(double(memory.virtual_total) / GB)
-                 << endl;
-            cout << "virtual memory(used): " << formatNumber(double(memory.virtual_used) / GB, 1)
-                 << endl;
-            cout << "virtual memory(available): " << formatNumber(double(virtualAvailable) / GB, 1)
-                 << endl;
-            cout << "virtual memory(used by process): "
-                 << formatNumber(double(memory.virtual_usedByProcess) / GB, 1) << endl;
-            cout << "virtual memory(highest used by process): "
-                 << formatNumber(double(memory.virtual_usedByProcess_max) / GB, 1) << endl;
+            std::cout << "virtual memory(total): "
+                      << formatNumber(double(memory.virtual_total) / GB) << '\n';
+            std::cout << "virtual memory(used): "
+                      << formatNumber(double(memory.virtual_used) / GB, 1) << '\n';
+            std::cout << "virtual memory(available): "
+                      << formatNumber(double(virtualAvailable) / GB, 1) << '\n';
+            std::cout << "virtual memory(used by process): "
+                      << formatNumber(double(memory.virtual_usedByProcess) / GB, 1) << '\n';
+            std::cout << "virtual memory(highest used by process): "
+                      << formatNumber(double(memory.virtual_usedByProcess_max) / GB, 1) << '\n';
 
-            cout << "physical memory(total): "
-                 << formatNumber(double(memory.physical_total) / GB, 1) << endl;
-            cout << "physical memory(available): "
-                 << formatNumber(double(physicalAvailable) / GB, 1) << endl;
-            cout << "physical memory(used): " << formatNumber(double(memory.physical_used) / GB, 1)
-                 << endl;
-            cout << "physical memory(used by process): "
-                 << formatNumber(double(memory.physical_usedByProcess) / GB, 1) << endl;
-            cout << "physical memory(highest used by process): "
-                 << formatNumber(double(memory.physical_usedByProcess_max) / GB, 1) << endl;
+            std::cout << "physical memory(total): "
+                      << formatNumber(double(memory.physical_total) / GB, 1) << '\n';
+            std::cout << "physical memory(available): "
+                      << formatNumber(double(physicalAvailable) / GB, 1) << '\n';
+            std::cout << "physical memory(used): "
+                      << formatNumber(double(memory.physical_used) / GB, 1) << '\n';
+            std::cout << "physical memory(used by process): "
+                      << formatNumber(double(memory.physical_usedByProcess) / GB, 1) << '\n';
+            std::cout << "physical memory(highest used by process): "
+                      << formatNumber(double(memory.physical_usedByProcess_max) / GB, 1) << '\n';
 
-            cout << "also check if there is enough disk space available" << endl;
+            std::cout << "also check if there is enough disk space available" << '\n';
 
             exit(4312);
         }
@@ -210,12 +193,12 @@ inline double now() {
     return secondsSinceStart;
 }
 
-inline void printElapsedTime(string label, double startTime) {
+inline void printElapsedTime(std::string label, double startTime) {
 
     double elapsed = now() - startTime;
 
-    string msg = label + ": " + to_string(elapsed) + "s\n";
-    cout << msg << endl;
+    std::string msg = label + ": " + std::to_string(elapsed) + "s\n";
+    std::cout << msg << '\n';
 }
 
 inline float random(float min, float max) {
@@ -290,7 +273,7 @@ inline std::vector<int64_t> random(int64_t min, int64_t max, int64_t n) {
     return values;
 }
 
-inline string stringReplace(string str, string search, string replacement) {
+inline std::string stringReplace(std::string str, std::string search, std::string replacement) {
 
     auto index = str.find(search);
 
@@ -298,7 +281,7 @@ inline string stringReplace(string str, string search, string replacement) {
         return str;
     }
 
-    string strCopy = str;
+    std::string strCopy = str;
     strCopy.replace(index, search.length(), replacement);
 
     return strCopy;
@@ -318,7 +301,7 @@ inline bool icompare(std::string const &a, std::string const &b) {
     }
 }
 
-inline bool endsWith(const string &str, const string &suffix) {
+inline bool endsWith(const std::string &str, const std::string &suffix) {
 
     if (str.size() < suffix.size()) {
         return false;
@@ -342,7 +325,7 @@ inline bool iEndsWith(const std::string &str, const std::string &suffix) {
 
 // taken from:
 // https://stackoverflow.com/questions/2602013/read-whole-ascii-file-into-c-stdstring/2602060
-inline string readTextFile(string path) {
+inline std::string readTextFile(std::string path) {
 
     std::ifstream t(path);
     std::string str;
@@ -372,13 +355,13 @@ inline string readTextFile(string path) {
 // 	return buffer;
 // }
 
-inline shared_ptr<Buffer> readBinaryFile(string path) {
+inline std::shared_ptr<Buffer> readBinaryFile(std::string path) {
 
     auto file = fopen(path.c_str(), "rb");
     auto size = fs::file_size(path);
 
     // vector<uint8_t> buffer(size);
-    auto buffer = make_shared<Buffer>(size);
+    auto buffer = std::make_shared<Buffer>(size);
 
     fread(buffer->data, 1, size, file);
     fclose(file);
@@ -425,7 +408,7 @@ inline shared_ptr<Buffer> readBinaryFile(string path) {
 //	}
 // }
 
-inline shared_ptr<Buffer> readBinaryFile(string path, uint64_t start, uint64_t size) {
+inline std::shared_ptr<Buffer> readBinaryFile(std::string path, uint64_t start, uint64_t size) {
 
     // ifstream file(path, ios::binary);
 
@@ -435,13 +418,13 @@ inline shared_ptr<Buffer> readBinaryFile(string path, uint64_t start, uint64_t s
     auto totalSize = fs::file_size(path);
 
     if (start >= totalSize) {
-        auto buffer = make_shared<Buffer>(0);
+        auto buffer = std::make_shared<Buffer>(0);
         return buffer;
     }
     if (start + size > totalSize) {
         auto clampedSize = totalSize - start;
 
-        auto buffer = make_shared<Buffer>(clampedSize);
+        auto buffer = std::make_shared<Buffer>(clampedSize);
         // file.seekg(start, ios::beg);
         // file.read(reinterpret_cast<char*>(buffer.data()), clampedSize);
         fseek_64_all_platforms(file, start, SEEK_SET);
@@ -450,7 +433,7 @@ inline shared_ptr<Buffer> readBinaryFile(string path, uint64_t start, uint64_t s
 
         return buffer;
     } else {
-        auto buffer = make_shared<Buffer>(size);
+        auto buffer = std::make_shared<Buffer>(size);
         // file.seekg(start, ios::beg);
         // file.read(reinterpret_cast<char*>(buffer.data()), size);
         fseek_64_all_platforms(file, start, SEEK_SET);
@@ -461,7 +444,7 @@ inline shared_ptr<Buffer> readBinaryFile(string path, uint64_t start, uint64_t s
     }
 }
 
-inline void readBinaryFile(string path, uint64_t start, uint64_t size, void *target) {
+inline void readBinaryFile(std::string path, uint64_t start, uint64_t size, void *target) {
     auto file = fopen(path.c_str(), "rb");
 
     auto totalSize = fs::file_size(path);
@@ -484,9 +467,9 @@ inline void readBinaryFile(string path, uint64_t start, uint64_t size, void *tar
 
 // writing smaller batches of 1-4MB seems to be faster sometimes?!?
 // it's not very significant, though. ~0.94s instead of 0.96s.
-template <typename T> inline void writeBinaryFile(string path, vector<T> &data) {
+template <typename T> inline void writeBinaryFile(std::string path, std::vector<T> &data) {
     std::ios_base::sync_with_stdio(false);
-    auto of = fstream(path, ios::out | ios::binary);
+    auto of = std::fstream(path, std::ios::out | std::ios::binary);
 
     int64_t remaining = data.size() * sizeof(T);
     int64_t offset = 0;
@@ -503,9 +486,9 @@ template <typename T> inline void writeBinaryFile(string path, vector<T> &data) 
     of.close();
 }
 
-inline void writeBinaryFile(string path, Buffer &data) {
+inline void writeBinaryFile(std::string path, Buffer &data) {
     // std::ios_base::sync_with_stdio(false);
-    auto of = fstream(path, ios::out | ios::binary);
+    auto of = std::fstream(path, std::ios::out | std::ios::binary);
 
     int64_t remaining = data.size;
     int64_t offset = 0;
@@ -522,9 +505,9 @@ inline void writeBinaryFile(string path, Buffer &data) {
     of.close();
 }
 
-inline void writeBinaryFile(string path, uint8_t *data, uint64_t size) {
+inline void writeBinaryFile(std::string path, uint8_t *data, uint64_t size) {
     // std::ios_base::sync_with_stdio(false);
-    auto of = fstream(path, ios::out | ios::binary);
+    auto of = std::fstream(path, std::ios::out | std::ios::binary);
 
     int64_t remaining = size;
     int64_t offset = 0;
@@ -543,7 +526,7 @@ inline void writeBinaryFile(string path, uint8_t *data, uint64_t size) {
 
 // taken from:
 // https://stackoverflow.com/questions/2602013/read-whole-ascii-file-into-c-stdstring/2602060
-inline string readFile(string path) {
+inline std::string readFile(std::string path) {
 
     std::ifstream t(path);
     if (!t.is_open()) {
@@ -561,9 +544,9 @@ inline string readFile(string path) {
     return str;
 }
 
-inline void writeFile(string path, string text) {
+inline void writeFile(std::string path, std::string text) {
 
-    ofstream out;
+    std::ofstream out;
     out.open(path);
 
     out << text;
@@ -571,19 +554,19 @@ inline void writeFile(string path, string text) {
     out.close();
 }
 
-inline void logDebug(string message) {
+inline void logDebug(std::string message) {
 #if defined(_DEBUG)
 
     auto id = std::this_thread::get_id();
 
-    stringstream ss;
+    std::stringstream ss;
     ss << "[" << id << "]: " << message << "\n";
 
-    cout << ss.str();
+    std::cout << ss.str();
 #endif
 }
 
-template <typename T> T read(vector<uint8_t> &buffer, int offset) {
+template <typename T> T read(std::vector<uint8_t> &buffer, int offset) {
     // T value = reinterpret_cast<T*>(buffer.data() + offset)[0];
     T value;
 
@@ -592,26 +575,26 @@ template <typename T> T read(vector<uint8_t> &buffer, int offset) {
     return value;
 }
 
-inline string leftPad(string in, int length, const char character = ' ') {
+inline std::string leftPad(std::string in, int length, const char character = ' ') {
 
     int tmp = int(length - in.size());
     auto reps = std::max(tmp, 0);
-    string result = string(reps, character) + in;
+    std::string result = std::string(reps, character) + in;
 
     return result;
 }
 
-inline string rightPad(string in, int64_t length, const char character = ' ') {
+inline std::string rightPad(std::string in, int64_t length, const char character = ' ') {
 
     auto reps = std::max(length - int64_t(in.size()), int64_t(0));
-    string result = in + string(reps, character);
+    std::string result = in + std::string(reps, character);
 
     return result;
 }
 
-inline string repeat(string str, int64_t repetitions) {
+inline std::string repeat(std::string str, int64_t repetitions) {
 
-    string result = "";
+    std::string result = "";
 
     for (int i = 0; i < repetitions; i++) {
         result = result + str;
@@ -620,18 +603,18 @@ inline string repeat(string str, int64_t repetitions) {
     return result;
 }
 
-inline vector<string> split(string str, char delimiter) {
+inline std::vector<std::string> split(std::string str, char delimiter) {
 
-    vector<string> result;
+    std::vector<std::string> result;
 
     int pos = 0;
     while (true) {
         int nextPos = str.find(delimiter, pos);
 
-        if (nextPos == string::npos)
+        if (nextPos == std::string::npos)
             break;
 
-        string token = str.substr(pos, nextPos - pos);
+        std::string token = str.substr(pos, nextPos - pos);
 
         result.push_back(token);
 
@@ -639,7 +622,7 @@ inline vector<string> split(string str, char delimiter) {
     }
 
     {
-        string token = str.substr(pos, string::npos);
+        std::string token = str.substr(pos, std::string::npos);
 
         if (token.size() > 0) {
             result.push_back(token);
@@ -649,13 +632,13 @@ inline vector<string> split(string str, char delimiter) {
     return result;
 }
 
-void toClipboard(string str);
+void toClipboard(std::string str);
 
 struct EventQueue {
 
     static EventQueue *instance;
-    vector<std::function<void()>> queue;
-    mutex mtx;
+    std::vector<std::function<void()>> queue;
+    std::mutex mtx;
 
     void add(std::function<void()> event) {
         mtx.lock();
@@ -666,8 +649,8 @@ struct EventQueue {
     void process() {
 
         mtx.lock();
-        vector<std::function<void()>> q = queue;
-        queue = vector<std::function<void()>>();
+        std::vector<std::function<void()>> q = queue;
+        queue = std::vector<std::function<void()>>();
         mtx.unlock();
 
         for (auto &event : q) {
@@ -678,11 +661,11 @@ struct EventQueue {
 
 inline void schedule(std::function<void()> event) { EventQueue::instance->add(event); }
 
-inline void monitorFile(string file, std::function<void()> callback) {
+inline void monitorFile(std::string file, std::function<void()> callback) {
 
     std::thread([file, callback]() {
         if (!fs::exists(file)) {
-            cout << "ERROR(monitorFile): file does not exist: " << file << endl;
+            std::cout << "ERROR(monitorFile): file does not exist: " << file << '\n';
 
             return;
         }
@@ -707,5 +690,5 @@ inline void monitorFile(string file, std::function<void()> callback) {
     }).detach();
 }
 
-#define GENERATE_ERROR_MESSAGE cout << "ERROR(" << __FILE__ << ":" << __LINE__ << "): "
-#define GENERATE_WARN_MESSAGE  cout << "WARNING: "
+#define GENERATE_ERROR_MESSAGE std::cout << "ERROR(" << __FILE__ << ":" << __LINE__ << "): "
+#define GENERATE_WARN_MESSAGE  std::cout << "WARNING: "

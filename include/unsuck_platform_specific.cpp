@@ -6,10 +6,10 @@ EventQueue *EventQueue::instance = new EventQueue();
 #ifdef _WIN32
 #include "TCHAR.h"
 #include "pdh.h"
-#include "windows.h"
 #include "psapi.h"
+#include "windows.h"
 
-void toClipboard(string str) {
+void toClipboard(std::string str) {
     const char *output = str.c_str();
     const size_t len = strlen(output) + 1;
     HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, len);
@@ -71,19 +71,19 @@ void printMemoryReport() {
     double vm = double(memoryData.virtual_usedByProcess) / (1024.0 * 1024.0 * 1024.0);
     double pm = double(memoryData.physical_usedByProcess) / (1024.0 * 1024.0 * 1024.0);
 
-    stringstream ss;
+    std::stringstream ss;
     ss << "memory usage: "
        << "virtual: " << formatNumber(vm, 1) << " GB, "
-       << "physical: " << formatNumber(pm, 1) << " GB" << endl;
+       << "physical: " << formatNumber(pm, 1) << " GB\n";
 
-    cout << ss.str();
+    std::cout << ss.str();
 }
 
 void launchMemoryChecker(int64_t maxMB, double checkInterval) {
 
     auto interval = std::chrono::milliseconds(int64_t(checkInterval * 1000));
 
-    thread t([maxMB, interval]() {
+    std::thread t([maxMB, interval]() {
         static double lastReport = 0.0;
         static double reportInterval = 1.0;
         static double lastUsage = 0.0;

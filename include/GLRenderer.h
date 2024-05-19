@@ -18,15 +18,9 @@
 #include "glm/matrix.hpp"
 #include <glm/gtx/transform.hpp>
 
+#include "Camera.h"
 #include "Controls.h"
 #include "unsuck.hpp"
-
-using namespace std;
-using glm::dmat4;
-using glm::dvec3;
-using glm::dvec4;
-
-#define BIND_MEMBER_FN(fn) std::bind(&fn, this, std::placeholders::_1)
 
 struct GLRenderer;
 
@@ -72,16 +66,16 @@ struct Texture {
     int width = 0;
     int height = 0;
 
-    static shared_ptr<Texture> create(int width, int height, GLuint colorType,
-                                      GLRenderer *renderer);
+    static std::shared_ptr<Texture> create(int width, int height, GLuint colorType,
+                                           GLRenderer *renderer);
 
     void setSize(int width, int height);
 };
 
 struct Framebuffer {
 
-    vector<shared_ptr<Texture>> colorAttachments;
-    shared_ptr<Texture> depth;
+    std::vector<std::shared_ptr<Texture>> colorAttachments;
+    std::shared_ptr<Texture> depth;
     GLuint handle = -1;
     GLRenderer *renderer = nullptr;
 
@@ -90,7 +84,7 @@ struct Framebuffer {
 
     Framebuffer() {}
 
-    static shared_ptr<Framebuffer> create(GLRenderer *renderer);
+    static std::shared_ptr<Framebuffer> create(GLRenderer *renderer);
 
     void setSize(int width, int height) {
 
@@ -119,97 +113,9 @@ struct Framebuffer {
 };
 
 struct View {
-    dmat4 view;
-    dmat4 proj;
-    shared_ptr<Framebuffer> framebuffer = nullptr;
-};
-
-struct Camera {
-    virtual void setSize(int width, int height) = 0;
-    virtual void update(){};
-    virtual glm::dmat4 viewMatrix() = 0;
-    virtual glm::dmat4 projMatrix() = 0;
-
-    virtual void setWorld(dmat4 world) = 0;
-};
-
-struct Camera2D : public Camera {
-
-    glm::dvec3 position;
-    glm::dmat4 proj, view, world;
-    double rotation;
-
-    double minX = 0.0;
-    double maxX = 100.0;
-    double minY = 0.0;
-    double maxY = 100.0;
-    int width = 128;
-    int height = 128;
-    double aspect = 1.0;
-
-    Camera2D() {}
-
-    void setSize(int width, int height) override {
-        this->width = width;
-        this->height = height;
-        this->aspect = double(width) / double(height);
-
-        maxY = (maxX - minX) / aspect + minY;
-    }
-
-    void update() override {
-        view = glm::inverse(world);
-
-        proj = glm::ortho(minX, maxX, minY, maxY);
-    }
-
-    void setWorld(dmat4 world) override {
-        this->world = world;
-        position = world * dvec4(0.0, 0.0, 0.0, 1.0);
-    }
-
-    glm::dmat4 viewMatrix() override { return view; }
-    glm::dmat4 projMatrix() override { return proj; }
-};
-
-struct Camera3D : public Camera {
-
-    glm::dvec3 position;
-    glm::dmat4 rotation;
-
-    glm::dmat4 world;
     glm::dmat4 view;
     glm::dmat4 proj;
-
-    double aspect = 1.0;
-    double fovy = 60.0;
-    double near = 0.1;
-    double far = 2'000'000.0;
-    int width = 128;
-    int height = 128;
-
-    Camera3D() {}
-
-    void setSize(int width, int height) override {
-        this->width = width;
-        this->height = height;
-        this->aspect = double(width) / double(height);
-    }
-
-    void update() override {
-        view = glm::inverse(world);
-
-        double pi = glm::pi<double>();
-        proj = glm::perspective(pi * fovy / 180.0, aspect, near, far);
-    }
-
-    void setWorld(dmat4 world) override {
-        this->world = world;
-        position = world * dvec4(0.0, 0.0, 0.0, 1.0);
-    }
-
-    glm::dmat4 viewMatrix() override { return view; }
-    glm::dmat4 projMatrix() override { return proj; }
+    std::shared_ptr<Framebuffer> framebuffer = nullptr;
 };
 
 struct GLRenderer {
@@ -218,26 +124,26 @@ struct GLRenderer {
     double fps = 0.0;
     int64_t frameCount = 0;
 
-    shared_ptr<Camera> camera;
-    shared_ptr<Controls> controls;
+    std::shared_ptr<Camera> camera;
+    std::shared_ptr<Controls> controls;
 
     View view;
 
     struct WindowData {};
 
-    vector<function<void(vector<string>)>> fileDropListeners;
+    std::vector<std::function<void(std::vector<std::string>)>> fileDropListeners;
 
     int width = 0;
     int height = 0;
-    string selectedMethod = "";
+    std::string selectedMethod = "";
 
-    GLRenderer(shared_ptr<Camera> camera, shared_ptr<Controls> controls);
+    GLRenderer(std::shared_ptr<Camera> camera, std::shared_ptr<Controls> controls);
 
     void init();
 
-    shared_ptr<Texture> createTexture(int width, int height, GLuint colorType);
+    std::shared_ptr<Texture> createTexture(int width, int height, GLuint colorType);
 
-    shared_ptr<Framebuffer> createFramebuffer(int width, int height);
+    std::shared_ptr<Framebuffer> createFramebuffer(int width, int height);
 
     inline GLBuffer createBuffer(int64_t size) {
         GLuint handle;
@@ -275,18 +181,18 @@ struct GLRenderer {
         return buffer;
     }
 
-    inline shared_ptr<Buffer> readBuffer(GLBuffer glBuffer, uint32_t offset, uint32_t size) {
+    inline std::shared_ptr<Buffer> readBuffer(GLBuffer glBuffer, uint32_t offset, uint32_t size) {
 
-        auto target = make_shared<Buffer>(size);
+        auto target = std::make_shared<Buffer>(size);
 
         glGetNamedBufferSubData(glBuffer.handle, offset, size, target->data);
 
         return target;
     }
 
-    void loop(function<void(void)> update, function<void(void)> render);
+    void loop(std::function<void(void)> update, std::function<void(void)> render);
 
-    void onFileDrop(function<void(vector<string>)> callback) {
+    void onFileDrop(std::function<void(std::vector<std::string>)> callback) {
         fileDropListeners.push_back(callback);
     }
 

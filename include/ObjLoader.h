@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include <locale>
@@ -11,31 +10,27 @@
 #include "glm/matrix.hpp"
 #include <glm/gtx/transform.hpp>
 
-using namespace std;
-using glm::vec2;
-using glm::vec3;
-
 // note: stored as non-indexed triangles.
 // [      triangle     ][      triangle     ]
 // [x,y,z][x,y,z][x,y,z][x,y,z][x,y,z][x,y,z]
 // [u,v]  [u,v]  [u,v]  [u,v]  [u,v]  [u,v]
 struct ObjData {
     int numTriangles = 0;
-    vector<vec3> xyz;
-    vector<vec2> uv;
+    std::vector<glm::vec3> xyz;
+    std::vector<glm::vec2> uv;
 };
 
 struct ObjLoader {
 
     ObjLoader() {}
 
-    static shared_ptr<ObjData> load(string file) {
+    static std::shared_ptr<ObjData> load(std::string file) {
 
-        string str = readTextFile(file);
+        std::string str = readTextFile(file);
 
-        vector<vec3> v_s;
-        vector<vec2> vt_s;
-        vector<vector<string>> f_s;
+        std::vector<glm::vec3> v_s;
+        std::vector<glm::vec2> vt_s;
+        std::vector<std::vector<std::string>> f_s;
 
         setlocale(LC_ALL, "en_US.utf8");
 
@@ -44,10 +39,10 @@ struct ObjLoader {
         while (true) {
             int nextPos = str.find('\n', pos);
 
-            if (nextPos == string::npos)
+            if (nextPos == std::string::npos)
                 break;
 
-            string line = str.substr(pos, nextPos - pos);
+            std::string line = str.substr(pos, nextPos - pos);
 
             auto tokens = split(line, ' ');
 
@@ -55,12 +50,12 @@ struct ObjLoader {
                 float x = stof(tokens[1]);
                 float y = stof(tokens[2]);
                 float z = stof(tokens[3]);
-                vec3 v = {x, y, z};
+                glm::vec3 v = {x, y, z};
                 v_s.push_back(v);
             } else if (tokens[0] == "vt") {
                 float u = stof(tokens[1]);
                 float v = stof(tokens[2]);
-                vec2 vt = {u, v};
+                glm::vec2 vt = {u, v};
                 vt_s.push_back(vt);
             } else if (tokens[0] == "f") {
                 f_s.push_back(tokens);
@@ -70,20 +65,20 @@ struct ObjLoader {
         }
 
         // assemble non-indexed triangles
-        auto obj = make_shared<ObjData>();
+        auto obj = std::make_shared<ObjData>();
         for (int i = 0; i < f_s.size(); i++) {
             auto tokens_f = f_s[i];
             auto tokens_v0 = split(tokens_f[1], '/');
             auto tokens_v1 = split(tokens_f[2], '/');
             auto tokens_v2 = split(tokens_f[3], '/');
 
-            vec3 v0 = v_s[stoi(tokens_v0[0]) - 1];
-            vec3 v1 = v_s[stoi(tokens_v1[0]) - 1];
-            vec3 v2 = v_s[stoi(tokens_v2[0]) - 1];
+            glm::vec3 v0 = v_s[stoi(tokens_v0[0]) - 1];
+            glm::vec3 v1 = v_s[stoi(tokens_v1[0]) - 1];
+            glm::vec3 v2 = v_s[stoi(tokens_v2[0]) - 1];
 
-            vec2 uv0 = vt_s[stoi(tokens_v0[1]) - 1];
-            vec2 uv1 = vt_s[stoi(tokens_v1[1]) - 1];
-            vec2 uv2 = vt_s[stoi(tokens_v2[1]) - 1];
+            glm::vec2 uv0 = vt_s[stoi(tokens_v0[1]) - 1];
+            glm::vec2 uv1 = vt_s[stoi(tokens_v1[1]) - 1];
+            glm::vec2 uv2 = vt_s[stoi(tokens_v2[1]) - 1];
 
             obj->xyz.push_back(v0);
             obj->xyz.push_back(v1);
