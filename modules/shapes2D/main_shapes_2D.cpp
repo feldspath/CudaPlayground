@@ -183,8 +183,10 @@ int main() {
     std::cout << std::setprecision(2) << std::fixed;
     setlocale(LC_ALL, "en_AT.UTF-8");
 
-    auto renderer =
-        std::make_shared<GLRenderer>(std::make_shared<Camera2D>(), std::make_shared<Controls2D>());
+    auto camera = std::make_shared<Camera2D>();
+    auto controls = std::make_shared<Controls2D>(camera);
+
+    auto renderer = std::make_shared<GLRenderer>(camera, controls);
 
     initCuda();
 

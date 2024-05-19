@@ -9,10 +9,11 @@
 
 #include "Runtime.h"
 
+#include "Camera.h"
 #include "Controls.h"
 
 struct Controls2D : public Controls {
-    double zoom;
+    double zoom = 0.1;
 
     glm::dvec2 pos = {0.0, 0.0};
     glm::dvec2 left = {1.0, 0.0};
@@ -25,7 +26,9 @@ struct Controls2D : public Controls {
 
     glm::dmat4 world;
 
-    Controls2D() {}
+    std::shared_ptr<Camera2D> camera;
+
+    Controls2D(std::shared_ptr<Camera2D> camera) : camera(camera) {}
 
     glm::dvec3 getPosition() { return glm::dvec3(pos, 0.0); }
 
@@ -55,19 +58,20 @@ struct Controls2D : public Controls {
         glm::dvec2 diff = newMousePos - mousePos;
 
         if (isRightDown) {
-            auto ux = -diff.x / 10.0;
-            auto uy = diff.y / 10.0;
+            auto ux = -diff.x / camera->width * camera->scale;
+            auto uy = diff.y / camera->width * camera->scale;
             translate(glm::dvec2(ux, uy));
         }
 
         mousePos = newMousePos;
     }
 
-    void onMouseScroll(double xoffset, double yoffset) override {}
+    void onMouseScroll(double xoffset, double yoffset) override { zoom += 0.001 * yoffset; }
 
     void update() override {
         auto w = glm::dmat4(1.0);
         world = glm::translate(w, getPosition());
+        camera->scale = 1.0 / zoom;
     }
 
     glm::dmat4 worldMatrix() const override { return world; };

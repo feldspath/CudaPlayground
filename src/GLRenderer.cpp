@@ -100,7 +100,7 @@ void GLRenderer::init() {
     GLFWmonitor **monitors = glfwGetMonitors(&numMonitors);
 
     std::cout << "<create windows>\n";
-    if (numMonitors > 1) {
+    if (numMonitors > 1 && false) {
         const GLFWvidmode *modeLeft = glfwGetVideoMode(monitors[0]);
         const GLFWvidmode *modeRight = glfwGetVideoMode(monitors[1]);
 
@@ -120,7 +120,7 @@ void GLRenderer::init() {
     } else {
         const GLFWvidmode *mode = glfwGetVideoMode(monitors[0]);
 
-        window = glfwCreateWindow(mode->width - 100, mode->height - 100, "Simple example", nullptr,
+        window = glfwCreateWindow(mode->width - 200, mode->height - 200, "Simple example", nullptr,
                                   nullptr);
 
         if (!window) {
@@ -128,7 +128,7 @@ void GLRenderer::init() {
             exit(EXIT_FAILURE);
         }
 
-        glfwSetWindowPos(window, 50, 50);
+        glfwSetWindowPos(window, 100, 100);
     }
 
     glfwSetWindowUserPointer(window, this);

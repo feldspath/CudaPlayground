@@ -17,12 +17,9 @@ struct Camera2D : public Camera {
 
     glm::dvec3 position;
     glm::dmat4 proj, view, world;
-    double rotation;
 
-    double minX = 0.0;
-    double maxX = 100.0;
-    double minY = 0.0;
-    double maxY = 100.0;
+    glm::dvec2 center = {5.0, 5.0};
+    double scale = 10.0;
     int width = 128;
     int height = 128;
     double aspect = 1.0;
@@ -33,13 +30,15 @@ struct Camera2D : public Camera {
         this->width = width;
         this->height = height;
         this->aspect = double(width) / double(height);
-
-        maxY = (maxX - minX) / aspect + minY;
     }
 
     void update() override {
-        view = glm::inverse(world);
+        double minX = center.x - scale * 0.5;
+        double maxX = center.x + scale * 0.5;
+        double minY = center.y - scale * 0.5 / aspect;
+        double maxY = center.x + scale * 0.5 / aspect;
 
+        view = glm::inverse(world);
         proj = glm::ortho(minX, maxX, minY, maxY);
     }
 
