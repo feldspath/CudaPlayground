@@ -18,13 +18,15 @@
 #include "glm/matrix.hpp"
 #include <glm/gtx/transform.hpp>
 
-#include "OrbitControls.h"
+#include "Controls.h"
 #include "unsuck.hpp"
 
 using namespace std;
 using glm::dmat4;
 using glm::dvec3;
 using glm::dvec4;
+
+#define BIND_MEMBER_FN(fn) std::bind(&fn, this, std::placeholders::_1)
 
 struct GLRenderer;
 
@@ -123,6 +125,54 @@ struct View {
 };
 
 struct Camera {
+    virtual void setSize(int width, int height) = 0;
+    virtual void update(){};
+    virtual glm::dmat4 viewMatrix() = 0;
+    virtual glm::dmat4 projMatrix() = 0;
+
+    virtual void setWorld(dmat4 world) = 0;
+};
+
+struct Camera2D : public Camera {
+
+    glm::dvec3 position;
+    glm::dmat4 proj, view, world;
+    double rotation;
+
+    double minX = 0.0;
+    double maxX = 100.0;
+    double minY = 0.0;
+    double maxY = 100.0;
+    int width = 128;
+    int height = 128;
+    double aspect = 1.0;
+
+    Camera2D() {}
+
+    void setSize(int width, int height) override {
+        this->width = width;
+        this->height = height;
+        this->aspect = double(width) / double(height);
+
+        maxY = (maxX - minX) / aspect + minY;
+    }
+
+    void update() override {
+        view = glm::inverse(world);
+
+        proj = glm::ortho(minX, maxX, minY, maxY);
+    }
+
+    void setWorld(dmat4 world) override {
+        this->world = world;
+        position = world * dvec4(0.0, 0.0, 0.0, 1.0);
+    }
+
+    glm::dmat4 viewMatrix() override { return view; }
+    glm::dmat4 projMatrix() override { return proj; }
+};
+
+struct Camera3D : public Camera {
 
     glm::dvec3 position;
     glm::dmat4 rotation;
@@ -138,20 +188,28 @@ struct Camera {
     int width = 128;
     int height = 128;
 
-    Camera() {}
+    Camera3D() {}
 
-    void setSize(int width, int height) {
+    void setSize(int width, int height) override {
         this->width = width;
         this->height = height;
         this->aspect = double(width) / double(height);
     }
 
-    void update() {
+    void update() override {
         view = glm::inverse(world);
 
         double pi = glm::pi<double>();
         proj = glm::perspective(pi * fovy / 180.0, aspect, near, far);
     }
+
+    void setWorld(dmat4 world) override {
+        this->world = world;
+        position = world * dvec4(0.0, 0.0, 0.0, 1.0);
+    }
+
+    glm::dmat4 viewMatrix() override { return view; }
+    glm::dmat4 projMatrix() override { return proj; }
 };
 
 struct GLRenderer {
@@ -160,12 +218,12 @@ struct GLRenderer {
     double fps = 0.0;
     int64_t frameCount = 0;
 
-    shared_ptr<Camera> camera = nullptr;
-    shared_ptr<OrbitControls> controls = nullptr;
-
-    bool vrEnabled = false;
+    shared_ptr<Camera> camera;
+    shared_ptr<Controls> controls;
 
     View view;
+
+    struct WindowData {};
 
     vector<function<void(vector<string>)>> fileDropListeners;
 
@@ -173,7 +231,7 @@ struct GLRenderer {
     int height = 0;
     string selectedMethod = "";
 
-    GLRenderer();
+    GLRenderer(shared_ptr<Camera> camera, shared_ptr<Controls> controls);
 
     void init();
 
@@ -231,4 +289,9 @@ struct GLRenderer {
     void onFileDrop(function<void(vector<string>)> callback) {
         fileDropListeners.push_back(callback);
     }
+
+    void onMouseButton(GLFWwindow *window, int button, int action, int mods);
+    void onCursorMove(GLFWwindow *window, double xpos, double ypos);
+    void onScroll(GLFWwindow *window, double xoffset, double yoffset);
+    void onKey(GLFWwindow *window, int key, int scancode, int action, int mods);
 };

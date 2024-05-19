@@ -7,11 +7,12 @@
 #include "glm/matrix.hpp"
 #include <glm/gtx/transform.hpp>
 
+#include "Controls.h"
 #include "Runtime.h"
 
 using namespace std;
 
-struct OrbitControls {
+struct OrbitControls : public Controls {
 
     double yaw = 0.0;
     double pitch = 0.0;
@@ -79,7 +80,7 @@ struct OrbitControls {
         this->target = this->target + +_right + _forward + _up;
     }
 
-    void onMouseButton(int button, int action, int mods) {
+    void onMouseButton(int button, int action, int mods) override {
         // cout << "button: " << button << ", action: " << action << ", mods: " << mods << endl;
 
         if (button == 0 && action == 1) {
@@ -95,7 +96,7 @@ struct OrbitControls {
         }
     }
 
-    void onMouseMove(double xpos, double ypos) {
+    void onMouseMove(double xpos, double ypos) override {
 
         bool selectActive = Runtime::keyStates[342] > 0;
         if (selectActive) {
@@ -118,7 +119,7 @@ struct OrbitControls {
         mousePos = newMousePos;
     }
 
-    void onMouseScroll(double xoffset, double yoffset) {
+    void onMouseScroll(double xoffset, double yoffset) override {
         // cout << xoffset << ", " << yoffset << endl;
 
         // +1: zoom in
@@ -133,7 +134,7 @@ struct OrbitControls {
         // cout << radius << endl;
     }
 
-    void update() {
+    void update() override {
         glm::dvec3 up = {0, 0, 1};
         glm::dvec3 right = {1, 0, 0};
 
@@ -147,4 +148,6 @@ struct OrbitControls {
 
         world = translateTarget * rotYaw * rotPitch * flip * translateRadius;
     }
+
+    glm::dmat4 worldMatrix() const override { return world; }
 };

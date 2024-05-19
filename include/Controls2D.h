@@ -9,12 +9,14 @@
 
 #include "Runtime.h"
 
+#include "Controls.h"
+
 using namespace std;
 
-struct Controls2D {
+struct Controls2D : public Controls {
     double zoom;
 
-    glm::dvec2 pos;
+    glm::dvec2 pos = {0.0, 0.0};
     glm::dvec2 left = {1.0, 0.0};
     glm::dvec2 up = {0.0, 1.0};
 
@@ -47,7 +49,7 @@ struct Controls2D {
         }
     }
 
-    void onMouseMove(double xpos, double ypos) {
+    void onMouseMove(double xpos, double ypos) override {
 
         bool selectActive = Runtime::keyStates[342] > 0;
         if (selectActive) {
@@ -66,7 +68,7 @@ struct Controls2D {
         mousePos = newMousePos;
     }
 
-    void onMouseScroll(double xoffset, double yoffset) {
+    void onMouseScroll(double xoffset, double yoffset) override {
         // cout << xoffset << ", " << yoffset << endl;
 
         // +1: zoom in
@@ -81,8 +83,10 @@ struct Controls2D {
         // cout << radius << endl;
     }
 
-    void update() {
+    void update() override {
         auto w = glm::dmat4(1.0);
         world = glm::translate(w, getPosition());
     }
+
+    glm::dmat4 worldMatrix() const override { return world; };
 };

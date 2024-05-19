@@ -16,6 +16,7 @@
 // #include "builtin_types.h"
 
 #include "ObjLoader.h"
+#include "OrbitControls.h"
 #include "unsuck.hpp"
 
 #include "HostDeviceInterface.h"
@@ -86,8 +87,8 @@ void renderCUDA(shared_ptr<GLRenderer> renderer) {
     glm::mat4 rotX = glm::rotate(glm::mat4(), 3.1415f * 0.5f, glm::vec3(1.0, 0.0, 0.0));
 
     glm::mat4 world = rotX;
-    glm::mat4 view = renderer->camera->view;
-    glm::mat4 proj = renderer->camera->proj;
+    glm::mat4 view = renderer->camera->viewMatrix();
+    glm::mat4 proj = renderer->camera->projMatrix();
     glm::mat4 invproj = glm::inverse(proj);
     glm::mat4 invview = glm::inverse(view);
     glm::mat4 worldViewProj = proj * view * world;
@@ -180,12 +181,13 @@ int main() {
     cout << std::setprecision(2) << std::fixed;
     setlocale(LC_ALL, "en_AT.UTF-8");
 
-    auto renderer = make_shared<GLRenderer>();
+    auto renderer = make_shared<GLRenderer>(make_shared<Camera3D>(), make_shared<OrbitControls>());
 
-    renderer->controls->yaw = -2.6;
-    renderer->controls->pitch = -0.4;
-    renderer->controls->radius = 6.0;
-    renderer->controls->target = {0.0f, 0.0f, 0.0f};
+    OrbitControls &controls = *dynamic_pointer_cast<OrbitControls>(renderer->controls);
+    controls.yaw = -2.6;
+    controls.pitch = -0.4;
+    controls.radius = 6.0;
+    controls.target = {0.0f, 0.0f, 0.0f};
 
     initCuda();
 

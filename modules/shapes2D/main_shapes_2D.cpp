@@ -11,16 +11,15 @@
 #include <vector>
 
 #include "CudaModularProgram.h"
-#include "GLRenderer2D.h"
+#include "GLRenderer.h"
 #include "cudaGL.h"
 // #include "builtin_types.h"
 
+#include "Controls2D.h"
 #include "ObjLoader.h"
 #include "unsuck.hpp"
 
 #include "HostDeviceInterface.h"
-
-using namespace std;
 
 CUdeviceptr cptr_buffer;
 CUdeviceptr cptr_grid;
@@ -87,8 +86,8 @@ void renderCUDA(shared_ptr<GLRenderer> renderer) {
     glm::mat4 rotX = glm::rotate(glm::mat4(), 3.1415f * 0.5f, glm::vec3(1.0, 0.0, 0.0));
 
     glm::mat4 world = rotX;
-    glm::mat4 view = renderer->camera->view;
-    glm::mat4 proj = renderer->camera->proj;
+    glm::mat4 view = renderer->camera->viewMatrix();
+    glm::mat4 proj = renderer->camera->projMatrix();
     // glm::mat4 proj = glm::ortho(0.0, 100.0, 0.0, 100.0 / renderer->camera->aspect);
     glm::mat4 invproj = glm::inverse(proj);
     glm::mat4 invview = glm::inverse(view);
@@ -184,9 +183,7 @@ int main() {
     cout << std::setprecision(2) << std::fixed;
     setlocale(LC_ALL, "en_AT.UTF-8");
 
-    auto renderer = make_shared<GLRenderer>();
-
-    renderer->controls->pos = glm::dvec2(0.0, 0.0);
+    auto renderer = make_shared<GLRenderer>(make_shared<Camera2D>(), make_shared<Controls2D>());
 
     initCuda();
 

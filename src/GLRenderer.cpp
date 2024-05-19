@@ -6,8 +6,6 @@
 
 namespace fs = std::filesystem;
 
-auto _controls = make_shared<OrbitControls>();
-
 static void APIENTRY debugCallback(GLenum source, GLenum type, GLuint id, GLenum severity,
                                    GLsizei length, const GLchar *message, const void *userParam) {
 
@@ -23,7 +21,7 @@ void error_callback(int error, const char *description) {
     fprintf(stderr, "Error: %s\n", description);
 }
 
-static void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods) {
+void GLRenderer::onKey(GLFWwindow *window, int key, int scancode, int action, int mods) {
 
     cout << "key: " << key << ", scancode: " << scancode << ", action: " << action
          << ", mods: " << mods << endl;
@@ -37,7 +35,7 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action, 
     cout << key << endl;
 }
 
-static void cursor_position_callback(GLFWwindow *window, double xpos, double ypos) {
+void GLRenderer::onCursorMove(GLFWwindow *window, double xpos, double ypos) {
     ImGuiIO &io = ImGui::GetIO();
     if (io.WantCaptureMouse) {
         return;
@@ -45,25 +43,19 @@ static void cursor_position_callback(GLFWwindow *window, double xpos, double ypo
 
     Runtime::mousePosition = {xpos, ypos};
 
-    _controls->onMouseMove(xpos, ypos);
+    controls->onMouseMove(xpos, ypos);
 }
 
-void scroll_callback(GLFWwindow *window, double xoffset, double yoffset) {
+void GLRenderer::onScroll(GLFWwindow *window, double xoffset, double yoffset) {
     ImGuiIO &io = ImGui::GetIO();
     if (io.WantCaptureMouse) {
         return;
     }
 
-    _controls->onMouseScroll(xoffset, yoffset);
+    controls->onMouseScroll(xoffset, yoffset);
 }
 
-void drop_callback(GLFWwindow *window, int count, const char **paths) {
-    for (int i = 0; i < count; i++) {
-        cout << paths[i] << endl;
-    }
-}
-
-void mouse_button_callback(GLFWwindow *window, int button, int action, int mods) {
+void GLRenderer::onMouseButton(GLFWwindow *window, int button, int action, int mods) {
 
     // cout << "start button: " << button << ", action: " << action << ", mods: " << mods << endl;
 
@@ -81,12 +73,11 @@ void mouse_button_callback(GLFWwindow *window, int button, int action, int mods)
         Runtime::mouseButtons = Runtime::mouseButtons & mask;
     }
 
-    _controls->onMouseButton(button, action, mods);
+    controls->onMouseButton(button, action, mods);
 }
 
-GLRenderer::GLRenderer() {
-    this->controls = _controls;
-    camera = make_shared<Camera>();
+GLRenderer::GLRenderer(shared_ptr<Camera> camera, shared_ptr<Controls> controls)
+    : camera(camera), controls(controls) {
 
     init();
 
@@ -140,12 +131,25 @@ void GLRenderer::init() {
         glfwSetWindowPos(window, 50, 50);
     }
 
+    glfwSetWindowUserPointer(window, this);
+
     cout << "<set input callbacks>" << endl;
-    glfwSetKeyCallback(window, key_callback);
-    glfwSetCursorPosCallback(window, cursor_position_callback);
-    glfwSetMouseButtonCallback(window, mouse_button_callback);
-    glfwSetScrollCallback(window, scroll_callback);
-    // glfwSetDropCallback(window, drop_callback);
+    glfwSetKeyCallback(window, [](GLFWwindow *window, int key, int scancode, int action, int mods) {
+        GLRenderer &renderer = *(GLRenderer *)glfwGetWindowUserPointer(window);
+        renderer.onKey(window, key, scancode, action, mods);
+    });
+    glfwSetCursorPosCallback(window, [](GLFWwindow *window, double xpos, double ypos) {
+        GLRenderer &renderer = *(GLRenderer *)glfwGetWindowUserPointer(window);
+        renderer.onCursorMove(window, xpos, ypos);
+    });
+    glfwSetMouseButtonCallback(window, [](GLFWwindow *window, int button, int action, int mods) {
+        GLRenderer &renderer = *(GLRenderer *)glfwGetWindowUserPointer(window);
+        renderer.onMouseButton(window, button, action, mods);
+    });
+    glfwSetScrollCallback(window, [](GLFWwindow *window, double xoffset, double yoffset) {
+        GLRenderer &renderer = *(GLRenderer *)glfwGetWindowUserPointer(window);
+        renderer.onScroll(window, xoffset, yoffset);
+    });
 
     static GLRenderer *ref = this;
     glfwSetDropCallback(window, [](GLFWwindow *, int count, const char **paths) {
@@ -256,9 +260,7 @@ void GLRenderer::loop(function<void(void)> update, function<void(void)> render) 
 
         {
             controls->update();
-
-            camera->world = controls->world;
-            camera->position = camera->world * dvec4(0.0, 0.0, 0.0, 1.0);
+            camera->setWorld(controls->worldMatrix());
         }
 
         ImGui_ImplOpenGL3_NewFrame();

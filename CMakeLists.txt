@@ -69,7 +69,7 @@ set(TARGET_NAME Shapes_2D)
 
 add_executable( ${TARGET_NAME}
 	./modules/shapes2D/main_shapes_2D.cpp
-	./src/GLRenderer2D.cpp
+	./src/GLRenderer.cpp
 	include/unsuck_platform_specific.cpp
 )
 
