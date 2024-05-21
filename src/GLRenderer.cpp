@@ -22,12 +22,16 @@ void error_callback(int error, const char *description) {
 }
 
 void GLRenderer::onKey(GLFWwindow *window, int key, int scancode, int action, int mods) {
-
-    std::cout << "key: " << key << ", scancode: " << scancode << ", action: " << action
-              << ", mods: " << mods << '\n';
-
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, GLFW_TRUE);
+    }
+
+    if (key == GLFW_KEY_R && action == GLFW_PRESS) {
+        Runtime::getInstance()->modeId = 1;
+    } else if (key == GLFW_KEY_H && action == GLFW_PRESS) {
+        Runtime::getInstance()->modeId = 2;
+    } else if (key == GLFW_KEY_F && action == GLFW_PRESS) {
+        Runtime::getInstance()->modeId = 3;
     }
 
     Runtime::keyStates[key] = action;

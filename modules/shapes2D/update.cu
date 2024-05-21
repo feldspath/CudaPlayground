@@ -22,9 +22,9 @@ void updateGrid(Grid2D *grid2D) {
         bool mousePressed = uniforms.mouseButtons & 1;
 
         // Reset grid
-        for (int i = 0; i < grid2D->rows * grid2D->cols; ++i) {
-            grid2D->cellIndices[i] = 0;
-        }
+        // for (int i = 0; i < grid2D->rows * grid2D->cols; ++i) {
+        //    grid2D->cellIndices[i] = 0;
+        //}
 
         if (mousePressed) {
             float2 px = float2{uniforms.cursorPos.x, uniforms.height - uniforms.cursorPos.y};
@@ -32,7 +32,7 @@ void updateGrid(Grid2D *grid2D) {
                 unproject(px, uniforms.invview * uniforms.invproj, uniforms.width, uniforms.height);
             int id = grid2D->cellIdFromPosition(float2{pos_W.x, pos_W.y});
             if (id != -1) {
-                grid2D->cellIndices[id] = -1;
+                grid2D->cellIndices[id] = uniforms.modeId;
             }
         }
     }

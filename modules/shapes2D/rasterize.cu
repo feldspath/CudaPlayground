@@ -28,11 +28,26 @@ struct RasterizationSettings {
     int colorMode = COLORMODE_ID;
 };
 
+// https://coolors.co/palette/8cb369-f4e285-f4a259-5b8e7d-bc4b51
+float3 GRASS_COLOR = float3{140.0 / 255, 179.0 / 255, 105.0 / 255};
+float3 HOUSE_COLOR = float3{91.0 / 255, 142.0 / 255, 125.0 / 255};
+float3 FACTORY_COLOR = float3{188.0 / 255, 75.0 / 255, 81.0 / 255};
+float3 ROAD_COLOR = float3{244.0 / 255, 226.0 / 255, 133.0 / 255};
+float3 UNKOWN_COLOR = float3{1.0, 0.0, 1.0};
+
 float3 colorFromId(uint32_t id) {
-    if (id == 0) {
-        return float3{0.0, 0.8, 0.2};
+    switch (id) {
+    case 0:
+        return GRASS_COLOR;
+    case 1:
+        return ROAD_COLOR;
+    case 2:
+        return HOUSE_COLOR;
+    case 3:
+        return FACTORY_COLOR;
+    default:
+        return UNKOWN_COLOR;
     }
-    return float3{1.0, 0.0, 1.0};
 }
 
 // rasterizes voxels

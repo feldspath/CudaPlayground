@@ -2,8 +2,8 @@
 
 #include "builtin_types.h"
 
-float CELL_RADIUS = 0.45f;
-float CELL_PADDING = 0.05f;
+float CELL_RADIUS = 0.49f;
+float CELL_PADDING = 0.01f;
 
 struct Cell {
     int id;
