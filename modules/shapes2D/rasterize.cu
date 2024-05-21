@@ -4,38 +4,9 @@
 #include "./../common/utils.cuh"
 #include "HostDeviceInterface.h"
 #include "builtin_types.h"
+#include "cells.h"
 #include "helper_math.h"
-
-float4 operator*(const mat4 &a, const float4 &b) {
-    return make_float4(dot(a.rows[0], b), dot(a.rows[1], b), dot(a.rows[2], b), dot(a.rows[3], b));
-}
-
-mat4 operator*(const mat4 &a, const mat4 &b) {
-
-    mat4 result;
-
-    result.rows[0].x = dot(a.rows[0], {b.rows[0].x, b.rows[1].x, b.rows[2].x, b.rows[3].x});
-    result.rows[0].y = dot(a.rows[0], {b.rows[0].y, b.rows[1].y, b.rows[2].y, b.rows[3].y});
-    result.rows[0].z = dot(a.rows[0], {b.rows[0].z, b.rows[1].z, b.rows[2].z, b.rows[3].z});
-    result.rows[0].w = dot(a.rows[0], {b.rows[0].w, b.rows[1].w, b.rows[2].w, b.rows[3].w});
-
-    result.rows[1].x = dot(a.rows[1], {b.rows[0].x, b.rows[1].x, b.rows[2].x, b.rows[3].x});
-    result.rows[1].y = dot(a.rows[1], {b.rows[0].y, b.rows[1].y, b.rows[2].y, b.rows[3].y});
-    result.rows[1].z = dot(a.rows[1], {b.rows[0].z, b.rows[1].z, b.rows[2].z, b.rows[3].z});
-    result.rows[1].w = dot(a.rows[1], {b.rows[0].w, b.rows[1].w, b.rows[2].w, b.rows[3].w});
-
-    result.rows[2].x = dot(a.rows[2], {b.rows[0].x, b.rows[1].x, b.rows[2].x, b.rows[3].x});
-    result.rows[2].y = dot(a.rows[2], {b.rows[0].y, b.rows[1].y, b.rows[2].y, b.rows[3].y});
-    result.rows[2].z = dot(a.rows[2], {b.rows[0].z, b.rows[1].z, b.rows[2].z, b.rows[3].z});
-    result.rows[2].w = dot(a.rows[2], {b.rows[0].w, b.rows[1].w, b.rows[2].w, b.rows[3].w});
-
-    result.rows[3].x = dot(a.rows[3], {b.rows[0].x, b.rows[1].x, b.rows[2].x, b.rows[3].x});
-    result.rows[3].y = dot(a.rows[3], {b.rows[0].y, b.rows[1].y, b.rows[2].y, b.rows[3].y});
-    result.rows[3].z = dot(a.rows[3], {b.rows[0].z, b.rows[1].z, b.rows[2].z, b.rows[3].z});
-    result.rows[3].w = dot(a.rows[3], {b.rows[0].w, b.rows[1].w, b.rows[2].w, b.rows[3].w});
-
-    return result;
-}
+#include "matrix_math.h"
 
 uint32_t rgb8color(float3 color) {
     uint32_t r = color.x * 255.0f;
@@ -51,26 +22,16 @@ Uniforms uniforms;
 Allocator *allocator;
 uint64_t nanotime_start;
 
-constexpr float PI = 3.1415;
 constexpr uint32_t BACKGROUND_COLOR = 0x00332211ull;
 
 struct RasterizationSettings {
     int colorMode = COLORMODE_ID;
-    mat4 world;
-};
-
-struct Grid2D {
-    uint32_t *cellIndices;
-    int rows;
-    int cols;
-    int count;
 };
 
 float3 colorFromId(uint32_t id) {
     if (id == 0) {
         return float3{0.0, 0.8, 0.2};
     }
-
     return float3{1.0, 0.0, 1.0};
 }
 
@@ -80,14 +41,10 @@ float3 colorFromId(uint32_t id) {
 // - <framebuffer> stores interleaved 32bit depth and color values
 // - The closest fragments are rendered via atomicMin on a combined 64bit depth&color integer
 //   atomicMin(&framebuffer[pixelIndex], (depth << 32 | color));
-void rasterizeGrid(Grid2D *grid2D, uint64_t *framebuffer, RasterizationSettings settings) {
+void rasterizeGrid(Grid2D *grid2D, uint64_t *framebuffer) {
 
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
-
-    int colorMode = settings.colorMode;
-
-    mat4 transform = uniforms.proj * uniforms.view * settings.world;
 
     uint32_t &processedCells = *allocator->alloc<uint32_t *>(4);
     if (grid.thread_rank() == 0) {
@@ -114,12 +71,11 @@ void rasterizeGrid(Grid2D *grid2D, uint64_t *framebuffer, RasterizationSettings 
             if (sh_cellIndex >= grid2D->count)
                 break;
 
-            int idx = sh_cellIndex;
-            int x = idx % grid2D->cols;
-            int y = idx / grid2D->cols;
-
-            float4 cornerLow_W = make_float4(x, y, 0.0f, 1.0f);
-            float4 cornerHigh_W = cornerLow_W + float4{0.9f, 0.9f, 0.0f, 0.0f};
+            Cell cell = grid2D->getCell(sh_cellIndex);
+            float3 diff = float3{CELL_RADIUS, CELL_RADIUS, 0.0f};
+            float3 center = float3{cell.center.x, cell.center.y, 0.0f};
+            float4 cornerLow_W = make_float4(center - diff, 1.0f);
+            float4 cornerHigh_W = make_float4(center + diff, 1.0f);
 
             float4 cornerLow_S = uniforms.proj * uniforms.view * cornerLow_W;
             float4 cornerHigh_S = uniforms.proj * uniforms.view * cornerHigh_W;
@@ -196,18 +152,10 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, unsigned int *buffer
 
     grid.sync();
 
-    { // generate and draw a single voxel
+    {
         Grid2D *grid2D = allocator->alloc<Grid2D *>(sizeof(Grid2D));
-        grid2D->cellIndices = gridCells;
-        grid2D->rows = numRows;
-        grid2D->cols = numCols;
-        grid2D->count = numRows * numCols;
-
-        RasterizationSettings settings;
-        settings.colorMode = COLORMODE_ID;
-        settings.world = mat4::identity();
-
-        rasterizeGrid(grid2D, framebuffer, settings);
+        *grid2D = Grid2D(numRows, numCols, gridCells);
+        rasterizeGrid(grid2D, framebuffer);
     }
 
     grid.sync();

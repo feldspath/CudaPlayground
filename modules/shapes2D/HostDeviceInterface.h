@@ -98,12 +98,14 @@ struct Uniforms {
     float width;
     float height;
     float time;
-    mat4 world;
     mat4 view;
     mat4 proj;
     mat4 invproj;
     mat4 invview;
-    mat4 transform;
     int colorMode;
-    int sampleMode;
+
+    // Inputs
+    double2 cursorPos;
+    int mouseButtons;
+    int modeId;
 };

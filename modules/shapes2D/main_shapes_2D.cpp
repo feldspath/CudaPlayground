@@ -10,13 +10,11 @@
 #include <thread>
 #include <vector>
 
+#include "Controls2D.h"
 #include "CudaModularProgram.h"
 #include "GLRenderer.h"
-#include "cudaGL.h"
-// #include "builtin_types.h"
-
-#include "Controls2D.h"
 #include "ObjLoader.h"
+#include "cudaGL.h"
 #include "unsuck.hpp"
 
 #include "HostDeviceInterface.h"
@@ -28,10 +26,13 @@ uint32_t gridCols;
 
 CUgraphicsResource cugl_colorbuffer;
 CudaModularProgram *cuda_program = nullptr;
+CudaModularProgram *cuda_update = nullptr;
 CUevent cevent_start, cevent_end;
 
 int colorMode = COLORMODE_TEXTURE;
 int sampleMode = SAMPLEMODE_LINEAR;
+
+int modeId = -1;
 
 void initCuda() {
     cuInit(0);
@@ -39,6 +40,81 @@ void initCuda() {
     CUcontext context;
     cuDeviceGet(&cuDevice, 0);
     cuCtxCreate(&context, 0, cuDevice);
+}
+
+int maxOccupancy(CudaModularProgram *program, const char *kernel, int workgroupSize, int numSMs) {
+    int numGroups;
+    int resultcode = cuOccupancyMaxActiveBlocksPerMultiprocessor(
+        &numGroups, program->kernels[kernel], workgroupSize, 0);
+    numGroups *= numSMs;
+
+    // numGroups = 100;
+    //  make sure at least 10 workgroups are spawned)
+    numGroups = std::clamp(numGroups, 10, 100'000);
+    return numGroups;
+}
+
+void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
+    CUdevice device;
+    int numSMs;
+    cuCtxGetDevice(&device);
+    cuDeviceGetAttribute(&numSMs, CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT, device);
+
+    int workgroupSize = 128;
+
+    int numGroups = maxOccupancy(cuda_update, "update", workgroupSize, numSMs);
+
+    cuEventRecord(cevent_start, 0);
+
+    float time = now();
+
+    auto runtime = Runtime::getInstance();
+
+    Uniforms uniforms;
+    uniforms.width = renderer->width;
+    uniforms.height = renderer->height;
+    uniforms.time = now();
+    uniforms.colorMode = colorMode;
+    uniforms.modeId = runtime->modeId;
+    memcpy(&uniforms.cursorPos, &runtime->mousePosition, sizeof(runtime->mousePosition));
+    uniforms.mouseButtons = Runtime::getInstance()->mouseButtons;
+
+    glm::mat4 view = renderer->camera->viewMatrix();
+    glm::mat4 proj = renderer->camera->projMatrix();
+    // glm::mat4 proj = glm::ortho(0.0, 100.0, 0.0, 100.0 / renderer->camera->aspect);
+    glm::mat4 invproj = glm::inverse(proj);
+    glm::mat4 invview = glm::inverse(view);
+    view = glm::transpose(view);
+    proj = glm::transpose(proj);
+    invproj = glm::transpose(invproj);
+    invview = glm::transpose(invview);
+    memcpy(&uniforms.view, &view, sizeof(view));
+    memcpy(&uniforms.proj, &proj, sizeof(proj));
+    memcpy(&uniforms.invproj, &invproj, sizeof(invproj));
+    memcpy(&uniforms.invview, &invview, sizeof(invview));
+
+    void *args[] = {&uniforms, &cptr_buffer, &gridRows, &gridCols, &cptr_grid};
+
+    auto res_launch = cuLaunchCooperativeKernel(cuda_update->kernels["update"], numGroups, 1, 1,
+                                                workgroupSize, 1, 1, 0, 0, args);
+
+    if (res_launch != CUDA_SUCCESS) {
+        const char *str;
+        cuGetErrorString(res_launch, &str);
+        printf("error: %s \n", str);
+    }
+
+    // cuEventRecord(cevent_end, 0);
+    // cuEventSynchronize(cevent_end);
+
+    //{
+    //    float total_ms;
+    //    cuEventElapsedTime(&total_ms, cevent_start, cevent_end);
+
+    //    std::cout << "Update duration: " << std::format("total:     {:6.1f} ms\n", total_ms);
+    //}
+
+    cuCtxSynchronize();
 }
 
 void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
@@ -55,14 +131,7 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
 
     int workgroupSize = 128;
 
-    int numGroups;
-    resultcode = cuOccupancyMaxActiveBlocksPerMultiprocessor(
-        &numGroups, cuda_program->kernels["kernel"], workgroupSize, 0);
-    numGroups *= numSMs;
-
-    // numGroups = 100;
-    //  make sure at least 10 workgroups are spawned)
-    numGroups = std::clamp(numGroups, 10, 100'000);
+    int numGroups = maxOccupancy(cuda_program, "kernel", workgroupSize, numSMs);
 
     std::vector<CUgraphicsResource> dynamic_resources = {cugl_colorbuffer};
     cuGraphicsMapResources(dynamic_resources.size(), dynamic_resources.data(),
@@ -83,30 +152,19 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
     uniforms.time = now();
     uniforms.colorMode = colorMode;
 
-    glm::mat4 rotX = glm::rotate(glm::mat4(), 3.1415f * 0.5f, glm::vec3(1.0, 0.0, 0.0));
-
-    glm::mat4 world = rotX;
     glm::mat4 view = renderer->camera->viewMatrix();
     glm::mat4 proj = renderer->camera->projMatrix();
     // glm::mat4 proj = glm::ortho(0.0, 100.0, 0.0, 100.0 / renderer->camera->aspect);
     glm::mat4 invproj = glm::inverse(proj);
     glm::mat4 invview = glm::inverse(view);
-    glm::mat4 worldViewProj = proj * view * world;
-    world = glm::transpose(world);
     view = glm::transpose(view);
     proj = glm::transpose(proj);
     invproj = glm::transpose(invproj);
     invview = glm::transpose(invview);
-    worldViewProj = glm::transpose(worldViewProj);
-    memcpy(&uniforms.world, &world, sizeof(world));
     memcpy(&uniforms.view, &view, sizeof(view));
     memcpy(&uniforms.proj, &proj, sizeof(proj));
     memcpy(&uniforms.invproj, &invproj, sizeof(invproj));
     memcpy(&uniforms.invview, &invview, sizeof(invview));
-    memcpy(&uniforms.transform, &worldViewProj, sizeof(worldViewProj));
-
-    float values[16];
-    memcpy(&values, &worldViewProj, sizeof(worldViewProj));
 
     void *args[] = {&uniforms, &cptr_buffer, &output_surf, &gridRows, &gridCols, &cptr_grid};
 
@@ -119,16 +177,15 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
         printf("error: %s \n", str);
     }
 
-    cuEventRecord(cevent_end, 0);
+    // cuEventRecord(cevent_end, 0);
     // cuEventSynchronize(cevent_end);
 
-    // {
-    // 	float total_ms;
-    // 	cuEventElapsedTime(&total_ms, cevent_start, cevent_end);
+    //{
+    //    float total_ms;
+    //    cuEventElapsedTime(&total_ms, cevent_start, cevent_end);
 
-    // 	cout << "CUDA durations: " << endl;
-    // 	cout << std::format("total:     {:6.1f} ms", total_ms) << endl;
-    // }
+    //    std::cout << "Render duration: " << std::format("total:     {:6.1f} ms\n", total_ms);
+    //}
 
     cuCtxSynchronize();
 
@@ -170,6 +227,13 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer) {
                                                },
                                            .kernels = {"kernel"}});
 
+    cuda_update = new CudaModularProgram({.modules =
+                                              {
+                                                  "./modules/common/utils.cu",
+                                                  "./modules/shapes2D/update.cu",
+                                              },
+                                          .kernels = {"update"}});
+
     cuEventCreate(&cevent_start, 0);
     cuEventCreate(&cevent_end, 0);
 
@@ -192,9 +256,7 @@ int main() {
 
     initCudaProgram(renderer);
 
-    auto update = [&]() {
-
-    };
+    auto update = [&]() { updateCUDA(renderer); };
 
     auto render = [&]() {
         renderer->view.framebuffer->setSize(renderer->width, renderer->height);
@@ -211,7 +273,6 @@ int main() {
             ImGui::Begin("Infos");
 
             ImGui::BulletText("Cuda Kernel: rasterizeVoxels/rasterize.cu");
-            ImGui::BulletText("Spot model courtesy of Keenan Crane.");
 
             ImGui::End();
         }
