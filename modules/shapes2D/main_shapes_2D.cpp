@@ -21,6 +21,7 @@
 
 CUdeviceptr cptr_buffer;
 CUdeviceptr cptr_grid;
+CUdeviceptr cptr_network;
 uint32_t gridRows;
 uint32_t gridCols;
 
@@ -29,10 +30,7 @@ CudaModularProgram *cuda_program = nullptr;
 CudaModularProgram *cuda_update = nullptr;
 CUevent cevent_start, cevent_end;
 
-int colorMode = COLORMODE_TEXTURE;
-int sampleMode = SAMPLEMODE_LINEAR;
-
-int modeId = -1;
+int renderMode = RENDERMODE_DEFAULT;
 
 void initCuda() {
     cuInit(0);
@@ -74,7 +72,7 @@ void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
     uniforms.width = renderer->width;
     uniforms.height = renderer->height;
     uniforms.time = now();
-    uniforms.colorMode = colorMode;
+    uniforms.renderMode = renderMode;
     uniforms.modeId = runtime->modeId;
     memcpy(&uniforms.cursorPos, &runtime->mousePosition, sizeof(runtime->mousePosition));
     uniforms.mouseButtons = Runtime::getInstance()->mouseButtons;
@@ -93,7 +91,7 @@ void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
     memcpy(&uniforms.invproj, &invproj, sizeof(invproj));
     memcpy(&uniforms.invview, &invview, sizeof(invview));
 
-    void *args[] = {&uniforms, &cptr_buffer, &gridRows, &gridCols, &cptr_grid};
+    void *args[] = {&uniforms, &cptr_buffer, &gridRows, &gridCols, &cptr_grid, &cptr_network};
 
     auto res_launch = cuLaunchCooperativeKernel(cuda_update->kernels["update"], numGroups, 1, 1,
                                                 workgroupSize, 1, 1, 0, 0, args);
@@ -150,7 +148,7 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
     uniforms.width = renderer->width;
     uniforms.height = renderer->height;
     uniforms.time = now();
-    uniforms.colorMode = colorMode;
+    uniforms.renderMode = renderMode;
 
     glm::mat4 view = renderer->camera->viewMatrix();
     glm::mat4 proj = renderer->camera->projMatrix();
@@ -166,7 +164,8 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
     memcpy(&uniforms.invproj, &invproj, sizeof(invproj));
     memcpy(&uniforms.invview, &invview, sizeof(invview));
 
-    void *args[] = {&uniforms, &cptr_buffer, &output_surf, &gridRows, &gridCols, &cptr_grid};
+    void *args[] = {&uniforms, &cptr_buffer, &output_surf, &gridRows,
+                    &gridCols, &cptr_grid,   &cptr_network};
 
     auto res_launch = cuLaunchCooperativeKernel(cuda_program->kernels["kernel"], numGroups, 1, 1,
                                                 workgroupSize, 1, 1, 0, 0, args);
@@ -202,21 +201,13 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer) {
     gridCols = 20;
     int numCells = gridRows * gridCols;
     cuMemAlloc(&cptr_grid, numCells * sizeof(uint32_t));
+    cuMemAlloc(&cptr_network, numCells * sizeof(uint32_t));
     std::vector<uint32_t> gridCells(numCells);
     for (int y = 0; y < gridRows; ++y) {
         for (int x = 0; x < gridCols; ++x) {
-            // float3 color;
-            // if ((i + j) % 2 == 0) {
-            //     color = float3{0.0f, 1.0f, 1.0f};
-            // } else {
-            //     color = float3{1.0f, 1.0f, 0.0f};
-            // }
-            // voxels->colors[i * 10 + j] = color;
             gridCells[y * gridCols + x] = 0;
         }
     }
-
-    gridCells[gridCols * 5 + 2] = -1;
 
     cuMemcpyHtoD(cptr_grid, gridCells.data(), gridCells.size() * sizeof(uint32_t));
 
@@ -272,7 +263,8 @@ int main() {
 
             ImGui::Begin("Infos");
 
-            ImGui::BulletText("Cuda Kernel: rasterizeVoxels/rasterize.cu");
+            ImGui::BulletText("Cuda Render Kernel: shapes2D/rasterize.cu");
+            ImGui::BulletText("Cuda Update Kernel: shapes2D/update.cu");
 
             ImGui::End();
         }
@@ -284,10 +276,9 @@ int main() {
 
             ImGui::Begin("Settings");
 
-            ImGui::Text("Color:");
-            ImGui::RadioButton("Triangle Index", &colorMode, COLORMODE_ID);
-            ImGui::RadioButton("Time", &colorMode, COLORMODE_TIME);
-            ImGui::RadioButton("Time (normalized)", &colorMode, COLORMODE_TIME_NORMALIZED);
+            ImGui::Text("Render mode:");
+            ImGui::RadioButton("Default", &renderMode, RENDERMODE_DEFAULT);
+            ImGui::RadioButton("Network", &renderMode, RENDERMODE_NETWORK);
 
             ImGui::End();
         }

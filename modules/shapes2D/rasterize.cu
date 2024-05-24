@@ -7,6 +7,7 @@
 #include "cells.h"
 #include "helper_math.h"
 #include "matrix_math.h"
+#include "network.h"
 
 uint32_t rgb8color(float3 color) {
     uint32_t r = color.x * 255.0f;
@@ -24,10 +25,6 @@ uint64_t nanotime_start;
 
 constexpr uint32_t BACKGROUND_COLOR = 0x00332211ull;
 
-struct RasterizationSettings {
-    int colorMode = COLORMODE_ID;
-};
-
 // https://coolors.co/palette/8cb369-f4e285-f4a259-5b8e7d-bc4b51
 float3 GRASS_COLOR = float3{140.0 / 255, 179.0 / 255, 105.0 / 255};
 float3 HOUSE_COLOR = float3{91.0 / 255, 142.0 / 255, 125.0 / 255};
@@ -37,13 +34,13 @@ float3 UNKOWN_COLOR = float3{1.0, 0.0, 1.0};
 
 float3 colorFromId(uint32_t id) {
     switch (id) {
-    case 0:
+    case GRASS:
         return GRASS_COLOR;
-    case 1:
+    case ROAD:
         return ROAD_COLOR;
-    case 2:
+    case HOUSE:
         return HOUSE_COLOR;
-    case 3:
+    case FACTORY:
         return FACTORY_COLOR;
     default:
         return UNKOWN_COLOR;
@@ -56,7 +53,7 @@ float3 colorFromId(uint32_t id) {
 // - <framebuffer> stores interleaved 32bit depth and color values
 // - The closest fragments are rendered via atomicMin on a combined 64bit depth&color integer
 //   atomicMin(&framebuffer[pixelIndex], (depth << 32 | color));
-void rasterizeGrid(Grid2D *grid2D, uint64_t *framebuffer) {
+void rasterizeGrid(Grid2D *grid2D, Network *network, uint64_t *framebuffer) {
 
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
@@ -130,7 +127,21 @@ void rasterizeGrid(Grid2D *grid2D, uint64_t *framebuffer) {
                 int pixelID = pixelCoords.x + pixelCoords.y * uniforms.width;
                 pixelID = clamp(pixelID, 0, int(uniforms.width * uniforms.height) - 1);
 
-                float3 color = colorFromId(grid2D->cellIndices[sh_cellIndex]);
+                float3 color;
+                if (uniforms.renderMode == RENDERMODE_DEFAULT) {
+                    color = colorFromId(grid2D->cellIndices[sh_cellIndex]);
+                } else {
+                    if (grid2D->cellIndices[sh_cellIndex] == GRASS) {
+                        color = float3{0.0, 0.0, 0.0};
+                    } else {
+                        int repr = network->cellRepr(sh_cellIndex);
+                        float r = (float)(repr % 3) / 3.0;
+                        float g = (float)(repr % 11) / 11.0;
+                        float b = (float)(repr % 37) / 37.0;
+                        color = float3{r, g, b};
+                    }
+                }
+
                 float3 fragColor = color;
 
                 float depth = 0.0f;
@@ -145,7 +156,7 @@ void rasterizeGrid(Grid2D *grid2D, uint64_t *framebuffer) {
 
 extern "C" __global__ void kernel(const Uniforms _uniforms, unsigned int *buffer,
                                   cudaSurfaceObject_t gl_colorbuffer, uint32_t numRows,
-                                  uint32_t numCols, uint32_t *gridCells) {
+                                  uint32_t numCols, uint32_t *gridCells, uint32_t *networkParents) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -170,7 +181,11 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, unsigned int *buffer
     {
         Grid2D *grid2D = allocator->alloc<Grid2D *>(sizeof(Grid2D));
         *grid2D = Grid2D(numRows, numCols, gridCells);
-        rasterizeGrid(grid2D, framebuffer);
+
+        Network *network = allocator->alloc<Network *>(sizeof(Network));
+        network->parents = networkParents;
+
+        rasterizeGrid(grid2D, network, framebuffer);
     }
 
     grid.sync();

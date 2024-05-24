@@ -85,14 +85,8 @@ struct mat4 {
     }
 };
 
-int COLORMODE_TEXTURE = 0;
-int COLORMODE_UV = 1;
-int COLORMODE_ID = 2;
-int COLORMODE_TIME = 3;
-int COLORMODE_TIME_NORMALIZED = 4;
-
-int SAMPLEMODE_NEAREST = 0;
-int SAMPLEMODE_LINEAR = 1;
+int RENDERMODE_DEFAULT = 0;
+int RENDERMODE_NETWORK = 1;
 
 struct Uniforms {
     float width;
@@ -102,7 +96,7 @@ struct Uniforms {
     mat4 proj;
     mat4 invproj;
     mat4 invview;
-    int colorMode;
+    int renderMode;
 
     // Inputs
     double2 cursorPos;

@@ -5,6 +5,14 @@
 float CELL_RADIUS = 0.49f;
 float CELL_PADDING = 0.01f;
 
+enum TileId {
+    GRASS = 0,
+    ROAD = 1,
+    HOUSE = 2,
+    FACTORY = 3,
+    UNKNOWN = -1,
+};
+
 struct Cell {
     int id;
     float2 center;
@@ -33,7 +41,7 @@ struct Grid2D {
         return cell;
     }
 
-    int cellIdFromPosition(float2 position) {
+    int cellAtPosition(float2 position) {
         int x = floor(position.x);
         int y = floor(position.y);
 
@@ -43,4 +51,14 @@ struct Grid2D {
 
         return y * cols + x;
     }
+
+    int2 cellCoords(int cellId) { return int2{cellId % cols, cellId / cols}; }
+
+    int idFromCoords(int x, int y) {
+        if (x >= cols || x < 0 || y >= rows || y < 0) {
+            return -1;
+        }
+        return y * cols + x;
+    }
+    int idFromCoords(int2 coords) { return idFromCoords(coords.x, coords.y); }
 };
