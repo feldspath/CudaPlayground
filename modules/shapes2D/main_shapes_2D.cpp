@@ -58,7 +58,7 @@ void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
     cuCtxGetDevice(&device);
     cuDeviceGetAttribute(&numSMs, CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT, device);
 
-    int workgroupSize = 128;
+    int workgroupSize = 256;
 
     int numGroups = maxOccupancy(cuda_update, "update", workgroupSize, numSMs);
 
@@ -127,7 +127,7 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
     cuCtxGetDevice(&device);
     cuDeviceGetAttribute(&numSMs, CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT, device);
 
-    int workgroupSize = 128;
+    int workgroupSize = 64;
 
     int numGroups = maxOccupancy(cuda_program, "kernel", workgroupSize, numSMs);
 
@@ -197,15 +197,16 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
 void initCudaProgram(std::shared_ptr<GLRenderer> renderer) {
     cuMemAlloc(&cptr_buffer, 100'000'000);
 
-    gridRows = 20;
-    gridCols = 20;
+    gridRows = 64;
+    gridCols = 64;
     int numCells = gridRows * gridCols;
-    cuMemAlloc(&cptr_grid, numCells * sizeof(uint32_t));
+    cuMemAlloc(&cptr_grid, numCells * BYTES_PER_CELL);
     cuMemAlloc(&cptr_network, numCells * sizeof(uint32_t));
-    std::vector<uint32_t> gridCells(numCells);
+    std::vector<char> gridCells(numCells * BYTES_PER_CELL);
     for (int y = 0; y < gridRows; ++y) {
         for (int x = 0; x < gridCols; ++x) {
-            gridCells[y * gridCols + x] = 0;
+            int cellId = y * gridCols + x;
+            *(reinterpret_cast<int32_t *>(gridCells.data() + cellId * BYTES_PER_CELL)) = GRASS;
         }
     }
 

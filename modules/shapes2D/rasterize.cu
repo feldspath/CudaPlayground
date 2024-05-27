@@ -129,16 +129,29 @@ void rasterizeGrid(Grid2D *grid2D, Network *network, uint64_t *framebuffer) {
 
                 float3 color;
                 if (uniforms.renderMode == RENDERMODE_DEFAULT) {
-                    color = colorFromId(grid2D->cellIndices[sh_cellIndex]);
-                } else {
-                    if (grid2D->cellIndices[sh_cellIndex] == GRASS) {
-                        color = float3{0.0, 0.0, 0.0};
+                    color = colorFromId(grid2D->getTileId(sh_cellIndex));
+                } else if (uniforms.renderMode == RENDERMODE_NETWORK) {
+                    TileId tileId = grid2D->getTileId(sh_cellIndex);
+                    if (tileId == GRASS || tileId == UNKNOWN) {
+                        color = {0.0f, 0.0f, 0.0f};
                     } else {
-                        int repr = network->cellRepr(sh_cellIndex);
-                        float r = (float)(repr % 3) / 3.0;
-                        float g = (float)(repr % 11) / 11.0;
-                        float b = (float)(repr % 37) / 37.0;
+                        int colorId;
+                        if (tileId == HOUSE) {
+                            colorId = *(int32_t *)(grid2D->tileData(sh_cellIndex));
+                        } else if (tileId == ROAD) {
+                            colorId = network->cellRepr(sh_cellIndex);
+                        } else {
+                            colorId = sh_cellIndex;
+                        }
+
+                        float r = (float)(colorId % 3) / 3.0;
+                        float g = (float)(colorId % 11) / 11.0;
+                        float b = (float)(colorId % 37) / 37.0;
                         color = float3{r, g, b};
+
+                        if (colorId == -1) {
+                            color = float3{1.0f, 0.0f, 1.0f};
+                        }
                     }
                 }
 
@@ -156,7 +169,7 @@ void rasterizeGrid(Grid2D *grid2D, Network *network, uint64_t *framebuffer) {
 
 extern "C" __global__ void kernel(const Uniforms _uniforms, unsigned int *buffer,
                                   cudaSurfaceObject_t gl_colorbuffer, uint32_t numRows,
-                                  uint32_t numCols, uint32_t *gridCells, uint32_t *networkParents) {
+                                  uint32_t numCols, char *cells, uint32_t *networkParents) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -180,7 +193,7 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, unsigned int *buffer
 
     {
         Grid2D *grid2D = allocator->alloc<Grid2D *>(sizeof(Grid2D));
-        *grid2D = Grid2D(numRows, numCols, gridCells);
+        *grid2D = Grid2D(numRows, numCols, cells);
 
         Network *network = allocator->alloc<Network *>(sizeof(Network));
         network->parents = networkParents;

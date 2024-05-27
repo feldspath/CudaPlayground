@@ -1,17 +1,10 @@
 #pragma once
 
+#include "HostDeviceInterface.h"
 #include "builtin_types.h"
 
-float CELL_RADIUS = 0.49f;
-float CELL_PADDING = 0.01f;
-
-enum TileId {
-    GRASS = 0,
-    ROAD = 1,
-    HOUSE = 2,
-    FACTORY = 3,
-    UNKNOWN = -1,
-};
+float CELL_RADIUS = 0.45f;
+float CELL_PADDING = 0.05f;
 
 struct Cell {
     int id;
@@ -19,13 +12,13 @@ struct Cell {
 };
 
 struct Grid2D {
-    uint32_t *cellIndices;
+    char *cellsData;
     int rows;
     int cols;
     int count;
 
-    Grid2D(uint32_t numRows, uint32_t numCols, uint32_t *gridCells) {
-        cellIndices = gridCells;
+    Grid2D(uint32_t numRows, uint32_t numCols, char *data) {
+        cellsData = data;
         rows = numRows;
         cols = numCols;
         count = numRows * numCols;
@@ -41,7 +34,7 @@ struct Grid2D {
         return cell;
     }
 
-    int cellAtPosition(float2 position) {
+    int cellAtPosition(float2 position) const {
         int x = floor(position.x);
         int y = floor(position.y);
 
@@ -61,4 +54,13 @@ struct Grid2D {
         return y * cols + x;
     }
     int idFromCoords(int2 coords) { return idFromCoords(coords.x, coords.y); }
+
+    TileId getTileId(int cellId) const {
+        return (TileId)(*(int32_t *)(cellsData + cellId * BYTES_PER_CELL));
+    }
+    void setTileId(int cellId, TileId tile) {
+        *(int32_t *)(cellsData + cellId * BYTES_PER_CELL) = tile;
+    }
+
+    char *tileData(int cellId) { return cellsData + cellId * BYTES_PER_CELL + 4; }
 };

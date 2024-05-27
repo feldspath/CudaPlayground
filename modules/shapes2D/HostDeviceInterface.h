@@ -88,6 +88,17 @@ struct mat4 {
 int RENDERMODE_DEFAULT = 0;
 int RENDERMODE_NETWORK = 1;
 
+// 4 bytes for the tile index, 4 bytes additional data.
+int BYTES_PER_CELL = 4 + 4;
+
+enum TileId {
+    GRASS = 0,
+    ROAD = 1,
+    HOUSE = 2,
+    FACTORY = 3,
+    UNKNOWN = -1,
+};
+
 struct Uniforms {
     float width;
     float height;
