@@ -97,105 +97,6 @@ void updateCell(Grid2D *grid2D, UpdateInfo updateInfo) {
         }
 
         block.sync();
-
-        // Each block grabs a tile
-        uint32_t &processedTiles = *allocator->alloc<uint32_t *>(4);
-        if (grid.thread_rank() == 0) {
-            processedTiles = 0;
-        }
-
-        grid.sync();
-
-        {
-            __shared__ int currentTile;
-            __shared__ uint64_t targetFactory2;
-
-            for (int loop_i = 0; loop_i < grid2D->count; loop_i++) {
-                block.sync();
-                if (block.thread_rank() == 0) {
-                    currentTile = atomicAdd(&processedTiles, 1);
-                }
-                block.sync();
-
-                // Break if all tiles have been processed
-                if (currentTile >= grid2D->count) {
-                    break;
-                }
-
-                // Skip if tile is not a house or already assigned
-                if (grid2D->getTileId(currentTile) != HOUSE ||
-                    *grid2D->houseTileData(currentTile) != -1) {
-                    continue;
-                }
-
-                // Get neighbor networks
-                int4 nets = neighborNetworks(currentTile, grid2D);
-                bool found = false;
-                for (int i = 0; i < 4; ++i) {
-                    if (((int *)(&nets))[i] == id) {
-                        found = true;
-                        break;
-                    }
-                }
-
-                if (found == false) {
-                    continue;
-                }
-
-                int2 tileCoords = grid2D->cellCoords(currentTile);
-
-                if (block.thread_rank() == 0) {
-                    targetFactory2 = uint64_t(Infinity) << 32ull;
-                }
-
-                // Check all tiles for factories
-                for (int offset = 0; offset < grid2D->count; offset += block.num_threads()) {
-                    int factoryId = block.thread_rank() + offset;
-                    if (factoryId >= grid2D->count) {
-                        break;
-                    }
-
-                    // Look for factories ...
-                    if (grid2D->getTileId(factoryId) != FACTORY) {
-                        continue;
-                    }
-                    // ... with some capacity
-                    if (*grid2D->factoryTileData(factoryId) == 0) {
-                        continue;
-                    }
-
-                    // Get the networks the factory is connected to
-                    int4 factoryComps = neighborNetworks(factoryId, grid2D);
-                    for (int i = 0; i < 4; i++) {
-                        int f = ((int *)(&factoryComps))[i];
-                        if (f == id) {
-                            // This factory shares the same networ
-                            int2 factoryCoords = grid2D->cellCoords(factoryId);
-                            int2 diff = factoryCoords - tileCoords;
-                            uint32_t distance = abs(diff.x) + abs(diff.y);
-                            uint64_t target = (uint64_t(distance) << 32ull) | uint64_t(factoryId);
-                            // keep the closest factory
-                            atomicMin(&targetFactory2, target);
-                            break;
-                        }
-                    }
-                }
-
-                block.sync();
-
-                if (block.thread_rank() == 0) {
-                    int32_t *houseData = grid2D->houseTileData(currentTile);
-                    if (targetFactory2 != uint64_t(Infinity) << 32ull) {
-                        int32_t factoryId = targetFactory2 & 0xffffffffull;
-                        *houseData = factoryId;
-                        *grid2D->factoryTileData(factoryId) -= 1;
-                    } else {
-                        *houseData = -1;
-                    }
-                }
-            }
-        }
-
         break;
 
     case FACTORY:
@@ -203,123 +104,90 @@ void updateCell(Grid2D *grid2D, UpdateInfo updateInfo) {
             // Set capacity
             *grid2D->factoryTileData(id) = FACTORY_CAPACITY;
         }
-
-        __shared__ uint64_t targets[4];
-        if (grid.thread_rank() < 4ull) {
-            targets[grid.thread_rank()] = uint64_t(Infinity) << 32ull;
-        }
-        if (grid.block_rank() == 0) {
-            // Check nearby tiles.
-            int4 tileComps = neighborNetworks(id, grid2D);
-            int2 tileCoords = grid2D->cellCoords(id);
-
-            // Look each tile of the map
-            for (int offset = 0; offset < grid2D->count; offset += block.num_threads()) {
-                int houseId = block.thread_rank() + offset;
-                if (houseId >= grid2D->count) {
-                    break;
-                }
-
-                // Look for houses ...
-                if (grid2D->getTileId(houseId) != HOUSE) {
-                    continue;
-                }
-                // ... unassigned
-                if (*grid2D->houseTileData(houseId) != -1) {
-                    continue;
-                }
-
-                //  Get the networks the house is connected to
-                int4 houseComps = neighborNetworks(houseId, grid2D);
-                for (int i = 0; i < 16; i++) {
-                    int h = ((int *)(&houseComps))[i % 4];
-                    int t = ((int *)(&tileComps))[i / 4];
-                    if (h != -1 && h == t) {
-                        // The house shared the same network
-                        int2 houseCoords = grid2D->cellCoords(houseId);
-                        int2 diff = houseCoords - tileCoords;
-                        uint32_t distance = abs(diff.x) + abs(diff.y);
-                        uint64_t target = (uint64_t(distance) << 32ull) | uint64_t(houseId);
-                        uint64_t old = atomicMin(&targets[0], target);
-                        target = max(old, target);
-                        old = atomicMin(&targets[1], target);
-                        target = max(old, target);
-                        old = atomicMin(&targets[2], target);
-                        target = max(old, target);
-                        atomicMin(&targets[3], target);
-                        break;
-                    }
-                }
-            }
-        }
-
-        block.sync();
-
-        if (grid.thread_rank() == 0) {
-            for (int i = 0; i < 4; i++) {
-                uint64_t target = targets[i];
-                if (target != uint64_t(Infinity) << 32ull) {
-                    int32_t houseId = target & 0xffffffffull;
-                    *grid2D->houseTileData(houseId) = id;
-                    *grid2D->factoryTileData(id) -= 1;
-                } else {
-                    break;
-                }
-            }
-        }
-
         break;
 
     case HOUSE:
-        __shared__ uint64_t targetFactory;
         if (grid.thread_rank() == 0) {
+            // Set house to unassigned
+            *grid2D->houseTileData(id) = -1;
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+void assignOneHouse(Grid2D *grid2D) {
+    auto grid = cg::this_grid();
+    auto block = cg::this_thread_block();
+
+    int32_t &assigned = *allocator->alloc<int32_t *>(4);
+    if (grid.thread_rank() == 0) {
+        assigned = 0;
+    }
+    grid.sync();
+
+    __shared__ uint64_t targetFactory;
+    for (int offset = 0; offset < grid2D->count; offset += grid.num_blocks()) {
+        int currentTile = offset + grid.block_rank();
+        if (currentTile > grid2D->count) {
+            break;
+        }
+
+        // Skip if tile is not a house or already assigned
+        if (grid2D->getTileId(currentTile) != HOUSE || *grid2D->houseTileData(currentTile) != -1) {
+            continue;
+        }
+
+        // Get neighbor networks
+        int4 houseNets = neighborNetworks(currentTile, grid2D);
+        int2 tileCoords = grid2D->cellCoords(currentTile);
+
+        if (block.thread_rank() == 0) {
             targetFactory = uint64_t(Infinity) << 32ull;
         }
 
-        if (grid.block_rank() == 0) {
-            // Check nearby tiles.
-            int4 tileComps = neighborNetworks(id, grid2D);
-            int2 tileCoords = grid2D->cellCoords(id);
+        block.sync();
 
-            for (int offset = 0; offset < grid2D->count; offset += block.num_threads()) {
-                int factoryId = block.thread_rank() + offset;
-                if (factoryId >= grid2D->count) {
+        // Check all tiles for factories
+        for (int offset = 0; offset < grid2D->count; offset += block.num_threads()) {
+            int factoryId = block.thread_rank() + offset;
+            if (factoryId >= grid2D->count) {
+                break;
+            }
+
+            // Look for factories ...
+            if (grid2D->getTileId(factoryId) != FACTORY) {
+                continue;
+            }
+            // ... with some capacity
+            if (*grid2D->factoryTileData(factoryId) == 0) {
+                continue;
+            }
+
+            // Get the networks the factory is connected to
+            int4 factoryNets = neighborNetworks(factoryId, grid2D);
+            for (int i = 0; i < 16; i++) {
+                int f = ((int *)(&factoryNets))[i % 4];
+                int h = ((int *)(&houseNets))[i / 4];
+                if (f != -1 && f == h) {
+                    // This factory shares the same networ
+                    int2 factoryCoords = grid2D->cellCoords(factoryId);
+                    int2 diff = factoryCoords - tileCoords;
+                    uint32_t distance = abs(diff.x) + abs(diff.y);
+                    uint64_t target = (uint64_t(distance) << 32ull) | uint64_t(factoryId);
+                    // keep the closest factory
+                    atomicMin(&targetFactory, target);
                     break;
-                }
-
-                // Look for factories ...
-                if (grid2D->getTileId(factoryId) != FACTORY) {
-                    continue;
-                }
-                // ... with some capacity
-                if (*grid2D->factoryTileData(factoryId) == 0) {
-                    continue;
-                }
-
-                // Get the networks the factory is connected to
-                int4 factoryComps = neighborNetworks(factoryId, grid2D);
-                for (int i = 0; i < 16; i++) {
-                    int f = ((int *)(&factoryComps))[i % 4];
-                    int t = ((int *)(&tileComps))[i / 4];
-                    if (f != -1 && f == t) {
-                        // This factory shares the same networ
-                        int2 factoryCoords = grid2D->cellCoords(factoryId);
-                        int2 diff = factoryCoords - tileCoords;
-                        uint32_t distance = abs(diff.x) + abs(diff.y);
-                        uint64_t target = (uint64_t(distance) << 32ull) | uint64_t(factoryId);
-                        // keep the closest factory
-                        atomicMin(&targetFactory, target);
-                        break;
-                    }
                 }
             }
         }
 
         block.sync();
 
-        if (grid.thread_rank() == 0) {
-            int32_t *houseData = grid2D->houseTileData(id);
-            if (targetFactory != uint64_t(Infinity) << 32ull) {
+        if (block.thread_rank() == 0) {
+            int32_t *houseData = grid2D->houseTileData(currentTile);
+            if (targetFactory != uint64_t(Infinity) << 32ull && !atomicAdd(&assigned, 1)) {
                 int32_t factoryId = targetFactory & 0xffffffffull;
                 *houseData = factoryId;
                 *grid2D->factoryTileData(factoryId) -= 1;
@@ -329,14 +197,14 @@ void updateCell(Grid2D *grid2D, UpdateInfo updateInfo) {
         }
 
         break;
-    default:
-        break;
     }
 }
 
 void updateGrid(Grid2D *grid2D) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
+
+    assignOneHouse(grid2D);
 
     if (uniforms.cursorPos.x < 0 || uniforms.cursorPos.x >= uniforms.width ||
         uniforms.cursorPos.y < 0 || uniforms.cursorPos.y >= uniforms.height) {

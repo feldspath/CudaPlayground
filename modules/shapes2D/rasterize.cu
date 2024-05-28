@@ -46,9 +46,8 @@ float3 colorFromId(uint32_t id) {
     }
 }
 
-// rasterizes voxels
-// - each block grabs a voxel
-// - all threads of that block process different fragments of the voxel
+// rasterizes the grid
+// - Each thread computes the color of a pixel.
 // - <framebuffer> stores interleaved 32bit depth and color values
 // - The closest fragments are rendered via atomicMin on a combined 64bit depth&color integer
 //   atomicMin(&framebuffer[pixelIndex], (depth << 32 | color));
