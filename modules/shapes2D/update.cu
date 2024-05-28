@@ -103,22 +103,15 @@ void updateCell(Grid2D *grid2D, Network *network, UpdateInfo updateInfo) {
         if (grid.thread_rank() == 0) {
             // Set worker count to 0.
             char *data = grid2D->tileData(id);
-            *(uint32_t *)data = 0;
+            *(uint32_t *)data = FACTORY_CAPACITY;
         }
         break;
 
     case HOUSE:
         __shared__ uint64_t targetFactory;
         if (grid.thread_rank() == 0) {
-            // targetFactory = uint64_t(Infinity) << 32ull;
             targetFactory = uint64_t(Infinity) << 32ull;
         }
-
-        // if (grid.thread_rank() == 0) {
-        //     char *data = grid2D->tileData(id);
-        //     int4 comps = neighborNetworks(id, network, grid2D);
-        //     *(int32_t *)data = ((int *)(&comps))[3];
-        // }
 
         if (grid.block_rank() == 0) {
             // Check nearby tiles.
@@ -132,6 +125,9 @@ void updateCell(Grid2D *grid2D, Network *network, UpdateInfo updateInfo) {
                 }
 
                 if (grid2D->getTileId(factoryId) != FACTORY) {
+                    continue;
+                }
+                if (*(uint32_t *)(grid2D->tileData(factoryId)) == 0) {
                     continue;
                 }
 
@@ -155,7 +151,9 @@ void updateCell(Grid2D *grid2D, Network *network, UpdateInfo updateInfo) {
         if (grid.thread_rank() == 0) {
             char *data = grid2D->tileData(id);
             if (targetFactory != uint64_t(Infinity) << 32ull) {
-                *(int32_t *)data = targetFactory & 0xffffffffull;
+                int32_t factoryId = targetFactory & 0xffffffffull;
+                *(int32_t *)data = factoryId;
+                *(uint32_t *)(grid2D->tileData(factoryId)) -= 1;
             } else {
                 *(int32_t *)data = -1;
             }

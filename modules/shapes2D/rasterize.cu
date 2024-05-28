@@ -58,112 +58,66 @@ void rasterizeGrid(Grid2D *grid2D, Network *network, uint64_t *framebuffer) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
-    uint32_t &processedCells = *allocator->alloc<uint32_t *>(4);
-    if (grid.thread_rank() == 0) {
-        processedCells = 0;
-    }
-    grid.sync();
+    for (int offset = 0; offset < uniforms.width * uniforms.height; offset += grid.num_threads()) {
+        int pixelId = offset + grid.thread_rank();
+        if (pixelId >= uniforms.width * uniforms.height) {
+            continue;
+        }
 
-    {
-        __shared__ int sh_cellIndex;
+        int pixelX = pixelId % int(uniforms.width);
+        int pixelY = pixelId / int(uniforms.width);
 
-        block.sync();
+        float2 pFrag = make_float2(pixelX, pixelY);
 
-        // safety mechanism: each block draws at most <loop_max> voxels
-        int loop_max = 10'000;
-        for (int loop_i = 0; loop_i < loop_max; loop_i++) {
+        float3 pos_W =
+            unproject(pFrag, uniforms.invview * uniforms.invproj, uniforms.width, uniforms.height);
+        int sh_cellIndex = grid2D->cellAtPosition(float2{pos_W.x, pos_W.y});
+        if (sh_cellIndex == -1) {
+            continue;
+        }
 
-            // grab the index of the next unprocessed voxel
-            block.sync();
-            if (block.thread_rank() == 0) {
-                sh_cellIndex = atomicAdd(&processedCells, 1);
-            }
-            block.sync();
+        Cell cell = grid2D->getCell(sh_cellIndex);
+        float2 diff = float2{pos_W.x - cell.center.x, pos_W.y - cell.center.y};
 
-            if (sh_cellIndex >= grid2D->count)
-                break;
+        if (abs(diff.x) > CELL_RADIUS || abs(diff.y) > CELL_RADIUS) {
+            continue;
+        }
 
-            Cell cell = grid2D->getCell(sh_cellIndex);
-            float3 diff = float3{CELL_RADIUS, CELL_RADIUS, 0.0f};
-            float3 center = float3{cell.center.x, cell.center.y, 0.0f};
-            float4 cornerLow_W = make_float4(center - diff, 1.0f);
-            float4 cornerHigh_W = make_float4(center + diff, 1.0f);
-
-            float4 cornerLow_S = uniforms.proj * uniforms.view * cornerLow_W;
-            float4 cornerHigh_S = uniforms.proj * uniforms.view * cornerHigh_W;
-
-            // clamp to screen
-            float min_x = max((cornerLow_S.x * 0.5f + 0.5f) * uniforms.width, 0.0f);
-            float min_y = max((cornerLow_S.y * 0.5f + 0.5f) * uniforms.height, 0.0f);
-            float max_x = min((cornerHigh_S.x * 0.5f + 0.5f) * uniforms.width, uniforms.width);
-            float max_y = min((cornerHigh_S.y * 0.5f + 0.5f) * uniforms.height, uniforms.height);
-
-            int size_x = ceil(max_x) - floor(min_x);
-            int size_y = ceil(max_y) - floor(min_y);
-            int numFragments = size_x * size_y;
-
-            // iterate through fragments in bounding rectangle and draw if within triangle
-            int numProcessedSamples = 0;
-            for (int fragOffset = 0; fragOffset < numFragments; fragOffset += block.num_threads()) {
-
-                // safety mechanism: don't draw more than <x> pixels per thread
-                if (numProcessedSamples > 5'000)
-                    break;
-
-                numProcessedSamples++;
-
-                int fragID = fragOffset + block.thread_rank();
-
-                int fragX = fragID % size_x;
-                int fragY = fragID / size_x;
-
-                float2 pFrag = {floor(min_x) + float(fragX), floor(min_y) + float(fragY)};
-
-                if (pFrag.x < min_x || pFrag.x >= max_x || pFrag.y < min_y || pFrag.y >= max_y) {
-                    continue;
+        float3 color;
+        if (uniforms.renderMode == RENDERMODE_DEFAULT) {
+            color = colorFromId(grid2D->getTileId(sh_cellIndex));
+        } else if (uniforms.renderMode == RENDERMODE_NETWORK) {
+            TileId tileId = grid2D->getTileId(sh_cellIndex);
+            if (tileId == GRASS || tileId == UNKNOWN) {
+                color = {0.0f, 0.0f, 0.0f};
+            } else {
+                int colorId;
+                if (tileId == HOUSE) {
+                    colorId = *(int32_t *)(grid2D->tileData(sh_cellIndex));
+                } else if (tileId == ROAD) {
+                    colorId = network->cellRepr(sh_cellIndex);
+                } else {
+                    colorId = sh_cellIndex;
                 }
 
-                int2 pixelCoords = make_int2(pFrag.x, pFrag.y);
-                int pixelID = pixelCoords.x + pixelCoords.y * uniforms.width;
-                pixelID = clamp(pixelID, 0, int(uniforms.width * uniforms.height) - 1);
+                float r = (float)(colorId % 3) / 3.0;
+                float g = (float)(colorId % 11) / 11.0;
+                float b = (float)(colorId % 37) / 37.0;
+                color = float3{r, g, b};
 
-                float3 color;
-                if (uniforms.renderMode == RENDERMODE_DEFAULT) {
-                    color = colorFromId(grid2D->getTileId(sh_cellIndex));
-                } else if (uniforms.renderMode == RENDERMODE_NETWORK) {
-                    TileId tileId = grid2D->getTileId(sh_cellIndex);
-                    if (tileId == GRASS || tileId == UNKNOWN) {
-                        color = {0.0f, 0.0f, 0.0f};
-                    } else {
-                        int colorId;
-                        if (tileId == HOUSE) {
-                            colorId = *(int32_t *)(grid2D->tileData(sh_cellIndex));
-                        } else if (tileId == ROAD) {
-                            colorId = network->cellRepr(sh_cellIndex);
-                        } else {
-                            colorId = sh_cellIndex;
-                        }
-
-                        float r = (float)(colorId % 3) / 3.0;
-                        float g = (float)(colorId % 11) / 11.0;
-                        float b = (float)(colorId % 37) / 37.0;
-                        color = float3{r, g, b};
-
-                        if (colorId == -1) {
-                            color = float3{1.0f, 0.0f, 1.0f};
-                        }
-                    }
+                if (colorId == -1) {
+                    color = float3{1.0f, 0.0f, 1.0f};
                 }
-
-                float3 fragColor = color;
-
-                float depth = 0.0f;
-                uint64_t udepth = *((uint32_t *)&depth);
-                uint64_t pixel = (udepth << 32ull) | rgb8color(fragColor);
-
-                atomicMin(&framebuffer[pixelID], pixel);
             }
         }
+
+        float3 pixelColor = color;
+
+        float depth = 0.0f;
+        uint64_t udepth = *((uint32_t *)&depth);
+        uint64_t pixel = (udepth << 32ull) | rgb8color(pixelColor);
+
+        atomicMin(&framebuffer[pixelId], pixel);
     }
 }
 

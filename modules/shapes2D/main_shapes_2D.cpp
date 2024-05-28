@@ -197,8 +197,8 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
 void initCudaProgram(std::shared_ptr<GLRenderer> renderer) {
     cuMemAlloc(&cptr_buffer, 100'000'000);
 
-    gridRows = 64;
-    gridCols = 64;
+    gridRows = 512;
+    gridCols = 512;
     int numCells = gridRows * gridCols;
     cuMemAlloc(&cptr_grid, numCells * BYTES_PER_CELL);
     cuMemAlloc(&cptr_network, numCells * sizeof(uint32_t));
