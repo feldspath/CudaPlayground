@@ -7,7 +7,6 @@
 #include "cells.h"
 #include "helper_math.h"
 #include "matrix_math.h"
-#include "network.h"
 
 namespace cg = cooperative_groups;
 
@@ -20,28 +19,28 @@ struct UpdateInfo {
     TileId newTileId;
 };
 
-int cellNetworkId(int cellId, Network *network, Grid2D *grid2D) {
+int cellNetworkId(int cellId, Grid2D *grid2D) {
     if (cellId != -1 && grid2D->getTileId(cellId) == ROAD) {
-        return network->cellRepr(cellId);
+        return grid2D->roadNetworkRepr(cellId);
     } else {
         return -1;
     }
 }
 
-int4 neighborNetworks(int cellId, Network *network, Grid2D *grid2D) {
+int4 neighborNetworks(int cellId, Grid2D *grid2D) {
     int2 coords = grid2D->cellCoords(cellId);
     int right = grid2D->idFromCoords(coords.x + 1, coords.y);
     int left = grid2D->idFromCoords(coords.x - 1, coords.y);
     int up = grid2D->idFromCoords(coords.x, coords.y + 1);
     int down = grid2D->idFromCoords(coords.x, coords.y - 1);
 
-    int4 comps = {cellNetworkId(right, network, grid2D), cellNetworkId(left, network, grid2D),
-                  cellNetworkId(up, network, grid2D), cellNetworkId(down, network, grid2D)};
+    int4 comps = {cellNetworkId(right, grid2D), cellNetworkId(left, grid2D),
+                  cellNetworkId(up, grid2D), cellNetworkId(down, grid2D)};
 
     return comps;
 }
 
-void updateCell(Grid2D *grid2D, Network *network, UpdateInfo updateInfo) {
+void updateCell(Grid2D *grid2D, UpdateInfo updateInfo) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -50,7 +49,7 @@ void updateCell(Grid2D *grid2D, Network *network, UpdateInfo updateInfo) {
 
     if (grid.thread_rank() == 0) {
         grid2D->setTileId(id, new_tile);
-        network->parents[id] = id;
+        *grid2D->roadTileData(id) = id;
     }
 
     switch (new_tile) {
@@ -66,20 +65,16 @@ void updateCell(Grid2D *grid2D, Network *network, UpdateInfo updateInfo) {
 
             // if one tile is not grass, update the connected components
             if (right != -1 && grid2D->getTileId(right) == ROAD) {
-                network->parents[network->parents[right]] = id;
-                // network->update(right, id);
+                grid2D->updateNetworkRepr(right, id);
             }
             if (left != -1 && grid2D->getTileId(left) == ROAD) {
-                network->parents[network->parents[left]] = id;
-                // network->update(left, id);
+                grid2D->updateNetworkRepr(left, id);
             }
             if (up != -1 && grid2D->getTileId(up) == ROAD) {
-                network->parents[network->parents[up]] = id;
-                // network->update(up, id);
+                grid2D->updateNetworkRepr(up, id);
             }
             if (down != -1 && grid2D->getTileId(down) == ROAD) {
-                network->parents[network->parents[down]] = id;
-                // network->update(down, id);
+                grid2D->updateNetworkRepr(down, id);
             }
         }
 
@@ -93,7 +88,8 @@ void updateCell(Grid2D *grid2D, Network *network, UpdateInfo updateInfo) {
                     break;
                 }
 
-                network->parents[cellId] = network->cellRepr(cellId);
+                int newRepr = grid2D->roadNetworkRepr(grid2D->roadNetworkRepr(cellId));
+                *grid2D->roadTileData(cellId) = newRepr;
             }
         }
 
@@ -101,9 +97,8 @@ void updateCell(Grid2D *grid2D, Network *network, UpdateInfo updateInfo) {
 
     case FACTORY:
         if (grid.thread_rank() == 0) {
-            // Set worker count to 0.
-            char *data = grid2D->tileData(id);
-            *(uint32_t *)data = FACTORY_CAPACITY;
+            // Set capacity
+            *grid2D->factoryTileData(id) = FACTORY_CAPACITY;
         }
         break;
 
@@ -115,7 +110,7 @@ void updateCell(Grid2D *grid2D, Network *network, UpdateInfo updateInfo) {
 
         if (grid.block_rank() == 0) {
             // Check nearby tiles.
-            int4 tileComps = neighborNetworks(id, network, grid2D);
+            int4 tileComps = neighborNetworks(id, grid2D);
             int2 tileCoords = grid2D->cellCoords(id);
 
             for (int offset = 0; offset < grid2D->count; offset += block.num_threads()) {
@@ -124,20 +119,23 @@ void updateCell(Grid2D *grid2D, Network *network, UpdateInfo updateInfo) {
                     break;
                 }
 
+                // Look for factories ...
                 if (grid2D->getTileId(factoryId) != FACTORY) {
                     continue;
                 }
-                if (*(uint32_t *)(grid2D->tileData(factoryId)) == 0) {
+                // ... with some capacity
+                if (*grid2D->factoryTileData(factoryId) == 0) {
                     continue;
                 }
 
                 // For each unique connected comp, look for factories connected to it.
-                int4 factoryComps = neighborNetworks(factoryId, network, grid2D);
+                int4 factoryComps = neighborNetworks(factoryId, grid2D);
                 for (int i = 0; i < 4; i++) {
                     for (int j = 0; j < 4; j++) {
                         int f = ((int *)(&factoryComps))[i];
                         int t = ((int *)(&tileComps))[j];
                         if (f != -1 && f == t) {
+                            // Keep the closest factory
                             int2 factoryCoords = grid2D->cellCoords(factoryId);
                             int2 diff = factoryCoords - tileCoords;
                             uint32_t distance = abs(diff.x) + abs(diff.y);
@@ -149,24 +147,23 @@ void updateCell(Grid2D *grid2D, Network *network, UpdateInfo updateInfo) {
             }
         }
         if (grid.thread_rank() == 0) {
-            char *data = grid2D->tileData(id);
+            int32_t *houseData = grid2D->houseTileData(id);
             if (targetFactory != uint64_t(Infinity) << 32ull) {
                 int32_t factoryId = targetFactory & 0xffffffffull;
-                *(int32_t *)data = factoryId;
-                *(uint32_t *)(grid2D->tileData(factoryId)) -= 1;
+                *houseData = factoryId;
+                *grid2D->factoryTileData(factoryId) -= 1;
             } else {
-                *(int32_t *)data = -1;
+                *houseData = -1;
             }
         }
 
-        // Choose the closest factory that has space.
         break;
     default:
         break;
     }
 }
 
-void updateGrid(Grid2D *grid2D, Network *network) {
+void updateGrid(Grid2D *grid2D) {
 
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
@@ -199,12 +196,12 @@ void updateGrid(Grid2D *grid2D, Network *network) {
     block.sync();
 
     if (updateInfo.update) {
-        updateCell(grid2D, network, updateInfo);
+        updateCell(grid2D, updateInfo);
     }
 }
 
 extern "C" __global__ void update(const Uniforms _uniforms, unsigned int *buffer, uint32_t numRows,
-                                  uint32_t numCols, char *cells, uint32_t *networkParents) {
+                                  uint32_t numCols, char *cells) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -219,9 +216,6 @@ extern "C" __global__ void update(const Uniforms _uniforms, unsigned int *buffer
         Grid2D *grid2D = allocator->alloc<Grid2D *>(sizeof(Grid2D));
         *grid2D = Grid2D(numRows, numCols, cells);
 
-        Network *network = allocator->alloc<Network *>(sizeof(Network));
-        network->parents = networkParents;
-
-        updateGrid(grid2D, network);
+        updateGrid(grid2D);
     }
 }

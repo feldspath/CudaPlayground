@@ -7,7 +7,6 @@
 #include "cells.h"
 #include "helper_math.h"
 #include "matrix_math.h"
-#include "network.h"
 
 uint32_t rgb8color(float3 color) {
     uint32_t r = color.x * 255.0f;
@@ -53,7 +52,7 @@ float3 colorFromId(uint32_t id) {
 // - <framebuffer> stores interleaved 32bit depth and color values
 // - The closest fragments are rendered via atomicMin on a combined 64bit depth&color integer
 //   atomicMin(&framebuffer[pixelIndex], (depth << 32 | color));
-void rasterizeGrid(Grid2D *grid2D, Network *network, uint64_t *framebuffer) {
+void rasterizeGrid(Grid2D *grid2D, uint64_t *framebuffer) {
 
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
@@ -93,9 +92,9 @@ void rasterizeGrid(Grid2D *grid2D, Network *network, uint64_t *framebuffer) {
             } else {
                 int colorId;
                 if (tileId == HOUSE) {
-                    colorId = *(int32_t *)(grid2D->tileData(sh_cellIndex));
+                    colorId = *(grid2D->houseTileData(sh_cellIndex));
                 } else if (tileId == ROAD) {
-                    colorId = network->cellRepr(sh_cellIndex);
+                    colorId = grid2D->roadNetworkRepr(sh_cellIndex);
                 } else {
                     colorId = sh_cellIndex;
                 }
@@ -123,7 +122,7 @@ void rasterizeGrid(Grid2D *grid2D, Network *network, uint64_t *framebuffer) {
 
 extern "C" __global__ void kernel(const Uniforms _uniforms, unsigned int *buffer,
                                   cudaSurfaceObject_t gl_colorbuffer, uint32_t numRows,
-                                  uint32_t numCols, char *cells, uint32_t *networkParents) {
+                                  uint32_t numCols, char *cells) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -149,10 +148,7 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, unsigned int *buffer
         Grid2D *grid2D = allocator->alloc<Grid2D *>(sizeof(Grid2D));
         *grid2D = Grid2D(numRows, numCols, cells);
 
-        Network *network = allocator->alloc<Network *>(sizeof(Network));
-        network->parents = networkParents;
-
-        rasterizeGrid(grid2D, network, framebuffer);
+        rasterizeGrid(grid2D, framebuffer);
     }
 
     grid.sync();

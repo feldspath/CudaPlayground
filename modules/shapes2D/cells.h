@@ -63,4 +63,23 @@ struct Grid2D {
     }
 
     char *tileData(int cellId) { return cellsData + cellId * BYTES_PER_CELL + 4; }
+
+    // ROAD DATA
+
+    int32_t *roadTileData(int cellId) { return (int32_t *)(tileData(cellId)); }
+
+    // We assume that the network is flattened
+    int32_t roadNetworkRepr(int cellId) { return *roadTileData(cellId); }
+
+    // Makes the network not flat
+    void updateNetworkRepr(int cellId, int32_t newRepr) {
+        int32_t previousRepr = roadNetworkRepr(cellId);
+        *roadTileData(previousRepr) = newRepr;
+    }
+
+    // FACTORY DATA
+    int32_t *factoryTileData(int cellId) { return (int32_t *)(tileData(cellId)); }
+
+    // HOUSE DATA
+    int32_t *houseTileData(int cellId) { return (int32_t *)(tileData(cellId)); }
 };
