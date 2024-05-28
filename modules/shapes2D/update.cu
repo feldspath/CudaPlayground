@@ -47,9 +47,11 @@ void updateCell(Grid2D *grid2D, UpdateInfo updateInfo) {
     TileId new_tile = updateInfo.newTileId;
     int id = updateInfo.tileToUpdate;
 
+    grid.sync();
     if (grid.thread_rank() == 0) {
         grid2D->setTileId(id, new_tile);
     }
+    grid.sync();
 
     switch (new_tile) {
     case ROAD:
@@ -91,6 +93,106 @@ void updateCell(Grid2D *grid2D, UpdateInfo updateInfo) {
 
                 int newRepr = grid2D->roadNetworkRepr(grid2D->roadNetworkRepr(cellId));
                 *grid2D->roadTileData(cellId) = newRepr;
+            }
+        }
+
+        block.sync();
+
+        // Each block grabs a tile
+        uint32_t &processedTiles = *allocator->alloc<uint32_t *>(4);
+        if (grid.thread_rank() == 0) {
+            processedTiles = 0;
+        }
+
+        grid.sync();
+
+        {
+            __shared__ int currentTile;
+            __shared__ uint64_t targetFactory2;
+
+            for (int loop_i = 0; loop_i < grid2D->count; loop_i++) {
+                block.sync();
+                if (block.thread_rank() == 0) {
+                    currentTile = atomicAdd(&processedTiles, 1);
+                }
+                block.sync();
+
+                // Break if all tiles have been processed
+                if (currentTile >= grid2D->count) {
+                    break;
+                }
+
+                // Skip if tile is not a house or already assigned
+                if (grid2D->getTileId(currentTile) != HOUSE ||
+                    *grid2D->houseTileData(currentTile) != -1) {
+                    continue;
+                }
+
+                // Get neighbor networks
+                int4 nets = neighborNetworks(currentTile, grid2D);
+                bool found = false;
+                for (int i = 0; i < 4; ++i) {
+                    if (((int *)(&nets))[i] == id) {
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (found == false) {
+                    continue;
+                }
+
+                int2 tileCoords = grid2D->cellCoords(currentTile);
+
+                if (block.thread_rank() == 0) {
+                    targetFactory2 = uint64_t(Infinity) << 32ull;
+                }
+
+                // Check all tiles for factories
+                for (int offset = 0; offset < grid2D->count; offset += block.num_threads()) {
+                    int factoryId = block.thread_rank() + offset;
+                    if (factoryId >= grid2D->count) {
+                        break;
+                    }
+
+                    // Look for factories ...
+                    if (grid2D->getTileId(factoryId) != FACTORY) {
+                        continue;
+                    }
+                    // ... with some capacity
+                    if (*grid2D->factoryTileData(factoryId) == 0) {
+                        continue;
+                    }
+
+                    // Get the networks the factory is connected to
+                    int4 factoryComps = neighborNetworks(factoryId, grid2D);
+                    for (int i = 0; i < 4; i++) {
+                        int f = ((int *)(&factoryComps))[i];
+                        if (f == id) {
+                            // This factory shares the same networ
+                            int2 factoryCoords = grid2D->cellCoords(factoryId);
+                            int2 diff = factoryCoords - tileCoords;
+                            uint32_t distance = abs(diff.x) + abs(diff.y);
+                            uint64_t target = (uint64_t(distance) << 32ull) | uint64_t(factoryId);
+                            // keep the closest factory
+                            atomicMin(&targetFactory2, target);
+                            break;
+                        }
+                    }
+                }
+
+                block.sync();
+
+                if (block.thread_rank() == 0) {
+                    int32_t *houseData = grid2D->houseTileData(currentTile);
+                    if (targetFactory2 != uint64_t(Infinity) << 32ull) {
+                        int32_t factoryId = targetFactory2 & 0xffffffffull;
+                        *houseData = factoryId;
+                        *grid2D->factoryTileData(factoryId) -= 1;
+                    } else {
+                        *houseData = -1;
+                    }
+                }
             }
         }
 
@@ -151,6 +253,8 @@ void updateCell(Grid2D *grid2D, UpdateInfo updateInfo) {
             }
         }
 
+        block.sync();
+
         if (grid.thread_rank() == 0) {
             for (int i = 0; i < 4; i++) {
                 uint64_t target = targets[i];
@@ -210,6 +314,9 @@ void updateCell(Grid2D *grid2D, UpdateInfo updateInfo) {
                 }
             }
         }
+
+        block.sync();
+
         if (grid.thread_rank() == 0) {
             int32_t *houseData = grid2D->houseTileData(id);
             if (targetFactory != uint64_t(Infinity) << 32ull) {
@@ -228,7 +335,6 @@ void updateCell(Grid2D *grid2D, UpdateInfo updateInfo) {
 }
 
 void updateGrid(Grid2D *grid2D) {
-
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -237,27 +343,23 @@ void updateGrid(Grid2D *grid2D) {
         return;
     }
 
-    __shared__ UpdateInfo updateInfo;
+    UpdateInfo updateInfo;
 
-    if (grid.thread_rank() == 0) {
-        bool mousePressed = uniforms.mouseButtons & 1;
-        updateInfo.update = false;
+    bool mousePressed = uniforms.mouseButtons & 1;
+    updateInfo.update = false;
 
-        if (mousePressed) {
-            float2 px = float2{uniforms.cursorPos.x, uniforms.height - uniforms.cursorPos.y};
-            float3 pos_W =
-                unproject(px, uniforms.invview * uniforms.invproj, uniforms.width, uniforms.height);
-            int id = grid2D->cellAtPosition(float2{pos_W.x, pos_W.y});
+    if (mousePressed) {
+        float2 px = float2{uniforms.cursorPos.x, uniforms.height - uniforms.cursorPos.y};
+        float3 pos_W =
+            unproject(px, uniforms.invview * uniforms.invproj, uniforms.width, uniforms.height);
+        int id = grid2D->cellAtPosition(float2{pos_W.x, pos_W.y});
 
-            if (id != -1 && grid2D->getTileId(id) == GRASS) {
-                updateInfo.update = true;
-                updateInfo.tileToUpdate = id;
-                updateInfo.newTileId = (TileId)uniforms.modeId;
-            }
+        if (id != -1 && grid2D->getTileId(id) == GRASS) {
+            updateInfo.update = true;
+            updateInfo.tileToUpdate = id;
+            updateInfo.newTileId = (TileId)uniforms.modeId;
         }
     }
-
-    block.sync();
 
     if (updateInfo.update) {
         updateCell(grid2D, updateInfo);

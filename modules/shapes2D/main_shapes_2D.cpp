@@ -57,7 +57,7 @@ void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
     cuCtxGetDevice(&device);
     cuDeviceGetAttribute(&numSMs, CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT, device);
 
-    int workgroupSize = 256;
+    int workgroupSize = 64;
 
     int numGroups = maxOccupancy(cuda_update, "update", workgroupSize, numSMs);
 
