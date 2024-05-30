@@ -52,7 +52,7 @@ float3 colorFromId(uint32_t id) {
 // - <framebuffer> stores interleaved 32bit depth and color values
 // - The closest fragments are rendered via atomicMin on a combined 64bit depth&color integer
 //   atomicMin(&framebuffer[pixelIndex], (depth << 32 | color));
-void rasterizeGrid(Grid2D *grid2D, uint64_t *framebuffer) {
+void rasterizeGrid(Grid2D *grid2D, Entities *entities, uint64_t *framebuffer) {
 
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
@@ -92,7 +92,12 @@ void rasterizeGrid(Grid2D *grid2D, uint64_t *framebuffer) {
             } else {
                 int colorId;
                 if (tileId == HOUSE) {
-                    colorId = *(grid2D->houseTileData(sh_cellIndex));
+                    int entityId = *(grid2D->houseTileData(sh_cellIndex));
+                    if (entityId == -1) {
+                        colorId = -1;
+                    } else {
+                        colorId = entities->entityFactory(entityId);
+                    }
                 } else if (tileId == ROAD) {
                     colorId = grid2D->roadNetworkRepr(sh_cellIndex);
                 } else {
@@ -130,13 +135,13 @@ void rasterizeEntities(Entities *entities, uint64_t *framebuffer) {
         float3{ENTITY_RADIUS, 0.0f, 0.0f}, viewProj, uniforms.width, uniforms.height));
     // sphereRadius = 5.0f;
     //  Each thread grabs an entity
-    for (int offset = 0; offset < entities->count; offset += grid.num_threads()) {
+    for (int offset = 0; offset < entities->getCount(); offset += grid.num_threads()) {
         int entityIndex = offset + grid.thread_rank();
-        if (entityIndex >= entities->count) {
+        if (entityIndex >= entities->getCount()) {
             break;
         }
 
-        float2 entityPos = entities->positions[entityIndex];
+        float2 entityPos = entities->entityPosition(entityIndex);
         float2 screenPos = projectPosToScreenPos(make_float3(entityPos, 0.0f), viewProj,
                                                  uniforms.width, uniforms.height);
 
@@ -180,7 +185,7 @@ void rasterizeEntities(Entities *entities, uint64_t *framebuffer) {
 
 extern "C" __global__ void kernel(const Uniforms _uniforms, unsigned int *buffer,
                                   cudaSurfaceObject_t gl_colorbuffer, uint32_t numRows,
-                                  uint32_t numCols, char *cells, float2 *entitiesPositions) {
+                                  uint32_t numCols, char *cells, void *entitiesBuffer) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -205,10 +210,12 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, unsigned int *buffer
     {
         Grid2D *grid2D = allocator->alloc<Grid2D *>(sizeof(Grid2D));
         *grid2D = Grid2D(numRows, numCols, cells);
-        rasterizeGrid(grid2D, framebuffer);
 
         Entities *entities = allocator->alloc<Entities *>(sizeof(Entities));
-        *entities = Entities(*(uint32_t *)entitiesPositions, &entitiesPositions[1]);
+        *entities = Entities(entitiesBuffer);
+
+        rasterizeGrid(grid2D, entities, framebuffer);
+
         rasterizeEntities(entities, framebuffer);
     }
 

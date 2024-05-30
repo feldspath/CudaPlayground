@@ -212,15 +212,9 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer) {
     cuMemcpyHtoD(cptr_grid, gridCells.data(), gridCells.size() * sizeof(uint32_t));
 
     // Let's assume we can have as much entities as we have cells
-    cuMemAlloc(&cptr_entities, (numCells + 1) * 2 * (sizeof(float)));
-
-    int ENTITY_COUNT = 100000;
-    std::vector<glm::vec2> entities(ENTITY_COUNT + 1);
-    for (int i = 1; i <= ENTITY_COUNT; ++i) {
-        entities[i] = glm::vec2(i % gridRows, i / gridRows);
-    }
-    *reinterpret_cast<uint32_t *>(&entities[0]) = ENTITY_COUNT;
-    cuMemcpyHtoD(cptr_entities, entities.data(), entities.size() * sizeof(glm::vec2));
+    cuMemAlloc(&cptr_entities, sizeof(uint32_t) + numCells * (BYTES_PER_ENTITY));
+    uint32_t entitiesCount = 0;
+    cuMemcpyHtoD(cptr_entities, &entitiesCount, sizeof(uint32_t));
 
     cuda_program = new CudaModularProgram({.modules =
                                                {

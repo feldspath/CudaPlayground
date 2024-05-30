@@ -5,6 +5,7 @@
 #include "HostDeviceInterface.h"
 #include "builtin_types.h"
 #include "cells.h"
+#include "entities.h"
 #include "helper_math.h"
 #include "matrix_math.h"
 
@@ -117,7 +118,15 @@ void updateCell(Grid2D *grid2D, UpdateInfo updateInfo) {
     }
 }
 
-void assignOneHouse(Grid2D *grid2D) {
+void assignHouseToFactory(Grid2D *grid2D, Entities *entities, int32_t houseId, int32_t factoryId) {
+    int32_t newEntity = entities->newEntity(grid2D->getCell(houseId).center, houseId, factoryId);
+    int32_t *houseData = grid2D->houseTileData(houseId);
+    *houseData = newEntity;
+
+    *grid2D->factoryTileData(factoryId) -= 1;
+}
+
+void assignOneHouse(Grid2D *grid2D, Entities *entities) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -189,8 +198,7 @@ void assignOneHouse(Grid2D *grid2D) {
             int32_t *houseData = grid2D->houseTileData(currentTile);
             if (targetFactory != uint64_t(Infinity) << 32ull && !atomicAdd(&assigned, 1)) {
                 int32_t factoryId = targetFactory & 0xffffffffull;
-                *houseData = factoryId;
-                *grid2D->factoryTileData(factoryId) -= 1;
+                assignHouseToFactory(grid2D, entities, currentTile, factoryId);
             } else {
                 *houseData = -1;
             }
@@ -200,11 +208,11 @@ void assignOneHouse(Grid2D *grid2D) {
     }
 }
 
-void updateGrid(Grid2D *grid2D) {
+void updateGrid(Grid2D *grid2D, Entities *entities) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
-    assignOneHouse(grid2D);
+    assignOneHouse(grid2D, entities);
 
     if (uniforms.cursorPos.x < 0 || uniforms.cursorPos.x >= uniforms.width ||
         uniforms.cursorPos.y < 0 || uniforms.cursorPos.y >= uniforms.height) {
@@ -235,7 +243,7 @@ void updateGrid(Grid2D *grid2D) {
 }
 
 extern "C" __global__ void update(const Uniforms _uniforms, unsigned int *buffer, uint32_t numRows,
-                                  uint32_t numCols, char *cells, float2 *entitiesPositions) {
+                                  uint32_t numCols, char *cells, void *entitiesBuffer) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -250,6 +258,9 @@ extern "C" __global__ void update(const Uniforms _uniforms, unsigned int *buffer
         Grid2D *grid2D = allocator->alloc<Grid2D *>(sizeof(Grid2D));
         *grid2D = Grid2D(numRows, numCols, cells);
 
-        updateGrid(grid2D);
+        Entities *entities = allocator->alloc<Entities *>(sizeof(Entities));
+        *entities = Entities(entitiesBuffer);
+
+        updateGrid(grid2D, entities);
     }
 }
