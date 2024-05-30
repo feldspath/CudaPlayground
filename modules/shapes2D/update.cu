@@ -235,7 +235,7 @@ void updateGrid(Grid2D *grid2D) {
 }
 
 extern "C" __global__ void update(const Uniforms _uniforms, unsigned int *buffer, uint32_t numRows,
-                                  uint32_t numCols, char *cells) {
+                                  uint32_t numCols, char *cells, float2 *entitiesPositions) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 

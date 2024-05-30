@@ -21,6 +21,7 @@
 
 CUdeviceptr cptr_buffer;
 CUdeviceptr cptr_grid;
+CUdeviceptr cptr_entities;
 uint32_t gridRows;
 uint32_t gridCols;
 
@@ -90,7 +91,7 @@ void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
     memcpy(&uniforms.invproj, &invproj, sizeof(invproj));
     memcpy(&uniforms.invview, &invview, sizeof(invview));
 
-    void *args[] = {&uniforms, &cptr_buffer, &gridRows, &gridCols, &cptr_grid};
+    void *args[] = {&uniforms, &cptr_buffer, &gridRows, &gridCols, &cptr_grid, &cptr_entities};
 
     auto res_launch = cuLaunchCooperativeKernel(cuda_update->kernels["update"], numGroups, 1, 1,
                                                 workgroupSize, 1, 1, 0, 0, args);
@@ -163,7 +164,8 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
     memcpy(&uniforms.invproj, &invproj, sizeof(invproj));
     memcpy(&uniforms.invview, &invview, sizeof(invview));
 
-    void *args[] = {&uniforms, &cptr_buffer, &output_surf, &gridRows, &gridCols, &cptr_grid};
+    void *args[] = {&uniforms, &cptr_buffer, &output_surf,  &gridRows,
+                    &gridCols, &cptr_grid,   &cptr_entities};
 
     auto res_launch = cuLaunchCooperativeKernel(cuda_program->kernels["kernel"], numGroups, 1, 1,
                                                 workgroupSize, 1, 1, 0, 0, args);
@@ -199,6 +201,7 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer) {
     gridCols = 512;
     int numCells = gridRows * gridCols;
     cuMemAlloc(&cptr_grid, numCells * BYTES_PER_CELL);
+
     std::vector<char> gridCells(numCells * BYTES_PER_CELL);
     for (int y = 0; y < gridRows; ++y) {
         for (int x = 0; x < gridCols; ++x) {
@@ -206,8 +209,18 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer) {
             *(reinterpret_cast<int32_t *>(gridCells.data() + cellId * BYTES_PER_CELL)) = GRASS;
         }
     }
-
     cuMemcpyHtoD(cptr_grid, gridCells.data(), gridCells.size() * sizeof(uint32_t));
+
+    // Let's assume we can have as much entities as we have cells
+    cuMemAlloc(&cptr_entities, (numCells + 1) * 2 * (sizeof(float)));
+
+    int ENTITY_COUNT = 100000;
+    std::vector<glm::vec2> entities(ENTITY_COUNT + 1);
+    for (int i = 1; i <= ENTITY_COUNT; ++i) {
+        entities[i] = glm::vec2(i % gridRows, i / gridRows);
+    }
+    *reinterpret_cast<uint32_t *>(&entities[0]) = ENTITY_COUNT;
+    cuMemcpyHtoD(cptr_entities, entities.data(), entities.size() * sizeof(glm::vec2));
 
     cuda_program = new CudaModularProgram({.modules =
                                                {

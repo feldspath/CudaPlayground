@@ -39,6 +39,22 @@ float3 unproject(float2 pixelCoords, mat4 unprojection, int screenWidth, int scr
     float4 ndc = {pixelCoords.x / screenWidth * 2.0f - 1.0f,
                   pixelCoords.y / screenHeight * 2.0f - 1.0f, 1.0, 1.0};
     float4 worldPos = unprojection * ndc;
-    float3 pos = float3{worldPos.x / worldPos.w, worldPos.y / worldPos.w, worldPos.z / worldPos.w};
+    float3 pos = {worldPos.x / worldPos.w, worldPos.y / worldPos.w, worldPos.z / worldPos.w};
     return pos;
+}
+
+float2 projectPosToScreenPos(float3 worldPos, mat4 projection, int screenWidth, int screenHeight) {
+    float4 worldCoord = make_float4(worldPos, 1.0f);
+    float4 screenCoord = projection * worldCoord;
+
+    float2 ndc = {screenCoord.x / screenCoord.w, screenCoord.y / screenCoord.w};
+
+    return {(ndc.x + 1.0f) * 0.5f * screenWidth, (ndc.y + 1.0f) * 0.5f * screenHeight};
+}
+
+float2 projectVectorToScreenPos(float3 vector, mat4 projection, int screenWidth, int screenHeight) {
+    float4 worldCoord = make_float4(vector, 0.0f);
+    float4 screenCoord = projection * worldCoord;
+
+    return float2{screenCoord.x * screenWidth * 0.5f, screenCoord.y * screenHeight * 0.5f};
 }

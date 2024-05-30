@@ -5,6 +5,7 @@
 #include "HostDeviceInterface.h"
 #include "builtin_types.h"
 #include "cells.h"
+#include "entities.h"
 #include "helper_math.h"
 #include "matrix_math.h"
 
@@ -111,7 +112,7 @@ void rasterizeGrid(Grid2D *grid2D, uint64_t *framebuffer) {
 
         float3 pixelColor = color;
 
-        float depth = 0.0f;
+        float depth = 1.0f;
         uint64_t udepth = *((uint32_t *)&depth);
         uint64_t pixel = (udepth << 32ull) | rgb8color(pixelColor);
 
@@ -119,9 +120,67 @@ void rasterizeGrid(Grid2D *grid2D, uint64_t *framebuffer) {
     }
 }
 
+void rasterizeEntities(Entities *entities, uint64_t *framebuffer) {
+    auto grid = cg::this_grid();
+    auto block = cg::this_thread_block();
+
+    mat4 viewProj = uniforms.proj * uniforms.view;
+
+    float sphereRadius = length(projectVectorToScreenPos(
+        float3{ENTITY_RADIUS, 0.0f, 0.0f}, viewProj, uniforms.width, uniforms.height));
+    // sphereRadius = 5.0f;
+    //  Each thread grabs an entity
+    for (int offset = 0; offset < entities->count; offset += grid.num_threads()) {
+        int entityIndex = offset + grid.thread_rank();
+        if (entityIndex >= entities->count) {
+            break;
+        }
+
+        float2 entityPos = entities->positions[entityIndex];
+        float2 screenPos = projectPosToScreenPos(make_float3(entityPos, 0.0f), viewProj,
+                                                 uniforms.width, uniforms.height);
+
+        float min_x = screenPos.x - sphereRadius;
+        float max_x = screenPos.x + sphereRadius;
+        float min_y = screenPos.y - sphereRadius;
+        float max_y = screenPos.y + sphereRadius;
+
+        min_x = clamp(min_x, 0.0f, uniforms.width);
+        min_y = clamp(min_y, 0.0f, uniforms.height);
+        max_x = clamp(max_x, 0.0f, uniforms.width);
+        max_y = clamp(max_y, 0.0f, uniforms.height);
+
+        int size_x = ceil(max_x) - floor(min_x);
+        int size_y = ceil(max_y) - floor(min_y);
+        int numFragments = size_x * size_y;
+        for (int fragID = 0; fragID < numFragments; fragID++) {
+            int fragX = fragID % size_x;
+            int fragY = fragID / size_x;
+
+            float2 pFrag = {floor(min_x) + float(fragX), floor(min_y) + float(fragY)};
+
+            if (length(pFrag - screenPos) >= sphereRadius) {
+                continue;
+            }
+
+            int2 pixelCoords = make_int2(pFrag.x, pFrag.y);
+            int pixelID = pixelCoords.x + pixelCoords.y * uniforms.width;
+            pixelID = clamp(pixelID, 0, int(uniforms.width * uniforms.height) - 1);
+
+            float3 color = {1.0f, 0.0f, 0.0f};
+
+            float depth = 0.9f;
+            uint64_t udepth = *((uint32_t *)&depth);
+            uint64_t pixel = (udepth << 32ull) | rgb8color(color);
+
+            atomicMin(&framebuffer[pixelID], pixel);
+        }
+    }
+}
+
 extern "C" __global__ void kernel(const Uniforms _uniforms, unsigned int *buffer,
                                   cudaSurfaceObject_t gl_colorbuffer, uint32_t numRows,
-                                  uint32_t numCols, char *cells) {
+                                  uint32_t numCols, char *cells, float2 *entitiesPositions) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -146,8 +205,11 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, unsigned int *buffer
     {
         Grid2D *grid2D = allocator->alloc<Grid2D *>(sizeof(Grid2D));
         *grid2D = Grid2D(numRows, numCols, cells);
-
         rasterizeGrid(grid2D, framebuffer);
+
+        Entities *entities = allocator->alloc<Entities *>(sizeof(Entities));
+        *entities = Entities(*(uint32_t *)entitiesPositions, &entitiesPositions[1]);
+        rasterizeEntities(entities, framebuffer);
     }
 
     grid.sync();

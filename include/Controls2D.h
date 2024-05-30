@@ -13,7 +13,7 @@
 #include "Controls.h"
 
 struct Controls2D : public Controls {
-    double zoom = 10.0;
+    double zoom = 20.0;
 
     glm::dvec2 pos = {0.0, 0.0};
     glm::dvec2 left = {1.0, 0.0};
@@ -66,7 +66,9 @@ struct Controls2D : public Controls {
         mousePos = newMousePos;
     }
 
-    void onMouseScroll(double xoffset, double yoffset) override { zoom -= 0.1 * zoom * yoffset; }
+    void onMouseScroll(double xoffset, double yoffset) override {
+        zoom = std::max(20.0, zoom - 0.1 * zoom * yoffset);
+    }
 
     void update() override {
         auto w = glm::dmat4(1.0);
