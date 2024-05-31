@@ -91,8 +91,10 @@ int RENDERMODE_NETWORK = 1;
 // 4 bytes for the tile index, 4 bytes additional data.
 int BYTES_PER_CELL = 4 + 4;
 
-// 2 * 4 bytes for the 2D position, 2 * 4 bytes additional data for the factory id and house id
-int BYTES_PER_ENTITY = 2 * 4 + 2 * 4;
+// 2 * 4 bytes for the 2D position
+// 2 * 4 bytes additional data for the factory id and house id
+// 2 * 4 bytes for state and state start timing
+int BYTES_PER_ENTITY = 2 * 4 + 4 * 4;
 
 struct Uniforms {
     float width;

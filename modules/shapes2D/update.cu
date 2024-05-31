@@ -13,6 +13,7 @@ namespace cg = cooperative_groups;
 
 Uniforms uniforms;
 Allocator *allocator;
+uint64_t nanotime_start;
 
 struct UpdateInfo {
     bool update;
@@ -208,38 +209,87 @@ void assignOneHouse(Grid2D *grid2D, Entities *entities) {
     }
 }
 
+uint32_t currentTime_ms() { return uint32_t((nanotime_start / (uint64_t)1e6) & 0xffffffff); }
+
+void updateEntities(Grid2D *grid2D, Entities *entities) {
+    auto grid = cg::this_grid();
+    auto block = cg::this_thread_block();
+
+    // Each thread handles an entity
+    for (int offset = 0; offset < entities->getCount(); offset += grid.num_threads()) {
+        int entityIndex = offset + grid.thread_rank();
+        if (entityIndex >= entities->getCount()) {
+            break;
+        }
+
+        switch (entities->entityState(entityIndex)) {
+        case GoToWork:
+            uint32_t factoryId = entities->entityFactory(entityIndex);
+            float2 factoryPos = grid2D->getCell(factoryId).center;
+
+            if (entities->moveEntityTo(entityIndex, factoryPos, CELL_RADIUS)) {
+                entities->entityState(entityIndex) = Work;
+                entities->stateStart_ms(entityIndex) = currentTime_ms();
+            }
+            break;
+        case Work:
+            if (currentTime_ms() - entities->stateStart_ms(entityIndex) >= WORK_TIME_MS) {
+                entities->entityState(entityIndex) = GoHome;
+            }
+            break;
+        case GoHome:
+            uint32_t houseId = entities->entityHouse(entityIndex);
+            float2 housePos = grid2D->getCell(houseId).center;
+
+            if (entities->moveEntityTo(entityIndex, housePos, CELL_RADIUS)) {
+                entities->entityState(entityIndex) = Rest;
+                entities->stateStart_ms(entityIndex) = currentTime_ms();
+            }
+            break;
+        case Rest:
+            if (currentTime_ms() - entities->stateStart_ms(entityIndex) >= REST_TIME_MS) {
+                entities->entityState(entityIndex) = GoToWork;
+            }
+        default:
+            break;
+        }
+    }
+}
+
 void updateGrid(Grid2D *grid2D, Entities *entities) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
-    assignOneHouse(grid2D, entities);
+    asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(nanotime_start));
 
-    if (uniforms.cursorPos.x < 0 || uniforms.cursorPos.x >= uniforms.width ||
-        uniforms.cursorPos.y < 0 || uniforms.cursorPos.y >= uniforms.height) {
-        return;
-    }
+    if (uniforms.cursorPos.x >= 0 && uniforms.cursorPos.x < uniforms.width &&
+        uniforms.cursorPos.y >= 0 && uniforms.cursorPos.y < uniforms.height) {
+        UpdateInfo updateInfo;
 
-    UpdateInfo updateInfo;
+        bool mousePressed = uniforms.mouseButtons & 1;
+        updateInfo.update = false;
 
-    bool mousePressed = uniforms.mouseButtons & 1;
-    updateInfo.update = false;
+        if (mousePressed) {
+            float2 px = float2{uniforms.cursorPos.x, uniforms.height - uniforms.cursorPos.y};
+            float3 pos_W =
+                unproject(px, uniforms.invview * uniforms.invproj, uniforms.width, uniforms.height);
+            int id = grid2D->cellAtPosition(float2{pos_W.x, pos_W.y});
 
-    if (mousePressed) {
-        float2 px = float2{uniforms.cursorPos.x, uniforms.height - uniforms.cursorPos.y};
-        float3 pos_W =
-            unproject(px, uniforms.invview * uniforms.invproj, uniforms.width, uniforms.height);
-        int id = grid2D->cellAtPosition(float2{pos_W.x, pos_W.y});
+            if (id != -1 && grid2D->getTileId(id) == GRASS) {
+                updateInfo.update = true;
+                updateInfo.tileToUpdate = id;
+                updateInfo.newTileId = (TileId)uniforms.modeId;
+            }
+        }
 
-        if (id != -1 && grid2D->getTileId(id) == GRASS) {
-            updateInfo.update = true;
-            updateInfo.tileToUpdate = id;
-            updateInfo.newTileId = (TileId)uniforms.modeId;
+        if (updateInfo.update) {
+            updateCell(grid2D, updateInfo);
         }
     }
 
-    if (updateInfo.update) {
-        updateCell(grid2D, updateInfo);
-    }
+    assignOneHouse(grid2D, entities);
+
+    updateEntities(grid2D, entities);
 }
 
 extern "C" __global__ void update(const Uniforms _uniforms, unsigned int *buffer, uint32_t numRows,
