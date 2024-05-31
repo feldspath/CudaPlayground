@@ -122,4 +122,8 @@ enum TileId {
     UNKNOWN = -1,
 };
 
+struct GameState {
+    uint64_t previousFrameTime_ns;
+};
+
 int FACTORY_CAPACITY = 4;

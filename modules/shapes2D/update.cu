@@ -12,6 +12,7 @@
 namespace cg = cooperative_groups;
 
 Uniforms uniforms;
+GameState *gameState;
 Allocator *allocator;
 uint64_t nanotime_start;
 
@@ -210,6 +211,7 @@ void assignOneHouse(Grid2D *grid2D, Entities *entities) {
 }
 
 uint32_t currentTime_ms() { return uint32_t((nanotime_start / (uint64_t)1e6) & 0xffffffff); }
+float frameTime() { return ((float)(nanotime_start - gameState->previousFrameTime_ns)) / 1e9; }
 
 void updateEntities(Grid2D *grid2D, Entities *entities) {
     auto grid = cg::this_grid();
@@ -227,7 +229,7 @@ void updateEntities(Grid2D *grid2D, Entities *entities) {
             uint32_t factoryId = entities->entityFactory(entityIndex);
             float2 factoryPos = grid2D->getCell(factoryId).center;
 
-            if (entities->moveEntityTo(entityIndex, factoryPos, CELL_RADIUS)) {
+            if (entities->moveEntityTo(entityIndex, factoryPos, CELL_RADIUS * 0.5f, frameTime())) {
                 entities->entityState(entityIndex) = Work;
                 entities->stateStart_ms(entityIndex) = currentTime_ms();
             }
@@ -241,7 +243,7 @@ void updateEntities(Grid2D *grid2D, Entities *entities) {
             uint32_t houseId = entities->entityHouse(entityIndex);
             float2 housePos = grid2D->getCell(houseId).center;
 
-            if (entities->moveEntityTo(entityIndex, housePos, CELL_RADIUS)) {
+            if (entities->moveEntityTo(entityIndex, housePos, CELL_RADIUS * 0.5f, frameTime())) {
                 entities->entityState(entityIndex) = Rest;
                 entities->stateStart_ms(entityIndex) = currentTime_ms();
             }
@@ -255,6 +257,8 @@ void updateEntities(Grid2D *grid2D, Entities *entities) {
         }
     }
 }
+
+void updateGameState() { gameState->previousFrameTime_ns = nanotime_start; }
 
 void updateGrid(Grid2D *grid2D, Entities *entities) {
     auto grid = cg::this_grid();
@@ -290,10 +294,15 @@ void updateGrid(Grid2D *grid2D, Entities *entities) {
     assignOneHouse(grid2D, entities);
 
     updateEntities(grid2D, entities);
+
+    if (grid.thread_rank() == 0) {
+        updateGameState();
+    }
 }
 
-extern "C" __global__ void update(const Uniforms _uniforms, unsigned int *buffer, uint32_t numRows,
-                                  uint32_t numCols, char *cells, void *entitiesBuffer) {
+extern "C" __global__ void update(const Uniforms _uniforms, GameState *_gameState,
+                                  unsigned int *buffer, uint32_t numRows, uint32_t numCols,
+                                  char *cells, void *entitiesBuffer) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -301,6 +310,8 @@ extern "C" __global__ void update(const Uniforms _uniforms, unsigned int *buffer
 
     Allocator _allocator(buffer, 0);
     allocator = &_allocator;
+
+    gameState = _gameState;
 
     grid.sync();
 

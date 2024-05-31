@@ -22,6 +22,7 @@
 CUdeviceptr cptr_buffer;
 CUdeviceptr cptr_grid;
 CUdeviceptr cptr_entities;
+CUdeviceptr cptr_gameState;
 uint32_t gridRows;
 uint32_t gridCols;
 
@@ -91,7 +92,8 @@ void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
     memcpy(&uniforms.invproj, &invproj, sizeof(invproj));
     memcpy(&uniforms.invview, &invview, sizeof(invview));
 
-    void *args[] = {&uniforms, &cptr_buffer, &gridRows, &gridCols, &cptr_grid, &cptr_entities};
+    void *args[] = {&uniforms, &cptr_gameState, &cptr_buffer,  &gridRows,
+                    &gridCols, &cptr_grid,      &cptr_entities};
 
     auto res_launch = cuLaunchCooperativeKernel(cuda_update->kernels["update"], numGroups, 1, 1,
                                                 workgroupSize, 1, 1, 0, 0, args);
@@ -164,8 +166,8 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
     memcpy(&uniforms.invproj, &invproj, sizeof(invproj));
     memcpy(&uniforms.invview, &invview, sizeof(invview));
 
-    void *args[] = {&uniforms, &cptr_buffer, &output_surf,  &gridRows,
-                    &gridCols, &cptr_grid,   &cptr_entities};
+    void *args[] = {&uniforms, &cptr_gameState, &cptr_buffer, &output_surf,
+                    &gridRows, &gridCols,       &cptr_grid,   &cptr_entities};
 
     auto res_launch = cuLaunchCooperativeKernel(cuda_program->kernels["kernel"], numGroups, 1, 1,
                                                 workgroupSize, 1, 1, 0, 0, args);
@@ -196,6 +198,7 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
 
 void initCudaProgram(std::shared_ptr<GLRenderer> renderer) {
     cuMemAlloc(&cptr_buffer, 100'000'000);
+    cuMemAlloc(&cptr_gameState, sizeof(GameState));
 
     gridRows = 512;
     gridCols = 512;

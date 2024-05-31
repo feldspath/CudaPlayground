@@ -5,7 +5,7 @@
 #include "helper_math.h"
 
 float ENTITY_RADIUS = 0.2f;
-float ENTITY_SPEED = 1.0f;
+float ENTITY_SPEED = 3.0f;
 
 uint32_t WORK_TIME_MS = 5000;
 uint32_t REST_TIME_MS = 5000;
@@ -66,10 +66,10 @@ struct Entities {
     }
 
     // Returns true if entity is within clampRadius distance of target.
-    bool moveEntityTo(uint32_t entityId, float2 target, float clampRadius) {
+    bool moveEntityTo(uint32_t entityId, float2 target, float clampRadius, float dt) {
         float2 &entityPos = entityPosition(entityId);
         float2 movementVector = normalize(target - entityPos);
-        entityPos += 0.05f * movementVector;
+        entityPos += dt * movementVector * ENTITY_SPEED;
 
         if (length(entityPos - target) < clampRadius) {
             entityPos = target;

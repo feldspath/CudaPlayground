@@ -20,6 +20,7 @@ uint32_t rgb8color(float3 color) {
 namespace cg = cooperative_groups;
 
 Uniforms uniforms;
+GameState *gameState;
 Allocator *allocator;
 uint64_t nanotime_start;
 
@@ -183,9 +184,10 @@ void rasterizeEntities(Entities *entities, uint64_t *framebuffer) {
     }
 }
 
-extern "C" __global__ void kernel(const Uniforms _uniforms, unsigned int *buffer,
-                                  cudaSurfaceObject_t gl_colorbuffer, uint32_t numRows,
-                                  uint32_t numCols, char *cells, void *entitiesBuffer) {
+extern "C" __global__ void kernel(const Uniforms _uniforms, GameState *_gameState,
+                                  unsigned int *buffer, cudaSurfaceObject_t gl_colorbuffer,
+                                  uint32_t numRows, uint32_t numCols, char *cells,
+                                  void *entitiesBuffer) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -195,6 +197,8 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, unsigned int *buffer
 
     Allocator _allocator(buffer, 0);
     allocator = &_allocator;
+
+    gameState = _gameState;
 
     // allocate framebuffer memory
     int framebufferSize = int(uniforms.width) * int(uniforms.height) * sizeof(uint64_t);
