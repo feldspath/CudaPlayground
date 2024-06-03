@@ -253,33 +253,48 @@ void updateEntities(Grid2D *grid2D, Entities *entities) {
         }
 
         switch (entities->entityState(entityIndex)) {
-        case GoToWork:
-            uint32_t factoryId = entities->entityFactory(entityIndex);
-            float2 factoryPos = grid2D->getCellPosition(factoryId);
-
-            if (entities->moveEntityTo(entityIndex, factoryPos, CELL_RADIUS * 0.5f, frameTime())) {
-                entities->entityState(entityIndex) = Work;
-                entities->stateStart_ms(entityIndex) = currentTime_ms();
+        case GoHome: {
+            if (entities->isPathValid(entityIndex)) {
+                Direction dir = entities->nextPathDirection(entityIndex);
+                Entity &entity = *entities->entityPtr(entityIndex);
+                if (entities->moveEntityDir(entityIndex, dir, frameTime(), grid2D)) {
+                    entities->advancePath(entityIndex);
+                    if (entities->getPathLength(entityIndex) == 0 &&
+                        grid2D->cellAtPosition(entity.position) == entity.houseId) {
+                        entity.state = Rest;
+                        entity.stateStart_ms = currentTime_ms();
+                        entity.position = grid2D->getCellPosition(entity.houseId);
+                    }
+                }
             }
             break;
+        }
+        case GoToWork: {
+            if (entities->isPathValid(entityIndex)) {
+                Direction dir = entities->nextPathDirection(entityIndex);
+                Entity &entity = *entities->entityPtr(entityIndex);
+                if (entities->moveEntityDir(entityIndex, dir, frameTime(), grid2D)) {
+                    entities->advancePath(entityIndex);
+                    if (entities->getPathLength(entityIndex) == 0 &&
+                        grid2D->cellAtPosition(entity.position) == entity.factoryId) {
+                        entity.state = Work;
+                        entity.stateStart_ms = currentTime_ms();
+                        entity.position = grid2D->getCellPosition(entity.factoryId);
+                    }
+                }
+            }
+            break;
+        }
         case Work:
             if (currentTime_ms() - entities->stateStart_ms(entityIndex) >= WORK_TIME_MS) {
                 entities->entityState(entityIndex) = GoHome;
-            }
-            break;
-        case GoHome:
-            uint32_t houseId = entities->entityHouse(entityIndex);
-            float2 housePos = grid2D->getCellPosition(houseId);
-
-            if (entities->moveEntityTo(entityIndex, housePos, CELL_RADIUS * 0.5f, frameTime())) {
-                entities->entityState(entityIndex) = Rest;
-                entities->stateStart_ms(entityIndex) = currentTime_ms();
             }
             break;
         case Rest:
             if (currentTime_ms() - entities->stateStart_ms(entityIndex) >= REST_TIME_MS) {
                 entities->entityState(entityIndex) = GoToWork;
             }
+            break;
         default:
             break;
         }
@@ -287,6 +302,75 @@ void updateEntities(Grid2D *grid2D, Entities *entities) {
 }
 
 void updateGameState() { gameState->previousFrameTime_ns = nanotime_start; }
+
+void performPathFinding(Grid2D *grid2D, Entities *entities) {
+    auto grid = cg::this_grid();
+    auto block = cg::this_thread_block();
+
+    // Each thread handles an entity
+    for (int offset = 0; offset < entities->getCount(); offset += grid.num_threads()) {
+        int entityIndex = offset + grid.thread_rank();
+        if (entityIndex >= entities->getCount()) {
+            break;
+        }
+
+        Entity &entity = *entities->entityPtr(entityIndex);
+        uint32_t target;
+
+        switch (entity.state) {
+        case Work:
+        case Rest:
+            continue;
+        case GoHome:
+            if (entities->isPathValid(entityIndex)) {
+                continue;
+            }
+            target = entity.houseId;
+            break;
+        case GoToWork:
+            if (entities->isPathValid(entityIndex)) {
+                continue;
+            }
+            target = entity.factoryId;
+            break;
+        }
+
+        int32_t origin = grid2D->cellAtPosition(entity.position);
+        int2 originCoord = grid2D->cellCoords(origin);
+        int2 targetCoord = grid2D->cellCoords(target);
+
+        int diffx = targetCoord.x - originCoord.x;
+
+        Direction dir;
+        int length;
+        if (diffx == 0) {
+            int diffy = targetCoord.y - originCoord.y;
+            if (diffy > 0) {
+                length = diffy;
+                dir = UP;
+            } else if (diffy < 0) {
+                length = -diffy;
+                dir = DOWN;
+            } else {
+                continue;
+            }
+        } else if (diffx > 0) {
+            dir = RIGHT;
+            length = diffx;
+        } else {
+            dir = LEFT;
+            length = -diffx;
+        }
+
+        length = min(length, 29);
+
+        for (int i = 0; i < length; ++i) {
+            entities->setPathDir(entityIndex, dir, i);
+        }
+
+        entities->setPathLength(entityIndex, length);
+    }
+}
 
 void updateGrid(Grid2D *grid2D, Entities *entities) {
     auto grid = cg::this_grid();
@@ -321,6 +405,7 @@ void updateGrid(Grid2D *grid2D, Entities *entities) {
 
     assignOneHouse(grid2D, entities);
 
+    performPathFinding(grid2D, entities);
     updateEntities(grid2D, entities);
 
     if (grid.thread_rank() == 0) {
