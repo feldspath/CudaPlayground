@@ -88,13 +88,45 @@ struct mat4 {
 int RENDERMODE_DEFAULT = 0;
 int RENDERMODE_NETWORK = 1;
 
-// 4 bytes for the tile index, 4 bytes additional data.
-int BYTES_PER_CELL = 4 + 2 * 4;
+// DATA FORMATS
 
-// 2 * 4 bytes for the 2D position
-// 2 * 4 bytes additional data for the factory id and house id
-// 2 * 4 bytes for state and state start timing
-int BYTES_PER_ENTITY = 2 * 4 + 4 * 4;
+// CELLS
+
+enum TileId {
+    GRASS = 0,
+    ROAD = 1,
+    HOUSE = 2,
+    FACTORY = 3,
+    UNKNOWN = -1,
+};
+
+struct Cell {
+    TileId tileId;
+    char additionalData[8];
+};
+
+int BYTES_PER_CELL = sizeof(Cell);
+
+// ENTITIES
+
+enum EntityState {
+    Rest,
+    GoToWork,
+    Work,
+    GoHome,
+};
+
+// alignment = 8 bytes. No padding
+struct Entity {
+    float2 position;
+    uint32_t houseId;
+    uint32_t factoryId;
+    EntityState state;
+    uint32_t stateStart;
+    uint64_t path;
+};
+
+int BYTES_PER_ENTITY = sizeof(Entity);
 
 struct Uniforms {
     float width;
@@ -113,14 +145,6 @@ struct Uniforms {
 };
 
 // GAME RELATED
-
-enum TileId {
-    GRASS = 0,
-    ROAD = 1,
-    HOUSE = 2,
-    FACTORY = 3,
-    UNKNOWN = -1,
-};
 
 struct GameState {
     uint64_t previousFrameTime_ns;

@@ -76,8 +76,8 @@ void rasterizeGrid(Grid2D *grid2D, Entities *entities, uint64_t *framebuffer) {
             continue;
         }
 
-        Cell cell = grid2D->getCell(sh_cellIndex);
-        float2 diff = float2{pos_W.x - cell.center.x, pos_W.y - cell.center.y};
+        float2 cellCenter = grid2D->getCellPosition(sh_cellIndex);
+        float2 diff = float2{pos_W.x - cellCenter.x, pos_W.y - cellCenter.y};
 
         if (abs(diff.x) > CELL_RADIUS || abs(diff.y) > CELL_RADIUS) {
             continue;

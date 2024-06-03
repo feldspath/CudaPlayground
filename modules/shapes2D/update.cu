@@ -149,7 +149,7 @@ void updateCell(Grid2D *grid2D, UpdateInfo updateInfo) {
 }
 
 void assignHouseToFactory(Grid2D *grid2D, Entities *entities, int32_t houseId, int32_t factoryId) {
-    int32_t newEntity = entities->newEntity(grid2D->getCell(houseId).center, houseId, factoryId);
+    int32_t newEntity = entities->newEntity(grid2D->getCellPosition(houseId), houseId, factoryId);
     int32_t *houseData = grid2D->houseTileData(houseId);
     *houseData = newEntity;
 
@@ -255,7 +255,7 @@ void updateEntities(Grid2D *grid2D, Entities *entities) {
         switch (entities->entityState(entityIndex)) {
         case GoToWork:
             uint32_t factoryId = entities->entityFactory(entityIndex);
-            float2 factoryPos = grid2D->getCell(factoryId).center;
+            float2 factoryPos = grid2D->getCellPosition(factoryId);
 
             if (entities->moveEntityTo(entityIndex, factoryPos, CELL_RADIUS * 0.5f, frameTime())) {
                 entities->entityState(entityIndex) = Work;
@@ -269,7 +269,7 @@ void updateEntities(Grid2D *grid2D, Entities *entities) {
             break;
         case GoHome:
             uint32_t houseId = entities->entityHouse(entityIndex);
-            float2 housePos = grid2D->getCell(houseId).center;
+            float2 housePos = grid2D->getCellPosition(houseId);
 
             if (entities->moveEntityTo(entityIndex, housePos, CELL_RADIUS * 0.5f, frameTime())) {
                 entities->entityState(entityIndex) = Rest;

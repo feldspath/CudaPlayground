@@ -10,25 +10,18 @@ float ENTITY_SPEED = 3.0f;
 uint32_t WORK_TIME_MS = 5000;
 uint32_t REST_TIME_MS = 5000;
 
-enum EntityState {
-    Rest,
-    GoToWork,
-    Work,
-    GoHome,
-};
-
 struct Entities {
     uint32_t *count;
-    void *buffer;
+    Entity *buffer;
 
     static const int houseOffset = 8;
-    static const int entityOffset = 12;
+    static const int factoryOffset = 12;
     static const int stateOffset = 16;
     static const int stateStartOffset = 20;
 
     Entities(void *entitiesBuffer) {
         count = (uint32_t *)entitiesBuffer;
-        buffer = &(((float2 *)entitiesBuffer)[1]);
+        buffer = (Entity *)((char *)entitiesBuffer + 8);
     }
 
     uint32_t getCount() { return *count; }
@@ -45,25 +38,17 @@ struct Entities {
         return id;
     }
 
-    char *entityPtr(uint32_t entityId) { return (char *)buffer + entityId * BYTES_PER_ENTITY; }
+    Entity *entityPtr(uint32_t entityId) { return &buffer[entityId]; }
 
-    float2 &entityPosition(uint32_t entityId) { return *(float2 *)entityPtr(entityId); }
+    float2 &entityPosition(uint32_t entityId) { return entityPtr(entityId)->position; }
 
-    uint32_t &entityHouse(uint32_t entityId) {
-        return *(uint32_t *)(entityPtr(entityId) + houseOffset);
-    }
+    uint32_t &entityHouse(uint32_t entityId) { return entityPtr(entityId)->houseId; }
 
-    uint32_t &entityFactory(uint32_t entityId) {
-        return *(uint32_t *)(entityPtr(entityId) + entityOffset);
-    }
+    uint32_t &entityFactory(uint32_t entityId) { return entityPtr(entityId)->factoryId; }
 
-    EntityState &entityState(uint32_t entityId) {
-        return *(EntityState *)(entityPtr(entityId) + stateOffset);
-    }
+    EntityState &entityState(uint32_t entityId) { return entityPtr(entityId)->state; }
 
-    uint32_t &stateStart_ms(uint32_t entityId) {
-        return *(uint32_t *)(entityPtr(entityId) + stateStartOffset);
-    }
+    uint32_t &stateStart_ms(uint32_t entityId) { return entityPtr(entityId)->stateStart; }
 
     // Returns true if entity is within clampRadius distance of target.
     bool moveEntityTo(uint32_t entityId, float2 target, float clampRadius, float dt) {
