@@ -30,15 +30,20 @@ int cellNetworkId(int cellId, Grid2D *grid2D) {
     }
 }
 
-int4 neighborNetworks(int cellId, Grid2D *grid2D) {
+int4 neighborCells(int cellId, Grid2D *grid2D) {
     int2 coords = grid2D->cellCoords(cellId);
     int right = grid2D->idFromCoords(coords.x + 1, coords.y);
     int left = grid2D->idFromCoords(coords.x - 1, coords.y);
     int up = grid2D->idFromCoords(coords.x, coords.y + 1);
     int down = grid2D->idFromCoords(coords.x, coords.y - 1);
 
-    int4 comps = {cellNetworkId(right, grid2D), cellNetworkId(left, grid2D),
-                  cellNetworkId(up, grid2D), cellNetworkId(down, grid2D)};
+    return int4{right, left, up, down};
+}
+
+int4 neighborNetworks(int cellId, Grid2D *grid2D) {
+    int4 neighbors = neighborCells(cellId, grid2D);
+    int4 comps = {cellNetworkId(neighbors.x, grid2D), cellNetworkId(neighbors.y, grid2D),
+                  cellNetworkId(neighbors.z, grid2D), cellNetworkId(neighbors.w, grid2D)};
 
     return comps;
 }
@@ -57,51 +62,74 @@ void updateCell(Grid2D *grid2D, UpdateInfo updateInfo) {
     grid.sync();
 
     switch (new_tile) {
-    case ROAD:
-        if (grid.thread_rank() == 0) {
-            *grid2D->roadTileData(id) = id;
-
-            // check nearby tiles.
-            int2 coords = grid2D->cellCoords(id);
-
-            int right = grid2D->idFromCoords(coords.x + 1, coords.y);
-            int left = grid2D->idFromCoords(coords.x - 1, coords.y);
-            int up = grid2D->idFromCoords(coords.x, coords.y + 1);
-            int down = grid2D->idFromCoords(coords.x, coords.y - 1);
-
-            // if one tile is not grass, update the connected components
-            if (right != -1 && grid2D->getTileId(right) == ROAD) {
-                grid2D->updateNetworkRepr(right, id);
-            }
-            if (left != -1 && grid2D->getTileId(left) == ROAD) {
-                grid2D->updateNetworkRepr(left, id);
-            }
-            if (up != -1 && grid2D->getTileId(up) == ROAD) {
-                grid2D->updateNetworkRepr(up, id);
-            }
-            if (down != -1 && grid2D->getTileId(down) == ROAD) {
-                grid2D->updateNetworkRepr(down, id);
-            }
-        }
-
-        block.sync();
-
-        // Flatten network
+    case ROAD: {
+        // TODO: update using the entire grid
         if (grid.block_rank() == 0) {
+
+            __shared__ int cumulNeighborNetworksSizes[5];
+            __shared__ int neighborNetworksReprs[4];
+
+            if (block.thread_rank() == 0) {
+
+                // check nearby tiles.
+                int4 neighbors = neighborCells(id, grid2D);
+                int neighborNetworksSizes[4];
+
+                for (int i = 0; i < 4; i++) {
+                    int nId = ((int *)(&neighbors))[i];
+                    // if one tile is not grass, update the connected components
+                    if (nId != -1 && grid2D->getTileId(nId) == ROAD) {
+                        int repr = grid2D->roadNetworkRepr(nId);
+                        // Skip the tile if it was already updated this frame
+                        if (grid2D->roadNetworkRepr(repr) == repr) {
+                            neighborNetworksSizes[i] = grid2D->roadNetworkId(repr);
+                            neighborNetworksReprs[i] = repr;
+                            grid2D->roadNetworkRepr(repr) = id;
+                            continue;
+                        }
+                    }
+                    neighborNetworksSizes[i] = 0;
+                    neighborNetworksReprs[i] = -1;
+                }
+
+                cumulNeighborNetworksSizes[0] = 0;
+                for (int i = 0; i < 4; i++) {
+                    cumulNeighborNetworksSizes[i + 1] =
+                        cumulNeighborNetworksSizes[i] + neighborNetworksSizes[i];
+                }
+
+                // Init the new road tile
+                grid2D->roadNetworkRepr(id) = id;
+                grid2D->roadNetworkId(id) = cumulNeighborNetworksSizes[4] + 1;
+            }
+
+            block.sync();
+
+            // Flatten network
             for (int offset = 0; offset < grid2D->count; offset += block.num_threads()) {
                 int cellId = block.thread_rank() + offset;
                 if (cellId >= grid2D->count || grid2D->getTileId(cellId) != ROAD) {
                     continue;
                 }
 
-                int newRepr = grid2D->roadNetworkRepr(grid2D->roadNetworkRepr(cellId));
-                *grid2D->roadTileData(cellId) = newRepr;
+                int neighborId = -1;
+                for (int i = 0; i < 4; ++i) {
+                    if (grid2D->roadNetworkRepr(cellId) == neighborNetworksReprs[i] ||
+                        cellId == neighborNetworksReprs[i]) {
+                        neighborId = i;
+                        break;
+                    }
+                }
+                if (neighborId == -1) {
+                    continue;
+                }
+
+                grid2D->roadNetworkRepr(cellId) = id;
+                grid2D->roadNetworkId(cellId) += cumulNeighborNetworksSizes[neighborId];
             }
         }
-
-        block.sync();
         break;
-
+    }
     case FACTORY:
         if (grid.thread_rank() == 0) {
             // Set capacity

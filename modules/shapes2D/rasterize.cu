@@ -110,6 +110,11 @@ void rasterizeGrid(Grid2D *grid2D, Entities *entities, uint64_t *framebuffer) {
                 float b = (float)(colorId % 37) / 37.0;
                 color = float3{r, g, b};
 
+                if (tileId == ROAD) {
+                    color *= (float)(grid2D->roadNetworkId(sh_cellIndex)) /
+                             grid2D->roadNetworkId(grid2D->roadNetworkRepr(sh_cellIndex));
+                }
+
                 if (colorId == -1) {
                     color = float3{1.0f, 0.0f, 1.0f};
                 }

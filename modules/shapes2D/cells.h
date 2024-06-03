@@ -69,13 +69,8 @@ struct Grid2D {
     int32_t *roadTileData(int cellId) { return (int32_t *)(tileData(cellId)); }
 
     // We assume that the network is flattened
-    int32_t roadNetworkRepr(int cellId) { return *roadTileData(cellId); }
-
-    // Makes the network not flat
-    void updateNetworkRepr(int cellId, int32_t newRepr) {
-        int32_t previousRepr = roadNetworkRepr(cellId);
-        *roadTileData(previousRepr) = newRepr;
-    }
+    int32_t &roadNetworkRepr(int cellId) { return roadTileData(cellId)[0]; }
+    int32_t &roadNetworkId(int cellId) { return roadTileData(cellId)[1]; }
 
     // FACTORY DATA
     int32_t *factoryTileData(int cellId) { return (int32_t *)(tileData(cellId)); }
