@@ -48,6 +48,35 @@ int4 neighborNetworks(int cellId, Grid2D *grid2D) {
     return comps;
 }
 
+bool networkInNetworks(int network, int4 networks) {
+    for (int i = 0; i < 4; ++i) {
+        int n = ((int *)(&network))[i];
+        if (n == network) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int4 commonNetworks(int4 nets1, int4 nets2, Grid2D *grid2D) {
+    int4 result = {-1, -1, -1, -1};
+    int count = 0;
+    for (int i = 0; i < 4; ++i) {
+        int ni = ((int *)(&nets1))[i];
+        if (ni != -1 && networkInNetworks(ni, nets2)) {
+            ((int *)(&result))[count] = ni;
+            count++;
+        }
+    }
+    return result;
+}
+
+int4 commonNetworks(int cellId1, int cellId2, Grid2D *grid2D) {
+    int4 nets1 = neighborNetworks(cellId1, grid2D);
+    int4 nets2 = neighborNetworks(cellId2, grid2D);
+    return commonNetworks(nets1, nets2, grid2D);
+}
+
 void updateCell(Grid2D *grid2D, UpdateInfo updateInfo) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
@@ -166,6 +195,8 @@ void assignOneHouse(Grid2D *grid2D, Entities *entities) {
     }
     grid.sync();
 
+    // TODO: first scan the tiles that require assignment using the whole grid
+
     __shared__ uint64_t targetFactory;
     for (int offset = 0; offset < grid2D->count; offset += grid.num_blocks()) {
         int currentTile = offset + grid.block_rank();
@@ -210,7 +241,7 @@ void assignOneHouse(Grid2D *grid2D, Entities *entities) {
                 int f = ((int *)(&factoryNets))[i % 4];
                 int h = ((int *)(&houseNets))[i / 4];
                 if (f != -1 && f == h) {
-                    // This factory shares the same networ
+                    // This factory shares the same network
                     int2 factoryCoords = grid2D->cellCoords(factoryId);
                     int2 diff = factoryCoords - tileCoords;
                     uint32_t distance = abs(diff.x) + abs(diff.y);
@@ -303,72 +334,216 @@ void updateEntities(Grid2D *grid2D, Entities *entities) {
 
 void updateGameState() { gameState->previousFrameTime_ns = nanotime_start; }
 
+struct PathCell {
+    uint32_t distance;
+    int32_t cellId;
+};
+
+struct PathfindingInfo {
+    // cell id of the networks repr
+    int4 networkIds;
+
+    uint32_t entityIdx;
+    uint32_t targetId;
+
+    // buffer of size sum of all networks to explore
+    PathCell *buffer;
+    uint32_t bufferSize;
+};
+
+int pathfindingBufferIndex(Grid2D *grid2D, PathfindingInfo &info, uint32_t cellId) {
+    int offset = 0;
+    int32_t network = grid2D->roadNetworkRepr(cellId);
+
+    for (int i = 0; i < 4; i++) {
+        int ni = ((int *)(&info.networkIds))[i];
+        if (network == ni) {
+            break;
+        }
+        offset += grid2D->roadNetworkId(ni);
+    }
+
+    return offset + grid2D->roadNetworkId(cellId) % grid2D->roadNetworkId(network);
+}
+
 void performPathFinding(Grid2D *grid2D, Entities *entities) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
-    // Each thread handles an entity
+    grid.sync();
+
+    PathfindingInfo *lostEntities =
+        allocator->alloc<PathfindingInfo *>(entities->getCount() * sizeof(PathfindingInfo));
+    uint32_t &lostCount = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
+
+    if (grid.thread_rank() == 0) {
+        lostCount = 0;
+    }
+    grid.sync();
+
+    // Locate all entities that required pathfinding
     for (int offset = 0; offset < entities->getCount(); offset += grid.num_threads()) {
-        int entityIndex = offset + grid.thread_rank();
+        int entityIndex = grid.thread_rank() + offset;
         if (entityIndex >= entities->getCount()) {
             break;
         }
 
         Entity &entity = *entities->entityPtr(entityIndex);
-        uint32_t target;
+        if ((entity.state == GoToWork || entity.state == GoHome) &&
+            !entities->isPathValid(entityIndex)) {
+            uint32_t bufferId = atomicAdd(&lostCount, 1);
+            PathfindingInfo info;
+            uint32_t targetId = entity.state == GoHome ? entity.houseId : entity.factoryId;
+            info.entityIdx = entityIndex;
+            info.networkIds = commonNetworks(entityIndex, targetId, grid2D);
+            info.targetId = targetId;
+            lostEntities[bufferId] = info;
+        }
+    }
 
-        switch (entity.state) {
-        case Work:
-        case Rest:
-            continue;
-        case GoHome:
-            if (entities->isPathValid(entityIndex)) {
-                continue;
+    grid.sync();
+
+    // Allocate a buffer in global memory for each lost entity
+    for (int i = 0; i < lostCount; ++i) {
+        int bufferSize = 0;
+        for (int j = 0; j < 4; ++j) {
+            int n = ((int *)(&(lostEntities[i].networkIds)))[j];
+            if (n == -1) {
+                break;
             }
-            target = entity.houseId;
-            break;
-        case GoToWork:
-            if (entities->isPathValid(entityIndex)) {
-                continue;
-            }
-            target = entity.factoryId;
+            bufferSize += grid2D->roadNetworkId(n);
+        }
+        PathCell *ptr = allocator->alloc<PathCell *>(bufferSize * sizeof(PathCell));
+        if (grid.thread_rank() == 0) {
+            lostEntities[i].buffer = ptr;
+        }
+    }
+
+    grid.sync();
+
+    // Each block handles a lost entity
+    for (int offset = 0; offset < lostCount; offset += grid.num_blocks()) {
+        int bufferIdx = offset + grid.block_rank();
+        if (bufferIdx >= lostCount) {
             break;
         }
 
+        PathfindingInfo info = lostEntities[bufferIdx];
+
+        Entity &entity = *entities->entityPtr(info.entityIdx);
         int32_t origin = grid2D->cellAtPosition(entity.position);
-        int2 originCoord = grid2D->cellCoords(origin);
-        int2 targetCoord = grid2D->cellCoords(target);
 
-        int diffx = targetCoord.x - originCoord.x;
+        int targetBufferId = pathfindingBufferIndex(grid2D, info, info.targetId);
+        int originBufferId = pathfindingBufferIndex(grid2D, info, origin);
 
-        Direction dir;
-        int length;
-        if (diffx == 0) {
-            int diffy = targetCoord.y - originCoord.y;
-            if (diffy > 0) {
-                length = diffy;
-                dir = UP;
-            } else if (diffy < 0) {
-                length = -diffy;
-                dir = DOWN;
-            } else {
-                continue;
+        // Reset buffer
+        for (int roadOffset = 0; roadOffset < info.bufferSize; roadOffset += block.num_threads()) {
+            int idx = roadOffset + block.thread_rank();
+            if (idx >= info.bufferSize) {
+                break;
             }
-        } else if (diffx > 0) {
-            dir = RIGHT;
-            length = diffx;
-        } else {
-            dir = LEFT;
-            length = -diffx;
+
+            PathCell init;
+            init.distance = 0;
+            init.cellId = -1;
+            info.buffer[idx] = init;
         }
 
-        length = min(length, 29);
-
-        for (int i = 0; i < length; ++i) {
-            entities->setPathDir(entityIndex, dir, i);
+        if (block.thread_rank() == 0) {
+            // Init neighbor tiles of target
+            int4 neighbors = neighborCells(info.targetId, grid2D);
+            for (int i = 0; i < 4; i++) {
+                int n = ((int *)(&neighbors))[i];
+                if (n != -1 && grid2D->getTileId(n) == ROAD &&
+                    networkInNetworks(grid2D->roadNetworkRepr(n), info.networkIds)) {
+                    int bufferId = pathfindingBufferIndex(grid2D, info, n);
+                    PathCell pathCell;
+                    pathCell.cellId = n;
+                    pathCell.distance = 0;
+                    info.buffer[bufferId] = pathCell;
+                }
+            }
         }
 
-        entities->setPathLength(entityIndex, length);
+        block.sync();
+
+        auto isOriginReached = [](int origin, Grid2D *grid2D, PathfindingInfo &info) {
+            if (grid2D->getTileId(origin) == ROAD) {
+                int bufferId = pathfindingBufferIndex(grid2D, info, origin);
+                return info.buffer[bufferId].distance != uint32_t(Infinity);
+            }
+
+            int4 originNeighbors = neighborCells(origin, grid2D);
+            for (int i = 0; i < 4; ++i) {
+                int nId = ((int *)(&originNeighbors))[i];
+                if (grid2D->getTileId(nId) == ROAD) {
+                    int bufferId = pathfindingBufferIndex(grid2D, info, nId);
+                    if (info.buffer[bufferId].distance != uint32_t(Infinity)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+
+        // Build flowfield
+        while (!isOriginReached(origin, grid2D, info)) {
+            for (int roadOffset = 0; roadOffset < info.bufferSize;
+                 roadOffset += block.num_threads()) {
+                int currentRoadBufferId = roadOffset + block.thread_rank();
+                if (currentRoadBufferId > info.bufferSize) {
+                    break;
+                }
+
+                PathCell cell = info.buffer[currentRoadBufferId];
+                if (cell.cellId == -1) {
+                    continue;
+                }
+
+                // Retrieve neighbor tiles
+                int4 neighbors = neighborCells(cell.cellId, grid2D);
+                for (int i = 0; i < 4; ++i) {
+                    int neighborId = ((int *)(&neighbors))[i];
+                    if (neighborId != -1 && grid2D->getTileId(neighborId) == ROAD) {
+                        int neighborBufferId = pathfindingBufferIndex(grid2D, info, neighborId);
+                        // Atomically update neighbor tiles id if not set
+                        int oldNeighborId =
+                            atomicCAS(&(info.buffer[neighborBufferId].cellId), -1, neighborId);
+
+                        if (oldNeighborId != -1) {
+                            // Set distance value
+                            info.buffer[currentRoadBufferId].distance =
+                                min(info.buffer[currentRoadBufferId].distance,
+                                    info.buffer[neighborBufferId].distance + 1);
+                        }
+                    }
+                }
+            }
+            block.sync();
+        }
+
+        if (block.thread_rank() == 0) {
+            // Retrieve path
+            int4 originNeighbors = neighborCells(origin, grid2D);
+
+            int min = uint32_t(Infinity);
+            int minId = -1;
+            Direction dir;
+            for (int i = 0; i < 4; ++i) {
+                int nId = ((int *)(&originNeighbors))[i];
+                if (grid2D->getTileId(nId) == ROAD) {
+                    int bufferId = pathfindingBufferIndex(grid2D, info, nId);
+                    if (info.buffer[bufferId].distance < min) {
+                        min = info.buffer[bufferId].distance;
+                        minId = nId;
+                        dir = Direction(i);
+                    }
+                }
+            }
+
+            entities->setPathDir(info.entityIdx, dir, 0);
+            entities->setPathLength(info.entityIdx, 1);
+        }
     }
 }
 
