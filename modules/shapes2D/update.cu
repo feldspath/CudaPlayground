@@ -270,7 +270,6 @@ void assignOneHouse(Grid2D *grid2D, Entities *entities) {
 }
 
 uint32_t currentTime_ms() { return uint32_t((nanotime_start / (uint64_t)1e6) & 0xffffffff); }
-float frameTime() { return ((float)(nanotime_start - gameState->previousFrameTime_ns)) / 1e9; }
 
 void updateEntities(Grid2D *grid2D, Entities *entities) {
     auto grid = cg::this_grid();
@@ -288,13 +287,13 @@ void updateEntities(Grid2D *grid2D, Entities *entities) {
             if (entities->isPathValid(entityIndex)) {
                 Direction dir = entities->nextPathDirection(entityIndex);
                 Entity &entity = *entities->entityPtr(entityIndex);
-                if (entities->moveEntityDir(entityIndex, dir, frameTime(), grid2D)) {
+                if (entities->moveEntityDir(entityIndex, dir, gameState->dt, grid2D)) {
                     entities->advancePath(entityIndex);
-                    entities->stateStart_ms(entityIndex) = currentTime_ms();
+                    entities->stateStart_ms(entityIndex) = gameState->currentTime_ms;
                     if (entities->getPathLength(entityIndex) == 0 &&
                         grid2D->cellAtPosition(entity.position) == entity.houseId) {
                         entity.state = Rest;
-                        entity.stateStart_ms = currentTime_ms();
+                        entity.stateStart_ms = gameState->currentTime_ms;
                         entity.position = grid2D->getCellPosition(entity.houseId);
                     }
                 }
@@ -305,13 +304,13 @@ void updateEntities(Grid2D *grid2D, Entities *entities) {
             if (entities->isPathValid(entityIndex)) {
                 Direction dir = entities->nextPathDirection(entityIndex);
                 Entity &entity = *entities->entityPtr(entityIndex);
-                if (entities->moveEntityDir(entityIndex, dir, frameTime(), grid2D)) {
+                if (entities->moveEntityDir(entityIndex, dir, gameState->dt, grid2D)) {
                     entities->advancePath(entityIndex);
-                    entities->stateStart_ms(entityIndex) = currentTime_ms();
+                    entities->stateStart_ms(entityIndex) = gameState->currentTime_ms;
                     if (entities->getPathLength(entityIndex) == 0 &&
                         grid2D->cellAtPosition(entity.position) == entity.factoryId) {
                         entity.state = Work;
-                        entity.stateStart_ms = currentTime_ms();
+                        entity.stateStart_ms = gameState->currentTime_ms;
                         entity.position = grid2D->getCellPosition(entity.factoryId);
                     }
                 }
@@ -319,12 +318,12 @@ void updateEntities(Grid2D *grid2D, Entities *entities) {
             break;
         }
         case Work:
-            if (currentTime_ms() - entities->stateStart_ms(entityIndex) >= WORK_TIME_MS) {
+            if (gameState->currentTime_ms - entities->stateStart_ms(entityIndex) >= WORK_TIME_MS) {
                 entities->entityState(entityIndex) = GoHome;
             }
             break;
         case Rest:
-            if (currentTime_ms() - entities->stateStart_ms(entityIndex) >= REST_TIME_MS) {
+            if (gameState->currentTime_ms - entities->stateStart_ms(entityIndex) >= REST_TIME_MS) {
                 entities->entityState(entityIndex) = GoToWork;
             }
             break;
@@ -334,7 +333,11 @@ void updateEntities(Grid2D *grid2D, Entities *entities) {
     }
 }
 
-void updateGameState() { gameState->previousFrameTime_ns = nanotime_start; }
+void updateGameState() {
+    gameState->dt = ((float)(nanotime_start - gameState->previousFrameTime_ns)) / 1e9;
+    gameState->previousFrameTime_ns = nanotime_start;
+    gameState->currentTime_ms = currentTime_ms();
+}
 
 struct PathCell {
     uint32_t distance;
@@ -426,7 +429,6 @@ void performPathFinding(Grid2D *grid2D, Entities *entities) {
 
     grid.sync();
 
-
     // Each block handles a lost entity
     for (int offset = 0; offset < lostCount; offset += grid.num_blocks()) {
         int bufferIdx = offset + grid.block_rank();
@@ -434,9 +436,7 @@ void performPathFinding(Grid2D *grid2D, Entities *entities) {
             break;
         }
 
-
         PathfindingInfo info = lostEntities[bufferIdx];
-    
 
         Entity &entity = *entities->entityPtr(info.entityIdx);
         int32_t origin = grid2D->cellAtPosition(entity.position);
@@ -528,7 +528,7 @@ void performPathFinding(Grid2D *grid2D, Entities *entities) {
                 }
             }
             // not sure if this is needed or not
-             block.sync();
+            block.sync();
         }
 
         if (block.thread_rank() == 0) {
@@ -608,6 +608,7 @@ void updateGrid(Grid2D *grid2D, Entities *entities) {
     performPathFinding(grid2D, entities);
     updateEntities(grid2D, entities);
 
+    // grid.sync();
     if (grid.thread_rank() == 0) {
         updateGameState();
     }

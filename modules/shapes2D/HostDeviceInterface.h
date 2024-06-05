@@ -149,6 +149,8 @@ struct Uniforms {
 
 struct GameState {
     uint64_t previousFrameTime_ns;
+    uint32_t currentTime_ms;
+    float dt;
 };
 
 int FACTORY_CAPACITY = 4;
