@@ -157,5 +157,3 @@ struct GameState {
     uint32_t currentTime_ms;
     float dt;
 };
-
-int FACTORY_CAPACITY = 4;

@@ -3,10 +3,8 @@
 #include "./../common/utils.cuh"
 #include "HostDeviceInterface.h"
 #include "builtin_types.h"
+#include "config.h"
 #include "direction.h"
-
-float CELL_RADIUS = 0.45f;
-float CELL_PADDING = 0.05f;
 
 typedef NeighborInfo<int32_t> NeighborCells;
 typedef NeighborInfo<int32_t> NeighborNetworks;

@@ -215,16 +215,16 @@ void updateEntities(Map *map, Entities *entities) {
         if (entityIndex >= entities->getCount()) {
             break;
         }
+        Entity &entity = entities->get(entityIndex);
 
-        switch (entities->entityState(entityIndex)) {
+        switch (entity.state) {
         case GoHome: {
-            if (entities->path(entityIndex).isValid()) {
-                Direction dir = entities->path(entityIndex).nextDir();
-                Entity &entity = *entities->entityPtr(entityIndex);
+            if (entity.path.isValid()) {
+                Direction dir = entity.path.nextDir();
                 if (entities->moveEntityDir(entityIndex, dir, gameState->dt, map)) {
-                    entities->path(entityIndex).pop();
-                    entities->stateStart_ms(entityIndex) = gameState->currentTime_ms;
-                    if (entities->path(entityIndex).length() == 0 &&
+                    entity.path.pop();
+                    entity.stateStart_ms = gameState->currentTime_ms;
+                    if (entity.path.length() == 0 &&
                         map->cellAtPosition(entity.position) == entity.houseId) {
                         entity.state = Rest;
                         entity.stateStart_ms = gameState->currentTime_ms;
@@ -235,13 +235,12 @@ void updateEntities(Map *map, Entities *entities) {
             break;
         }
         case GoToWork: {
-            if (entities->path(entityIndex).isValid()) {
-                Direction dir = entities->path(entityIndex).nextDir();
-                Entity &entity = *entities->entityPtr(entityIndex);
+            if (entity.path.isValid()) {
+                Direction dir = entity.path.nextDir();
                 if (entities->moveEntityDir(entityIndex, dir, gameState->dt, map)) {
-                    entities->path(entityIndex).pop();
-                    entities->stateStart_ms(entityIndex) = gameState->currentTime_ms;
-                    if (entities->path(entityIndex).length() == 0 &&
+                    entity.path.pop();
+                    entity.stateStart_ms = gameState->currentTime_ms;
+                    if (entity.path.length() == 0 &&
                         map->cellAtPosition(entity.position) == entity.factoryId) {
                         entity.state = Work;
                         entity.stateStart_ms = gameState->currentTime_ms;
@@ -252,13 +251,13 @@ void updateEntities(Map *map, Entities *entities) {
             break;
         }
         case Work:
-            if (gameState->currentTime_ms - entities->stateStart_ms(entityIndex) >= WORK_TIME_MS) {
-                entities->entityState(entityIndex) = GoHome;
+            if (gameState->currentTime_ms - entity.stateStart_ms >= WORK_TIME_MS) {
+                entity.state = GoHome;
             }
             break;
         case Rest:
-            if (gameState->currentTime_ms - entities->stateStart_ms(entityIndex) >= REST_TIME_MS) {
-                entities->entityState(entityIndex) = GoToWork;
+            if (gameState->currentTime_ms - entity.stateStart_ms >= REST_TIME_MS) {
+                entity.state = GoToWork;
             }
             break;
         default:
@@ -328,13 +327,12 @@ void performPathFinding(Map *map, Entities *entities) {
             break;
         }
 
-        Entity &entity = *entities->entityPtr(entityIndex);
-        if ((entity.state == GoToWork || entity.state == GoHome) &&
-            !entities->path(entityIndex).isValid()) {
+        Entity &entity = entities->get(entityIndex);
+        if ((entity.state == GoToWork || entity.state == GoHome) && !entity.path.isValid()) {
             uint32_t bufferId = atomicAdd(&lostCount, 1);
             PathfindingInfo info;
             uint32_t targetId = entity.state == GoHome ? entity.houseId : entity.factoryId;
-            int originId = map->cellAtPosition(entities->entityPosition(entityIndex));
+            int originId = map->cellAtPosition(entity.position);
             info.entityIdx = entityIndex;
             info.networkIds = map->sharedNetworks(originId, targetId);
             info.targetId = targetId;
@@ -468,7 +466,7 @@ void performPathFinding(Map *map, Entities *entities) {
         if (block.thread_rank() == 0) {
             int current = info.originId;
             bool reached = false;
-            Path &path = entities->path(info.entityIdx);
+            Path &path = entities->get(info.entityIdx).path;
             path.reset();
             while (!reached && path.length() < 29) {
                 // Retrieve path

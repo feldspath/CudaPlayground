@@ -97,7 +97,7 @@ void rasterizeGrid(Map *map, Entities *entities, uint64_t *framebuffer) {
                     if (entityId == -1) {
                         colorId = -1;
                     } else {
-                        colorId = entities->entityFactory(entityId);
+                        colorId = entities->get(entityId).factoryId;
                     }
                 } else if (tileId == ROAD) {
                     colorId = map->roadNetworkRepr(sh_cellIndex);
@@ -147,7 +147,7 @@ void rasterizeEntities(Entities *entities, uint64_t *framebuffer) {
             break;
         }
 
-        float2 entityPos = entities->entityPosition(entityIndex);
+        float2 entityPos = entities->get(entityIndex).position;
         float2 screenPos = projectPosToScreenPos(make_float3(entityPos, 0.0f), viewProj,
                                                  uniforms.width, uniforms.height);
 
