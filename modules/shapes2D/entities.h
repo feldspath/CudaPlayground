@@ -37,7 +37,7 @@ struct Entities {
         entityHouse(id) = house;
         entityFactory(id) = factory;
         entityState(id) = GoToWork;
-        resetPath(id);
+        path(id).reset();
 
         return id;
     }
@@ -54,62 +54,7 @@ struct Entities {
 
     uint32_t &stateStart_ms(uint32_t entityId) { return entityPtr(entityId)->stateStart_ms; }
 
-    // Path
-    void resetPath(uint32_t entityId) { entityPtr(entityId)->path = 0; }
-
-    bool isPathValid(uint32_t entityId) { return entityPtr(entityId)->path != 0; }
-
-    uint32_t getPathLength(uint32_t entityId) {
-        return (uint32_t)((entityPtr(entityId)->path >> 58ull) & 0b11111ull);
-    }
-
-    void setPathLength(uint32_t entityId, uint32_t newPathLength) {
-        if (newPathLength > MAX_PATH_LENGTH) {
-            return;
-        }
-        uint64_t &path = entityPtr(entityId)->path;
-
-        // Set path bits to 0
-        path = path & ~(uint64_t(0b11111ull) << 58ull);
-        // Set path
-        path = path | (uint64_t(newPathLength) << 58ull);
-    }
-
-    void setPathDir(uint32_t entityId, Direction dir, uint32_t dirId) {
-        if (dirId > 29) {
-            return;
-        }
-        uint64_t &path = entityPtr(entityId)->path;
-        path = path & ~(0b11ull << uint64_t(2 * dirId));
-        path = path | (uint64_t(dir) << uint64_t(2 * dirId));
-    }
-
-    Direction nextPathDirection(uint32_t entityId) {
-        uint32_t pathLength = getPathLength(entityId);
-        return (Direction)((entityPtr(entityId)->path >> uint64_t(2 * (pathLength - 1))) & 0b11ull);
-    }
-
-    void advancePath(uint32_t entityId) {
-        int newPathLength = getPathLength(entityId) - 1;
-        uint64_t path = entityPtr(entityId)->path;
-        if (newPathLength == 0) {
-            resetPath(entityId);
-        } else {
-            setPathLength(entityId, newPathLength);
-        }
-    }
-
-    void pushBackPath(uint32_t entityId, Direction dir) {
-        // Retrieve current path
-        int currentLength = getPathLength(entityId);
-
-        setPathLength(entityId, 0);
-        uint64_t &path = entityPtr(entityId)->path;
-        path = (path << 2ull);
-
-        setPathDir(entityId, dir, 0);
-        setPathLength(entityId, currentLength + 1);
-    }
+    Path &path(uint32_t entityId) { return entityPtr(entityId)->path; }
 
     // Returns true if entity is within clampRadius distance of target.
     bool moveEntityTo(uint32_t entityId, float2 target, float clampRadius, float dt) {

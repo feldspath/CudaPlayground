@@ -218,13 +218,13 @@ void updateEntities(Map *map, Entities *entities) {
 
         switch (entities->entityState(entityIndex)) {
         case GoHome: {
-            if (entities->isPathValid(entityIndex)) {
-                Direction dir = entities->nextPathDirection(entityIndex);
+            if (entities->path(entityIndex).isValid()) {
+                Direction dir = entities->path(entityIndex).nextDir();
                 Entity &entity = *entities->entityPtr(entityIndex);
                 if (entities->moveEntityDir(entityIndex, dir, gameState->dt, map)) {
-                    entities->advancePath(entityIndex);
+                    entities->path(entityIndex).pop();
                     entities->stateStart_ms(entityIndex) = gameState->currentTime_ms;
-                    if (entities->getPathLength(entityIndex) == 0 &&
+                    if (entities->path(entityIndex).length() == 0 &&
                         map->cellAtPosition(entity.position) == entity.houseId) {
                         entity.state = Rest;
                         entity.stateStart_ms = gameState->currentTime_ms;
@@ -235,13 +235,13 @@ void updateEntities(Map *map, Entities *entities) {
             break;
         }
         case GoToWork: {
-            if (entities->isPathValid(entityIndex)) {
-                Direction dir = entities->nextPathDirection(entityIndex);
+            if (entities->path(entityIndex).isValid()) {
+                Direction dir = entities->path(entityIndex).nextDir();
                 Entity &entity = *entities->entityPtr(entityIndex);
                 if (entities->moveEntityDir(entityIndex, dir, gameState->dt, map)) {
-                    entities->advancePath(entityIndex);
+                    entities->path(entityIndex).pop();
                     entities->stateStart_ms(entityIndex) = gameState->currentTime_ms;
-                    if (entities->getPathLength(entityIndex) == 0 &&
+                    if (entities->path(entityIndex).length() == 0 &&
                         map->cellAtPosition(entity.position) == entity.factoryId) {
                         entity.state = Work;
                         entity.stateStart_ms = gameState->currentTime_ms;
@@ -330,7 +330,7 @@ void performPathFinding(Map *map, Entities *entities) {
 
         Entity &entity = *entities->entityPtr(entityIndex);
         if ((entity.state == GoToWork || entity.state == GoHome) &&
-            !entities->isPathValid(entityIndex)) {
+            !entities->path(entityIndex).isValid()) {
             uint32_t bufferId = atomicAdd(&lostCount, 1);
             PathfindingInfo info;
             uint32_t targetId = entity.state == GoHome ? entity.houseId : entity.factoryId;
@@ -468,8 +468,9 @@ void performPathFinding(Map *map, Entities *entities) {
         if (block.thread_rank() == 0) {
             int current = info.originId;
             bool reached = false;
-            entities->resetPath(info.entityIdx);
-            while (!reached && entities->getPathLength(info.entityIdx) < 29) {
+            Path &path = entities->path(info.entityIdx);
+            path.reset();
+            while (!reached && path.length() < 29) {
                 // Retrieve path
                 auto neighbors = map->neighborCells(current);
                 uint32_t min = uint32_t(Infinity);
@@ -490,7 +491,7 @@ void performPathFinding(Map *map, Entities *entities) {
                         }
                     }
                 }
-                entities->pushBackPath(info.entityIdx, dir);
+                path.append(dir);
                 current = nextCell;
             }
         }

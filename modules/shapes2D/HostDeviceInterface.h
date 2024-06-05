@@ -2,6 +2,7 @@
 #pragma once
 
 #include "builtin_types.h"
+#include "path.h"
 
 struct mat4 {
     float4 rows[4];
@@ -127,8 +128,8 @@ struct Entity {
     uint32_t factoryId;
     EntityState state;
     uint32_t stateStart_ms;
-    // 2*29 bits for the path directions, 5 bits for the path length, 1 valid bit.
-    uint64_t path;
+    // Path is a uint64_t
+    Path path;
 };
 
 int BYTES_PER_ENTITY = sizeof(Entity);

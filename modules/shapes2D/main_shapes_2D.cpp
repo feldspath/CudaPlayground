@@ -223,6 +223,7 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer) {
                                                {
                                                    "./modules/shapes2D/rasterize.cu",
                                                    "./modules/common/utils.cu",
+                                                   "./modules/shapes2D/path.cu",
                                                },
                                            .kernels = {"kernel"}});
 
@@ -230,6 +231,7 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer) {
                                               {
                                                   "./modules/common/utils.cu",
                                                   "./modules/shapes2D/update.cu",
+                                                  "./modules/shapes2D/path.cu",
                                               },
                                           .kernels = {"update"}});
 
