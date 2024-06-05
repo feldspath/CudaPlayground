@@ -4,9 +4,9 @@
 #include "./../common/utils.cuh"
 #include "HostDeviceInterface.h"
 #include "builtin_types.h"
-#include "cells.h"
 #include "entities.h"
 #include "helper_math.h"
+#include "map.h"
 #include "matrix_math.h"
 
 namespace cg = cooperative_groups;
@@ -22,62 +22,7 @@ struct UpdateInfo {
     TileId newTileId;
 };
 
-int cellNetworkId(int cellId, Grid2D *grid2D) {
-    if (cellId != -1 && grid2D->getTileId(cellId) == ROAD) {
-        return grid2D->roadNetworkRepr(cellId);
-    } else {
-        return -1;
-    }
-}
-
-int4 neighborCells(int cellId, Grid2D *grid2D) {
-    int2 coords = grid2D->cellCoords(cellId);
-    int right = grid2D->idFromCoords(coords.x + 1, coords.y);
-    int left = grid2D->idFromCoords(coords.x - 1, coords.y);
-    int up = grid2D->idFromCoords(coords.x, coords.y + 1);
-    int down = grid2D->idFromCoords(coords.x, coords.y - 1);
-
-    return int4{right, left, up, down};
-}
-
-int4 neighborNetworks(int cellId, Grid2D *grid2D) {
-    int4 neighbors = neighborCells(cellId, grid2D);
-    int4 comps = {cellNetworkId(neighbors.x, grid2D), cellNetworkId(neighbors.y, grid2D),
-                  cellNetworkId(neighbors.z, grid2D), cellNetworkId(neighbors.w, grid2D)};
-
-    return comps;
-}
-
-bool networkInNetworks(int network, int4 networks) {
-    for (int i = 0; i < 4; ++i) {
-        int n = ((int *)(&network))[i];
-        if (n == network) {
-            return true;
-        }
-    }
-    return false;
-}
-
-int4 commonNetworks(int4 nets1, int4 nets2, Grid2D *grid2D) {
-    int4 result = {-1, -1, -1, -1};
-    int count = 0;
-    for (int i = 0; i < 4; ++i) {
-        int ni = ((int *)(&nets1))[i];
-        if (ni != -1 && networkInNetworks(ni, nets2)) {
-            ((int *)(&result))[count] = ni;
-            count++;
-        }
-    }
-    return result;
-}
-
-int4 commonNetworks(int cellId1, int cellId2, Grid2D *grid2D) {
-    int4 nets1 = neighborNetworks(cellId1, grid2D);
-    int4 nets2 = neighborNetworks(cellId2, grid2D);
-    return commonNetworks(nets1, nets2, grid2D);
-}
-
-void updateCell(Grid2D *grid2D, UpdateInfo updateInfo) {
+void updateCell(Map *map, UpdateInfo updateInfo) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -86,90 +31,80 @@ void updateCell(Grid2D *grid2D, UpdateInfo updateInfo) {
 
     grid.sync();
     if (grid.thread_rank() == 0) {
-        grid2D->setTileId(id, new_tile);
+        map->setTileId(id, new_tile);
     }
     grid.sync();
 
     switch (new_tile) {
     case ROAD: {
-        // TODO: update using the entire grid
-        if (grid.block_rank() == 0) {
+        int *cumulNeighborNetworksSizes = allocator->alloc<int *>(sizeof(int) * 5);
+        int *neighborNetworksReprs = allocator->alloc<int *>(sizeof(int) * 4);
 
-            __shared__ int cumulNeighborNetworksSizes[5];
-            __shared__ int neighborNetworksReprs[4];
+        if (grid.thread_rank() == 0) {
+            // check nearby tiles.
+            auto neighbors = map->neighborCells(id);
+            int neighborNetworksSizes[4];
 
-            if (block.thread_rank() == 0) {
-
-                // check nearby tiles.
-                int4 neighbors = neighborCells(id, grid2D);
-                int neighborNetworksSizes[4];
-
-                for (int i = 0; i < 4; i++) {
-                    int nId = ((int *)(&neighbors))[i];
-                    // if one tile is not grass, update the connected components
-                    if (nId != -1 && grid2D->getTileId(nId) == ROAD) {
-                        int repr = grid2D->roadNetworkRepr(nId);
-                        // Skip the tile if it was already updated this frame
-                        if (grid2D->roadNetworkRepr(repr) == repr) {
-                            neighborNetworksSizes[i] = grid2D->roadNetworkId(repr);
-                            neighborNetworksReprs[i] = repr;
-                            grid2D->roadNetworkRepr(repr) = id;
-                            continue;
-                        }
-                    }
-                    neighborNetworksSizes[i] = 0;
-                    neighborNetworksReprs[i] = -1;
-                }
-
-                cumulNeighborNetworksSizes[0] = 0;
-                for (int i = 0; i < 4; i++) {
-                    cumulNeighborNetworksSizes[i + 1] =
-                        cumulNeighborNetworksSizes[i] + neighborNetworksSizes[i];
-                }
-
-                // Init the new road tile
-                grid2D->roadNetworkRepr(id) = id;
-                grid2D->roadNetworkId(id) = cumulNeighborNetworksSizes[4] + 1;
-            }
-
-            block.sync();
-
-            // Flatten network
-            for (int offset = 0; offset < grid2D->count; offset += block.num_threads()) {
-                int cellId = block.thread_rank() + offset;
-                if (cellId >= grid2D->count || grid2D->getTileId(cellId) != ROAD) {
-                    continue;
-                }
-
-                int neighborId = -1;
-                for (int i = 0; i < 4; ++i) {
-                    if (grid2D->roadNetworkRepr(cellId) == neighborNetworksReprs[i] ||
-                        cellId == neighborNetworksReprs[i]) {
-                        neighborId = i;
-                        break;
+            for (int i = 0; i < 4; i++) {
+                int nId = neighbors.data[i];
+                // if one tile is not grass, update the connected components
+                if (nId != -1 && map->getTileId(nId) == ROAD) {
+                    int repr = map->roadNetworkRepr(nId);
+                    // Skip the tile if it was already updated this frame
+                    if (map->roadNetworkRepr(repr) == repr) {
+                        neighborNetworksSizes[i] = map->roadNetworkId(repr);
+                        neighborNetworksReprs[i] = repr;
+                        map->roadNetworkRepr(repr) = id;
+                        continue;
                     }
                 }
-                if (neighborId == -1) {
-                    continue;
-                }
-
-                grid2D->roadNetworkRepr(cellId) = id;
-                grid2D->roadNetworkId(cellId) += cumulNeighborNetworksSizes[neighborId];
+                neighborNetworksSizes[i] = 0;
+                neighborNetworksReprs[i] = -1;
             }
+
+            cumulNeighborNetworksSizes[0] = 0;
+            for (int i = 0; i < 4; i++) {
+                cumulNeighborNetworksSizes[i + 1] =
+                    cumulNeighborNetworksSizes[i] + neighborNetworksSizes[i];
+            }
+
+            // Init the new road tile
+            map->roadNetworkRepr(id) = id;
+            map->roadNetworkId(id) = cumulNeighborNetworksSizes[4] + 1;
         }
+
+        grid.sync();
+
+        // Flatten network
+        map->processEachCell(ROAD, [&](int cellId) {
+            int neighborId = -1;
+            for (int i = 0; i < 4; ++i) {
+                if (map->roadNetworkRepr(cellId) == neighborNetworksReprs[i] ||
+                    cellId == neighborNetworksReprs[i]) {
+                    neighborId = i;
+                    break;
+                }
+            }
+            if (neighborId == -1) {
+                return;
+            }
+
+            map->roadNetworkRepr(cellId) = id;
+            map->roadNetworkId(cellId) += cumulNeighborNetworksSizes[neighborId];
+        });
         break;
     }
     case FACTORY:
         if (grid.thread_rank() == 0) {
             // Set capacity
-            *grid2D->factoryTileData(id) = FACTORY_CAPACITY;
+            *map->factoryTileData(id) = FACTORY_CAPACITY;
         }
         break;
 
     case HOUSE:
         if (grid.thread_rank() == 0) {
             // Set house to unassigned
-            *grid2D->houseTileData(id) = -1;
+            *map->houseTileData(id) = -1;
         }
         break;
     default:
@@ -177,15 +112,15 @@ void updateCell(Grid2D *grid2D, UpdateInfo updateInfo) {
     }
 }
 
-void assignHouseToFactory(Grid2D *grid2D, Entities *entities, int32_t houseId, int32_t factoryId) {
-    int32_t newEntity = entities->newEntity(grid2D->getCellPosition(houseId), houseId, factoryId);
-    int32_t *houseData = grid2D->houseTileData(houseId);
+void assignHouseToFactory(Map *map, Entities *entities, int32_t houseId, int32_t factoryId) {
+    int32_t newEntity = entities->newEntity(map->getCellPosition(houseId), houseId, factoryId);
+    int32_t *houseData = map->houseTileData(houseId);
     *houseData = newEntity;
 
-    *grid2D->factoryTileData(factoryId) -= 1;
+    *map->factoryTileData(factoryId) -= 1;
 }
 
-void assignOneHouse(Grid2D *grid2D, Entities *entities) {
+void assignOneHouse(Map *map, Entities *entities) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -196,22 +131,21 @@ void assignOneHouse(Grid2D *grid2D, Entities *entities) {
     grid.sync();
 
     // TODO: first scan the tiles that require assignment using the whole grid
-
     __shared__ uint64_t targetFactory;
-    for (int offset = 0; offset < grid2D->count; offset += grid.num_blocks()) {
+    for (int offset = 0; offset < map->count; offset += grid.num_blocks()) {
         int currentTile = offset + grid.block_rank();
-        if (currentTile > grid2D->count) {
+        if (currentTile > map->count) {
             break;
         }
 
         // Skip if tile is not a house or already assigned
-        if (grid2D->getTileId(currentTile) != HOUSE || *grid2D->houseTileData(currentTile) != -1) {
+        if (map->getTileId(currentTile) != HOUSE || *map->houseTileData(currentTile) != -1) {
             continue;
         }
 
         // Get neighbor networks
-        int4 houseNets = neighborNetworks(currentTile, grid2D);
-        int2 tileCoords = grid2D->cellCoords(currentTile);
+        auto houseNets = map->neighborNetworks(currentTile);
+        int2 tileCoords = map->cellCoords(currentTile);
 
         if (block.thread_rank() == 0) {
             targetFactory = uint64_t(Infinity) << 32ull;
@@ -220,29 +154,29 @@ void assignOneHouse(Grid2D *grid2D, Entities *entities) {
         block.sync();
 
         // Check all tiles for factories
-        for (int offset = 0; offset < grid2D->count; offset += block.num_threads()) {
+        for (int offset = 0; offset < map->count; offset += block.num_threads()) {
             int factoryId = block.thread_rank() + offset;
-            if (factoryId >= grid2D->count) {
+            if (factoryId >= map->count) {
                 break;
             }
 
             // Look for factories ...
-            if (grid2D->getTileId(factoryId) != FACTORY) {
+            if (map->getTileId(factoryId) != FACTORY) {
                 continue;
             }
             // ... with some capacity
-            if (*grid2D->factoryTileData(factoryId) == 0) {
+            if (*map->factoryTileData(factoryId) == 0) {
                 continue;
             }
 
             // Get the networks the factory is connected to
-            int4 factoryNets = neighborNetworks(factoryId, grid2D);
+            auto factoryNets = map->neighborNetworks(factoryId);
             for (int i = 0; i < 16; i++) {
-                int f = ((int *)(&factoryNets))[i % 4];
-                int h = ((int *)(&houseNets))[i / 4];
+                int f = factoryNets.data[i % 4];
+                int h = houseNets.data[i / 4];
                 if (f != -1 && f == h) {
                     // This factory shares the same network
-                    int2 factoryCoords = grid2D->cellCoords(factoryId);
+                    int2 factoryCoords = map->cellCoords(factoryId);
                     int2 diff = factoryCoords - tileCoords;
                     uint32_t distance = abs(diff.x) + abs(diff.y);
                     uint64_t target = (uint64_t(distance) << 32ull) | uint64_t(factoryId);
@@ -256,10 +190,10 @@ void assignOneHouse(Grid2D *grid2D, Entities *entities) {
         block.sync();
 
         if (block.thread_rank() == 0) {
-            int32_t *houseData = grid2D->houseTileData(currentTile);
+            int32_t *houseData = map->houseTileData(currentTile);
             if (targetFactory != uint64_t(Infinity) << 32ull && !atomicAdd(&assigned, 1)) {
                 int32_t factoryId = targetFactory & 0xffffffffull;
-                assignHouseToFactory(grid2D, entities, currentTile, factoryId);
+                assignHouseToFactory(map, entities, currentTile, factoryId);
             } else {
                 *houseData = -1;
             }
@@ -271,7 +205,7 @@ void assignOneHouse(Grid2D *grid2D, Entities *entities) {
 
 uint32_t currentTime_ms() { return uint32_t((nanotime_start / (uint64_t)1e6) & 0xffffffff); }
 
-void updateEntities(Grid2D *grid2D, Entities *entities) {
+void updateEntities(Map *map, Entities *entities) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -287,14 +221,14 @@ void updateEntities(Grid2D *grid2D, Entities *entities) {
             if (entities->isPathValid(entityIndex)) {
                 Direction dir = entities->nextPathDirection(entityIndex);
                 Entity &entity = *entities->entityPtr(entityIndex);
-                if (entities->moveEntityDir(entityIndex, dir, gameState->dt, grid2D)) {
+                if (entities->moveEntityDir(entityIndex, dir, gameState->dt, map)) {
                     entities->advancePath(entityIndex);
                     entities->stateStart_ms(entityIndex) = gameState->currentTime_ms;
                     if (entities->getPathLength(entityIndex) == 0 &&
-                        grid2D->cellAtPosition(entity.position) == entity.houseId) {
+                        map->cellAtPosition(entity.position) == entity.houseId) {
                         entity.state = Rest;
                         entity.stateStart_ms = gameState->currentTime_ms;
-                        entity.position = grid2D->getCellPosition(entity.houseId);
+                        entity.position = map->getCellPosition(entity.houseId);
                     }
                 }
             }
@@ -304,14 +238,14 @@ void updateEntities(Grid2D *grid2D, Entities *entities) {
             if (entities->isPathValid(entityIndex)) {
                 Direction dir = entities->nextPathDirection(entityIndex);
                 Entity &entity = *entities->entityPtr(entityIndex);
-                if (entities->moveEntityDir(entityIndex, dir, gameState->dt, grid2D)) {
+                if (entities->moveEntityDir(entityIndex, dir, gameState->dt, map)) {
                     entities->advancePath(entityIndex);
                     entities->stateStart_ms(entityIndex) = gameState->currentTime_ms;
                     if (entities->getPathLength(entityIndex) == 0 &&
-                        grid2D->cellAtPosition(entity.position) == entity.factoryId) {
+                        map->cellAtPosition(entity.position) == entity.factoryId) {
                         entity.state = Work;
                         entity.stateStart_ms = gameState->currentTime_ms;
-                        entity.position = grid2D->getCellPosition(entity.factoryId);
+                        entity.position = map->getCellPosition(entity.factoryId);
                     }
                 }
             }
@@ -346,32 +280,33 @@ struct PathCell {
 
 struct PathfindingInfo {
     // cell id of the networks repr
-    int4 networkIds;
+    NeighborNetworks networkIds;
 
     uint32_t entityIdx;
     uint32_t targetId;
+    uint32_t originId;
 
     // buffer of size sum of all networks to explore
     PathCell *buffer;
     uint32_t bufferSize;
 };
 
-int pathfindingBufferIndex(Grid2D *grid2D, PathfindingInfo &info, uint32_t cellId) {
+int pathfindingBufferIndex(Map *map, PathfindingInfo &info, uint32_t cellId) {
     int offset = 0;
-    int32_t network = grid2D->roadNetworkRepr(cellId);
+    int32_t network = map->roadNetworkRepr(cellId);
 
     for (int i = 0; i < 4; i++) {
         int ni = ((int *)(&info.networkIds))[i];
         if (network == ni) {
             break;
         }
-        offset += grid2D->roadNetworkId(ni);
+        offset += map->roadNetworkId(ni);
     }
 
-    return offset + grid2D->roadNetworkId(cellId) % grid2D->roadNetworkId(network);
+    return offset + map->roadNetworkId(cellId) % map->roadNetworkId(network);
 }
 
-void performPathFinding(Grid2D *grid2D, Entities *entities) {
+void performPathFinding(Map *map, Entities *entities) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -399,10 +334,11 @@ void performPathFinding(Grid2D *grid2D, Entities *entities) {
             uint32_t bufferId = atomicAdd(&lostCount, 1);
             PathfindingInfo info;
             uint32_t targetId = entity.state == GoHome ? entity.houseId : entity.factoryId;
+            int originId = map->cellAtPosition(entities->entityPosition(entityIndex));
             info.entityIdx = entityIndex;
-            int originId = grid2D->cellAtPosition(entities->entityPosition(entityIndex));
-            info.networkIds = commonNetworks(originId, targetId, grid2D);
+            info.networkIds = map->sharedNetworks(originId, targetId);
             info.targetId = targetId;
+            info.originId = originId;
             lostEntities[bufferId] = info;
         }
     }
@@ -417,7 +353,7 @@ void performPathFinding(Grid2D *grid2D, Entities *entities) {
             if (n == -1) {
                 break;
             }
-            bufferSize += grid2D->roadNetworkId(n);
+            bufferSize += map->roadNetworkId(n);
         }
 
         PathCell *ptr = allocator->alloc<PathCell *>(bufferSize * sizeof(PathCell));
@@ -438,11 +374,8 @@ void performPathFinding(Grid2D *grid2D, Entities *entities) {
 
         PathfindingInfo info = lostEntities[bufferIdx];
 
-        Entity &entity = *entities->entityPtr(info.entityIdx);
-        int32_t origin = grid2D->cellAtPosition(entity.position);
-
-        int targetBufferId = pathfindingBufferIndex(grid2D, info, info.targetId);
-        int originBufferId = pathfindingBufferIndex(grid2D, info, origin);
+        int targetBufferId = pathfindingBufferIndex(map, info, info.targetId);
+        int originBufferId = pathfindingBufferIndex(map, info, info.originId);
 
         // Init buffer
         for (int roadOffset = 0; roadOffset < info.bufferSize; roadOffset += block.num_threads()) {
@@ -459,12 +392,12 @@ void performPathFinding(Grid2D *grid2D, Entities *entities) {
 
         if (block.thread_rank() == 0) {
             // Init neighbor tiles of target
-            int4 neighbors = neighborCells(info.targetId, grid2D);
+            auto neighbors = map->neighborCells(info.targetId);
             for (int i = 0; i < 4; i++) {
-                int n = ((int *)(&neighbors))[i];
-                if (n != -1 && grid2D->getTileId(n) == ROAD &&
-                    networkInNetworks(grid2D->roadNetworkRepr(n), info.networkIds)) {
-                    int bufferId = pathfindingBufferIndex(grid2D, info, n);
+                int n = neighbors.data[i];
+                if (n != -1 && map->getTileId(n) == ROAD &&
+                    info.networkIds.contains(map->roadNetworkRepr(n))) {
+                    int bufferId = pathfindingBufferIndex(map, info, n);
                     PathCell pathCell;
                     pathCell.cellId = n;
                     pathCell.distance = 0;
@@ -475,17 +408,17 @@ void performPathFinding(Grid2D *grid2D, Entities *entities) {
 
         block.sync();
 
-        auto isOriginReached = [](int origin, Grid2D *grid2D, PathfindingInfo &info) {
-            if (grid2D->getTileId(origin) == ROAD) {
-                int bufferId = pathfindingBufferIndex(grid2D, info, origin);
+        auto isOriginReached = [](int origin, Map *map, PathfindingInfo &info) {
+            if (map->getTileId(origin) == ROAD) {
+                int bufferId = pathfindingBufferIndex(map, info, origin);
                 return info.buffer[bufferId].distance != uint32_t(Infinity);
             }
 
-            int4 originNeighbors = neighborCells(origin, grid2D);
+            auto originNeighbors = map->neighborCells(origin);
             for (int i = 0; i < 4; ++i) {
-                int nId = ((int *)(&originNeighbors))[i];
-                if (grid2D->getTileId(nId) == ROAD) {
-                    int bufferId = pathfindingBufferIndex(grid2D, info, nId);
+                int nId = originNeighbors.data[i];
+                if (map->getTileId(nId) == ROAD) {
+                    int bufferId = pathfindingBufferIndex(map, info, nId);
                     if (info.buffer[bufferId].distance != uint32_t(Infinity)) {
                         return true;
                     }
@@ -495,7 +428,7 @@ void performPathFinding(Grid2D *grid2D, Entities *entities) {
         };
 
         // Build flowfield
-        while (!isOriginReached(origin, grid2D, info)) {
+        while (!isOriginReached(info.originId, map, info)) {
             for (int roadOffset = 0; roadOffset < info.bufferSize;
                  roadOffset += block.num_threads()) {
                 int currentRoadBufferId = roadOffset + block.thread_rank();
@@ -509,11 +442,11 @@ void performPathFinding(Grid2D *grid2D, Entities *entities) {
                 }
 
                 // Retrieve neighbor tiles
-                int4 neighbors = neighborCells(cell.cellId, grid2D);
+                auto neighbors = map->neighborCells(cell.cellId);
                 for (int i = 0; i < 4; ++i) {
-                    int neighborId = ((int *)(&neighbors))[i];
-                    if (neighborId != -1 && grid2D->getTileId(neighborId) == ROAD) {
-                        int neighborBufferId = pathfindingBufferIndex(grid2D, info, neighborId);
+                    int neighborId = neighbors.data[i];
+                    if (neighborId != -1 && map->getTileId(neighborId) == ROAD) {
+                        int neighborBufferId = pathfindingBufferIndex(map, info, neighborId);
                         // Atomically update neighbor tiles id if not set
                         int oldNeighborId =
                             atomicCAS(&(info.buffer[neighborBufferId].cellId), -1, neighborId);
@@ -531,48 +464,40 @@ void performPathFinding(Grid2D *grid2D, Entities *entities) {
             block.sync();
         }
 
+        // Extract path
         if (block.thread_rank() == 0) {
-            int current = origin;
+            int current = info.originId;
+            bool reached = false;
             entities->resetPath(info.entityIdx);
-            while (entities->getPathLength(info.entityIdx) < 29) {
+            while (!reached && entities->getPathLength(info.entityIdx) < 29) {
                 // Retrieve path
-                int4 neighbors = neighborCells(current, grid2D);
-                if (neighbors.x == info.targetId) {
-                    entities->pushBackPath(info.entityIdx, RIGHT);
-                    break;
-                } else if (neighbors.y == info.targetId) {
-                    entities->pushBackPath(info.entityIdx, LEFT);
-                    break;
-                } else if (neighbors.z == info.targetId) {
-                    entities->pushBackPath(info.entityIdx, UP);
-                    break;
-                } else if (neighbors.w == info.targetId) {
-                    entities->pushBackPath(info.entityIdx, DOWN);
-                    break;
-                } else {
-                    uint32_t min = uint32_t(Infinity);
-                    Direction dir;
-                    int nextCell;
-                    for (int i = 0; i < 4; ++i) {
-                        int nId = ((int *)(&neighbors))[i];
-                        if (grid2D->getTileId(nId) == ROAD) {
-                            int bufferId = pathfindingBufferIndex(grid2D, info, nId);
-                            if (info.buffer[bufferId].distance < min) {
-                                min = info.buffer[bufferId].distance;
-                                dir = Direction(i);
-                                nextCell = nId;
-                            }
+                auto neighbors = map->neighborCells(current);
+                uint32_t min = uint32_t(Infinity);
+                Direction dir;
+                int nextCell;
+                for (int i = 0; i < 4; ++i) {
+                    int nId = neighbors.data[i];
+                    if (nId == info.targetId) {
+                        reached = true;
+                        dir = Direction(i);
+                        break;
+                    } else if (map->getTileId(nId) == ROAD) {
+                        int bufferId = pathfindingBufferIndex(map, info, nId);
+                        if (info.buffer[bufferId].distance < min) {
+                            min = info.buffer[bufferId].distance;
+                            dir = Direction(i);
+                            nextCell = nId;
                         }
                     }
-                    entities->pushBackPath(info.entityIdx, dir);
-                    current = nextCell;
                 }
+                entities->pushBackPath(info.entityIdx, dir);
+                current = nextCell;
             }
         }
     }
 }
 
-void updateGrid(Grid2D *grid2D, Entities *entities) {
+void updateGrid(Map *map, Entities *entities) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -589,9 +514,9 @@ void updateGrid(Grid2D *grid2D, Entities *entities) {
             float2 px = float2{uniforms.cursorPos.x, uniforms.height - uniforms.cursorPos.y};
             float3 pos_W =
                 unproject(px, uniforms.invview * uniforms.invproj, uniforms.width, uniforms.height);
-            int id = grid2D->cellAtPosition(float2{pos_W.x, pos_W.y});
+            int id = map->cellAtPosition(float2{pos_W.x, pos_W.y});
 
-            if (id != -1 && grid2D->getTileId(id) == GRASS) {
+            if (id != -1 && map->getTileId(id) == GRASS) {
                 updateInfo.update = true;
                 updateInfo.tileToUpdate = id;
                 updateInfo.newTileId = (TileId)uniforms.modeId;
@@ -599,14 +524,14 @@ void updateGrid(Grid2D *grid2D, Entities *entities) {
         }
 
         if (updateInfo.update) {
-            updateCell(grid2D, updateInfo);
+            updateCell(map, updateInfo);
         }
     }
 
-    assignOneHouse(grid2D, entities);
+    assignOneHouse(map, entities);
 
-    performPathFinding(grid2D, entities);
-    updateEntities(grid2D, entities);
+    performPathFinding(map, entities);
+    updateEntities(map, entities);
 
     // grid.sync();
     if (grid.thread_rank() == 0) {
@@ -630,12 +555,12 @@ extern "C" __global__ void update(const Uniforms _uniforms, GameState *_gameStat
     grid.sync();
 
     {
-        Grid2D *grid2D = allocator->alloc<Grid2D *>(sizeof(Grid2D));
-        *grid2D = Grid2D(numRows, numCols, cells);
+        Map *map = allocator->alloc<Map *>(sizeof(Map));
+        *map = Map(numRows, numCols, cells);
 
         Entities *entities = allocator->alloc<Entities *>(sizeof(Entities));
         *entities = Entities(entitiesBuffer);
 
-        updateGrid(grid2D, entities);
+        updateGrid(map, entities);
     }
 }

@@ -2,8 +2,8 @@
 
 #include "HostDeviceInterface.h"
 #include "builtin_types.h"
-#include "cells.h"
 #include "helper_math.h"
+#include "map.h"
 
 float ENTITY_RADIUS = 0.2f;
 float ENTITY_SPEED = 3.0f;
@@ -12,23 +12,6 @@ uint32_t WORK_TIME_MS = 5000;
 uint32_t REST_TIME_MS = 5000;
 
 int MAX_PATH_LENGTH = 29;
-
-enum Direction { RIGHT = 0, LEFT = 1, UP = 2, DOWN = 3 };
-
-float2 directionFromEnum(Direction dir) {
-    switch (dir) {
-    case RIGHT:
-        return float2{1.0f, 0.0f};
-    case LEFT:
-        return float2{-1.0f, 0.0f};
-    case UP:
-        return float2{0.0f, 1.0f};
-    case DOWN:
-        return float2{0.0f, -1.0f};
-    default:
-        break;
-    }
-}
 
 struct Entities {
     uint32_t *count;
@@ -143,14 +126,13 @@ struct Entities {
 
     // Move entity in specified direction. If a tile is crossed, return true.
     // direction is assumed to be normalized.
-    bool moveEntityDir(uint32_t entityId, Direction dir, float dt, Grid2D *grid2D) {
+    bool moveEntityDir(uint32_t entityId, Direction dir, float dt, Map *map) {
         float2 direction = directionFromEnum(dir);
         float2 &entityPos = entityPosition(entityId);
-        int previousCellId = grid2D->cellAtPosition(entityPos - direction * ENTITY_RADIUS * 1.2);
+        int previousCellId = map->cellAtPosition(entityPos - direction * ENTITY_RADIUS * 1.2);
 
         entityPos += direction * ENTITY_SPEED * dt;
 
-        return grid2D->cellAtPosition(entityPos - direction * ENTITY_RADIUS * 1.2) !=
-               previousCellId;
+        return map->cellAtPosition(entityPos - direction * ENTITY_RADIUS * 1.2) != previousCellId;
     }
 };

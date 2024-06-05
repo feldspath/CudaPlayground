@@ -4,9 +4,9 @@
 #include "./../common/utils.cuh"
 #include "HostDeviceInterface.h"
 #include "builtin_types.h"
-#include "cells.h"
 #include "entities.h"
 #include "helper_math.h"
+#include "map.h"
 #include "matrix_math.h"
 
 uint32_t rgb8color(float3 color) {
@@ -53,7 +53,7 @@ float3 colorFromId(uint32_t id) {
 // - <framebuffer> stores interleaved 32bit depth and color values
 // - The closest fragments are rendered via atomicMin on a combined 64bit depth&color integer
 //   atomicMin(&framebuffer[pixelIndex], (depth << 32 | color));
-void rasterizeGrid(Grid2D *grid2D, Entities *entities, uint64_t *framebuffer) {
+void rasterizeGrid(Map *map, Entities *entities, uint64_t *framebuffer) {
 
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
@@ -71,12 +71,12 @@ void rasterizeGrid(Grid2D *grid2D, Entities *entities, uint64_t *framebuffer) {
 
         float3 pos_W =
             unproject(pFrag, uniforms.invview * uniforms.invproj, uniforms.width, uniforms.height);
-        int sh_cellIndex = grid2D->cellAtPosition(float2{pos_W.x, pos_W.y});
+        int sh_cellIndex = map->cellAtPosition(float2{pos_W.x, pos_W.y});
         if (sh_cellIndex == -1) {
             continue;
         }
 
-        float2 cellCenter = grid2D->getCellPosition(sh_cellIndex);
+        float2 cellCenter = map->getCellPosition(sh_cellIndex);
         float2 diff = float2{pos_W.x - cellCenter.x, pos_W.y - cellCenter.y};
 
         if (abs(diff.x) > CELL_RADIUS || abs(diff.y) > CELL_RADIUS) {
@@ -85,22 +85,22 @@ void rasterizeGrid(Grid2D *grid2D, Entities *entities, uint64_t *framebuffer) {
 
         float3 color;
         if (uniforms.renderMode == RENDERMODE_DEFAULT) {
-            color = colorFromId(grid2D->getTileId(sh_cellIndex));
+            color = colorFromId(map->getTileId(sh_cellIndex));
         } else if (uniforms.renderMode == RENDERMODE_NETWORK) {
-            TileId tileId = grid2D->getTileId(sh_cellIndex);
+            TileId tileId = map->getTileId(sh_cellIndex);
             if (tileId == GRASS || tileId == UNKNOWN) {
                 color = {0.0f, 0.0f, 0.0f};
             } else {
                 int colorId;
                 if (tileId == HOUSE) {
-                    int entityId = *(grid2D->houseTileData(sh_cellIndex));
+                    int entityId = *(map->houseTileData(sh_cellIndex));
                     if (entityId == -1) {
                         colorId = -1;
                     } else {
                         colorId = entities->entityFactory(entityId);
                     }
                 } else if (tileId == ROAD) {
-                    colorId = grid2D->roadNetworkRepr(sh_cellIndex);
+                    colorId = map->roadNetworkRepr(sh_cellIndex);
                 } else {
                     colorId = sh_cellIndex;
                 }
@@ -111,8 +111,8 @@ void rasterizeGrid(Grid2D *grid2D, Entities *entities, uint64_t *framebuffer) {
                 color = float3{r, g, b};
 
                 if (tileId == ROAD) {
-                    color *= (float)(grid2D->roadNetworkId(sh_cellIndex)) /
-                             grid2D->roadNetworkId(grid2D->roadNetworkRepr(sh_cellIndex));
+                    color *= (float)(map->roadNetworkId(sh_cellIndex)) /
+                             map->roadNetworkId(map->roadNetworkRepr(sh_cellIndex));
                 }
 
                 if (colorId == -1) {
@@ -217,13 +217,13 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, GameState *_gameStat
     grid.sync();
 
     {
-        Grid2D *grid2D = allocator->alloc<Grid2D *>(sizeof(Grid2D));
-        *grid2D = Grid2D(numRows, numCols, cells);
+        Map *map = allocator->alloc<Map *>(sizeof(Map));
+        *map = Map(numRows, numCols, cells);
 
         Entities *entities = allocator->alloc<Entities *>(sizeof(Entities));
         *entities = Entities(entitiesBuffer);
 
-        rasterizeGrid(grid2D, entities, framebuffer);
+        rasterizeGrid(map, entities, framebuffer);
 
         rasterizeEntities(entities, framebuffer);
     }

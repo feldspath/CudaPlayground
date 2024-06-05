@@ -26,12 +26,13 @@ void GLRenderer::onKey(GLFWwindow *window, int key, int scancode, int action, in
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     }
 
+    // TODO: properly handle the events
     if (key == GLFW_KEY_R && action == GLFW_PRESS) {
-        Runtime::getInstance()->modeId = 1;
-    } else if (key == GLFW_KEY_H && action == GLFW_PRESS) {
         Runtime::getInstance()->modeId = 2;
+    } else if (key == GLFW_KEY_G && action == GLFW_PRESS) {
+        Runtime::getInstance()->modeId = 4;
     } else if (key == GLFW_KEY_F && action == GLFW_PRESS) {
-        Runtime::getInstance()->modeId = 3;
+        Runtime::getInstance()->modeId = 8;
     }
 
     Runtime::keyStates[key] = action;

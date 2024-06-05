@@ -93,12 +93,16 @@ int RENDERMODE_NETWORK = 1;
 // CELLS
 
 enum TileId {
-    GRASS = 0,
-    ROAD = 1,
-    HOUSE = 2,
-    FACTORY = 3,
-    UNKNOWN = -1,
+    UNKNOWN = 0,
+    GRASS = 1,
+    ROAD = 2,
+    HOUSE = 4,
+    FACTORY = 8,
 };
+
+inline TileId operator|(TileId a, TileId b) {
+    return static_cast<TileId>(static_cast<int>(a) | static_cast<int>(b));
+}
 
 struct Cell {
     TileId tileId;

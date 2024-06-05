@@ -212,7 +212,7 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer) {
             *(reinterpret_cast<int32_t *>(gridCells.data() + cellId * BYTES_PER_CELL)) = GRASS;
         }
     }
-    cuMemcpyHtoD(cptr_grid, gridCells.data(), gridCells.size() * sizeof(uint32_t));
+    cuMemcpyHtoD(cptr_grid, gridCells.data(), gridCells.size());
 
     // Let's assume we can have as much entities as we have cells
     cuMemAlloc(&cptr_entities, sizeof(uint32_t) + numCells * (BYTES_PER_ENTITY));

@@ -22,7 +22,7 @@ struct Runtime {
     inline static glm::dvec2 mousePosition = {0.0, 0.0};
     inline static int mouseButtons = 0;
 
-    inline static int modeId = 1;
+    inline static int modeId = 2;
 
     Runtime() {}
 
