@@ -11,6 +11,8 @@ float ENTITY_SPEED = 3.0f;
 uint32_t WORK_TIME_MS = 5000;
 uint32_t REST_TIME_MS = 5000;
 
+int MAX_PATH_LENGTH = 29;
+
 enum Direction { RIGHT = 0, LEFT = 1, UP = 2, DOWN = 3 };
 
 float2 directionFromEnum(Direction dir) {
@@ -79,7 +81,7 @@ struct Entities {
     }
 
     void setPathLength(uint32_t entityId, uint32_t newPathLength) {
-        if (newPathLength > 29) {
+        if (newPathLength > MAX_PATH_LENGTH) {
             return;
         }
         uint64_t &path = entityPtr(entityId)->path;
@@ -112,6 +114,18 @@ struct Entities {
         } else {
             setPathLength(entityId, newPathLength);
         }
+    }
+
+    void pushBackPath(uint32_t entityId, Direction dir) {
+        // Retrieve current path
+        int currentLength = getPathLength(entityId);
+
+        setPathLength(entityId, 0);
+        uint64_t &path = entityPtr(entityId)->path;
+        path = (path << 2ull);
+
+        setPathDir(entityId, dir, 0);
+        setPathLength(entityId, currentLength + 1);
     }
 
     // Returns true if entity is within clampRadius distance of target.

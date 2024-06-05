@@ -290,6 +290,7 @@ void updateEntities(Grid2D *grid2D, Entities *entities) {
                 Entity &entity = *entities->entityPtr(entityIndex);
                 if (entities->moveEntityDir(entityIndex, dir, frameTime(), grid2D)) {
                     entities->advancePath(entityIndex);
+                    entities->stateStart_ms(entityIndex) = currentTime_ms();
                     if (entities->getPathLength(entityIndex) == 0 &&
                         grid2D->cellAtPosition(entity.position) == entity.houseId) {
                         entity.state = Rest;
@@ -306,6 +307,7 @@ void updateEntities(Grid2D *grid2D, Entities *entities) {
                 Entity &entity = *entities->entityPtr(entityIndex);
                 if (entities->moveEntityDir(entityIndex, dir, frameTime(), grid2D)) {
                     entities->advancePath(entityIndex);
+                    entities->stateStart_ms(entityIndex) = currentTime_ms();
                     if (entities->getPathLength(entityIndex) == 0 &&
                         grid2D->cellAtPosition(entity.position) == entity.factoryId) {
                         entity.state = Work;
@@ -395,7 +397,8 @@ void performPathFinding(Grid2D *grid2D, Entities *entities) {
             PathfindingInfo info;
             uint32_t targetId = entity.state == GoHome ? entity.houseId : entity.factoryId;
             info.entityIdx = entityIndex;
-            info.networkIds = commonNetworks(entityIndex, targetId, grid2D);
+            int originId = grid2D->cellAtPosition(entities->entityPosition(entityIndex));
+            info.networkIds = commonNetworks(originId, targetId, grid2D);
             info.targetId = targetId;
             lostEntities[bufferId] = info;
         }
@@ -413,13 +416,16 @@ void performPathFinding(Grid2D *grid2D, Entities *entities) {
             }
             bufferSize += grid2D->roadNetworkId(n);
         }
+
         PathCell *ptr = allocator->alloc<PathCell *>(bufferSize * sizeof(PathCell));
         if (grid.thread_rank() == 0) {
             lostEntities[i].buffer = ptr;
+            lostEntities[i].bufferSize = bufferSize;
         }
     }
 
     grid.sync();
+
 
     // Each block handles a lost entity
     for (int offset = 0; offset < lostCount; offset += grid.num_blocks()) {
@@ -428,7 +434,9 @@ void performPathFinding(Grid2D *grid2D, Entities *entities) {
             break;
         }
 
+
         PathfindingInfo info = lostEntities[bufferIdx];
+    
 
         Entity &entity = *entities->entityPtr(info.entityIdx);
         int32_t origin = grid2D->cellAtPosition(entity.position);
@@ -436,7 +444,7 @@ void performPathFinding(Grid2D *grid2D, Entities *entities) {
         int targetBufferId = pathfindingBufferIndex(grid2D, info, info.targetId);
         int originBufferId = pathfindingBufferIndex(grid2D, info, origin);
 
-        // Reset buffer
+        // Init buffer
         for (int roadOffset = 0; roadOffset < info.bufferSize; roadOffset += block.num_threads()) {
             int idx = roadOffset + block.thread_rank();
             if (idx >= info.bufferSize) {
@@ -444,7 +452,7 @@ void performPathFinding(Grid2D *grid2D, Entities *entities) {
             }
 
             PathCell init;
-            init.distance = 0;
+            init.distance = uint32_t(Infinity);
             init.cellId = -1;
             info.buffer[idx] = init;
         }
@@ -519,30 +527,47 @@ void performPathFinding(Grid2D *grid2D, Entities *entities) {
                     }
                 }
             }
-            block.sync();
+            // not sure if this is needed or not
+             block.sync();
         }
 
         if (block.thread_rank() == 0) {
-            // Retrieve path
-            int4 originNeighbors = neighborCells(origin, grid2D);
-
-            int min = uint32_t(Infinity);
-            int minId = -1;
-            Direction dir;
-            for (int i = 0; i < 4; ++i) {
-                int nId = ((int *)(&originNeighbors))[i];
-                if (grid2D->getTileId(nId) == ROAD) {
-                    int bufferId = pathfindingBufferIndex(grid2D, info, nId);
-                    if (info.buffer[bufferId].distance < min) {
-                        min = info.buffer[bufferId].distance;
-                        minId = nId;
-                        dir = Direction(i);
+            int current = origin;
+            entities->resetPath(info.entityIdx);
+            while (entities->getPathLength(info.entityIdx) < 29) {
+                // Retrieve path
+                int4 neighbors = neighborCells(current, grid2D);
+                if (neighbors.x == info.targetId) {
+                    entities->pushBackPath(info.entityIdx, RIGHT);
+                    break;
+                } else if (neighbors.y == info.targetId) {
+                    entities->pushBackPath(info.entityIdx, LEFT);
+                    break;
+                } else if (neighbors.z == info.targetId) {
+                    entities->pushBackPath(info.entityIdx, UP);
+                    break;
+                } else if (neighbors.w == info.targetId) {
+                    entities->pushBackPath(info.entityIdx, DOWN);
+                    break;
+                } else {
+                    uint32_t min = uint32_t(Infinity);
+                    Direction dir;
+                    int nextCell;
+                    for (int i = 0; i < 4; ++i) {
+                        int nId = ((int *)(&neighbors))[i];
+                        if (grid2D->getTileId(nId) == ROAD) {
+                            int bufferId = pathfindingBufferIndex(grid2D, info, nId);
+                            if (info.buffer[bufferId].distance < min) {
+                                min = info.buffer[bufferId].distance;
+                                dir = Direction(i);
+                                nextCell = nId;
+                            }
+                        }
                     }
+                    entities->pushBackPath(info.entityIdx, dir);
+                    current = nextCell;
                 }
             }
-
-            entities->setPathDir(info.entityIdx, dir, 0);
-            entities->setPathLength(info.entityIdx, 1);
         }
     }
 }
