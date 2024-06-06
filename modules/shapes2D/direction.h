@@ -26,12 +26,7 @@ template <typename T> struct NeighborInfo {
     T data[4];
 
     bool contains(T other) {
-        for (int i = 0; i < 4; ++i) {
-            if (data[i] == other) {
-                return true;
-            }
-        }
-        return false;
+        return oneTrue([&](T val) { return val == other; });
     }
 
     T getDir(Direction dir) { return data[static_cast<int32_t>(dir)]; }
@@ -41,5 +36,39 @@ template <typename T> struct NeighborInfo {
         data[1] = -1;
         data[2] = -1;
         data[3] = -1;
+    }
+
+    // Apply f to every value in data that is not -1
+    template <typename Function> NeighborInfo<T> apply(Function &&f) {
+        NeighborInfo<T> result;
+        for (int i = 0; i < 4; ++i) {
+            if (data[i] == -1) {
+                continue;
+            }
+            result.data[i] = f(data[i]);
+        }
+        return result;
+    }
+
+    // Run f to every value in data that is not -1
+    template <typename Function> void forEach(Function &&f) {
+        for (int i = 0; i < 4; ++i) {
+            if (data[i] == -1) {
+                continue;
+            }
+            f(data[i]);
+        }
+    }
+
+    template <typename Function> bool oneTrue(Function &&f) {
+        for (int i = 0; i < 4; ++i) {
+            if (data[i] == -1) {
+                continue;
+            }
+            if (f(data[i])) {
+                return true;
+            }
+        }
+        return false;
     }
 };

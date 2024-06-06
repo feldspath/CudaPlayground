@@ -19,14 +19,3 @@ struct Path {
     void pop();
     void append(Direction dir);
 };
-
-// struct FieldCell {
-//     uint32_t distance;
-//     int32_t cellId;
-// };
-//  struct IntegrationField {
-//      uint32_t target;
-//
-//      FieldCell *integrationField;
-//      uint32_t fieldSize;
-//  };

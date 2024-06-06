@@ -73,28 +73,24 @@ struct Map {
     // Network logic
     NeighborNetworks neighborNetworks(int cellId) {
         auto neighbors = neighborCells(cellId);
-        NeighborNetworks res;
-        for (int i = 0; i < 4; ++i) {
-            int value = -1;
-            int cellId = neighbors.data[i];
-            if (cellId != -1 && getTileId(cellId) == ROAD) {
-                value = roadNetworkRepr(cellId);
+        return neighbors.apply([&](int neighborCellId) {
+            if (getTileId(neighborCellId) == ROAD) {
+                return roadNetworkRepr(neighborCellId);
+            } else {
+                return -1;
             }
-            res.data[i] = value;
-        }
-        return res;
+        });
     }
 
     NeighborNetworks sharedNetworks(NeighborNetworks nets1, NeighborNetworks nets2) {
         NeighborNetworks result;
         int count = 0;
-        for (int i = 0; i < 4; ++i) {
-            int ni = nets1.data[i];
-            if (ni != -1 && nets2.contains(ni)) {
-                result.data[count] = ni;
+        nets1.forEach([&](int network) {
+            if (nets2.contains(network)) {
+                result.data[count] = network;
                 count++;
             }
-        }
+        });
         return result;
     }
 

@@ -8,6 +8,7 @@
 #include "helper_math.h"
 #include "map.h"
 #include "matrix_math.h"
+#include "pathfinding.h"
 
 namespace cg = cooperative_groups;
 
@@ -38,7 +39,7 @@ void updateCell(Map *map, UpdateInfo updateInfo) {
     switch (new_tile) {
     case ROAD: {
         int *cumulNeighborNetworksSizes = allocator->alloc<int *>(sizeof(int) * 5);
-        int *neighborNetworksReprs = allocator->alloc<int *>(sizeof(int) * 4);
+        int *neighborNetworks = allocator->alloc<int *>(sizeof(int) * 4);
 
         if (grid.thread_rank() == 0) {
             // check nearby tiles.
@@ -53,13 +54,13 @@ void updateCell(Map *map, UpdateInfo updateInfo) {
                     // Skip the tile if it was already updated this frame
                     if (map->roadNetworkRepr(repr) == repr) {
                         neighborNetworksSizes[i] = map->roadNetworkId(repr);
-                        neighborNetworksReprs[i] = repr;
+                        neighborNetworks[i] = repr;
                         map->roadNetworkRepr(repr) = id;
                         continue;
                     }
                 }
                 neighborNetworksSizes[i] = 0;
-                neighborNetworksReprs[i] = -1;
+                neighborNetworks[i] = -1;
             }
 
             cumulNeighborNetworksSizes[0] = 0;
@@ -79,8 +80,8 @@ void updateCell(Map *map, UpdateInfo updateInfo) {
         map->processEachCell(ROAD, [&](int cellId) {
             int neighborId = -1;
             for (int i = 0; i < 4; ++i) {
-                if (map->roadNetworkRepr(cellId) == neighborNetworksReprs[i] ||
-                    cellId == neighborNetworksReprs[i]) {
+                int network = neighborNetworks[i];
+                if (map->roadNetworkRepr(cellId) == network || cellId == network) {
                     neighborId = i;
                     break;
                 }
@@ -300,38 +301,14 @@ void updateGameState() {
     gameState->currentTime_ms = currentTime_ms();
 }
 
-struct PathCell {
-    uint32_t distance;
-    int32_t cellId;
-};
-
 struct PathfindingInfo {
-    // cell id of the networks repr
     NeighborNetworks networkIds;
-
     uint32_t entityIdx;
     uint32_t targetId;
     uint32_t originId;
 
-    // buffer of size sum of all networks to explore
-    PathCell *buffer;
-    uint32_t bufferSize;
+    FlowField flowField;
 };
-
-int pathfindingBufferIndex(Map *map, PathfindingInfo &info, uint32_t cellId) {
-    int offset = 0;
-    int32_t network = map->roadNetworkRepr(cellId);
-
-    for (int i = 0; i < 4; i++) {
-        int ni = ((int *)(&info.networkIds))[i];
-        if (network == ni) {
-            break;
-        }
-        offset += map->roadNetworkId(ni);
-    }
-
-    return offset + map->roadNetworkId(cellId) % map->roadNetworkId(network);
-}
 
 void performPathFinding(Map *map, Entities *entities) {
     auto grid = cg::this_grid();
@@ -339,8 +316,9 @@ void performPathFinding(Map *map, Entities *entities) {
 
     grid.sync();
 
-    PathfindingInfo *lostEntities =
-        allocator->alloc<PathfindingInfo *>(entities->getCount() * sizeof(PathfindingInfo));
+    // One flow field per lost entity
+    Pathfinding *pathfindings =
+        allocator->alloc<Pathfinding *>(entities->getCount() * sizeof(Pathfinding));
     uint32_t &lostCount = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
 
     if (grid.thread_rank() == 0) {
@@ -357,35 +335,25 @@ void performPathFinding(Map *map, Entities *entities) {
 
         Entity &entity = entities->get(entityIndex);
         if ((entity.state == GoToWork || entity.state == GoHome) && !entity.path.isValid()) {
-            uint32_t bufferId = atomicAdd(&lostCount, 1);
-            PathfindingInfo info;
+            uint32_t id = atomicAdd(&lostCount, 1);
             uint32_t targetId = entity.state == GoHome ? entity.houseId : entity.factoryId;
             int originId = map->cellAtPosition(entity.position);
-            info.entityIdx = entityIndex;
-            info.networkIds = map->sharedNetworks(originId, targetId);
-            info.targetId = targetId;
-            info.originId = originId;
-            lostEntities[bufferId] = info;
+            Pathfinding p;
+            p.flowField = FlowField(map, targetId, originId);
+            p.entityIdx = entityIndex;
+            p.origin = originId;
+            p.target = targetId;
+            pathfindings[id] = p;
         }
     }
 
     grid.sync();
 
-    // Allocate a buffer in global memory for each lost entity
+    // Allocate the field for each pathfinding
     for (int i = 0; i < lostCount; ++i) {
-        int bufferSize = 0;
-        for (int j = 0; j < 4; ++j) {
-            int n = lostEntities[i].networkIds.data[j];
-            if (n == -1) {
-                break;
-            }
-            bufferSize += map->roadNetworkId(n);
-        }
-
-        PathCell *ptr = allocator->alloc<PathCell *>(bufferSize * sizeof(PathCell));
+        FieldCell *field = allocator->alloc<FieldCell *>(pathfindings[i].flowField.size());
         if (grid.thread_rank() == 0) {
-            lostEntities[i].buffer = ptr;
-            lostEntities[i].bufferSize = bufferSize;
+            pathfindings[i].flowField.setBuffer(field);
         }
     }
 
@@ -398,90 +366,71 @@ void performPathFinding(Map *map, Entities *entities) {
             break;
         }
 
-        PathfindingInfo info = lostEntities[bufferIdx];
-
-        int targetBufferId = pathfindingBufferIndex(map, info, info.targetId);
-        int originBufferId = pathfindingBufferIndex(map, info, info.originId);
+        Pathfinding info = pathfindings[bufferIdx];
+        FlowField &flowField = info.flowField;
 
         // Init buffer
-        for (int roadOffset = 0; roadOffset < info.bufferSize; roadOffset += block.num_threads()) {
+        for (int roadOffset = 0; roadOffset < info.flowField.length();
+             roadOffset += block.num_threads()) {
             int idx = roadOffset + block.thread_rank();
-            if (idx >= info.bufferSize) {
-                break;
+            if (idx < info.flowField.length()) {
+                flowField.resetCell(idx);
             }
-
-            PathCell init;
-            init.distance = uint32_t(Infinity);
-            init.cellId = -1;
-            info.buffer[idx] = init;
         }
 
         if (block.thread_rank() == 0) {
             // Init neighbor tiles of target
-            auto neighbors = map->neighborCells(info.targetId);
-            for (int i = 0; i < 4; i++) {
-                int n = neighbors.data[i];
-                if (n != -1 && map->getTileId(n) == ROAD &&
-                    info.networkIds.contains(map->roadNetworkRepr(n))) {
-                    int bufferId = pathfindingBufferIndex(map, info, n);
-                    PathCell pathCell;
-                    pathCell.cellId = n;
-                    pathCell.distance = 0;
-                    info.buffer[bufferId] = pathCell;
+            map->neighborCells(info.target).forEach([&flowField](int cellId) {
+                int fieldId = flowField.fieldId(cellId);
+                if (fieldId != -1) {
+                    auto &cell = flowField.getFieldCell(fieldId);
+                    cell.cellId = cellId;
+                    cell.distance = 0;
                 }
-            }
+            });
         }
 
         block.sync();
 
-        auto isOriginReached = [](int origin, Map *map, PathfindingInfo &info) {
-            auto originNeighbors = map->neighborCells(origin);
-            for (int i = 0; i < 4; ++i) {
-                int nId = originNeighbors.data[i];
-                if (map->getTileId(nId) == ROAD &&
-                    info.networkIds.contains(map->roadNetworkRepr(nId))) {
-                    int bufferId = pathfindingBufferIndex(map, info, nId);
-                    if (info.buffer[bufferId].distance < uint32_t(Infinity)) {
-                        return true;
-                    }
-                }
-            }
-            return false;
+        auto isOriginReached = [](int origin, Map *map, Pathfinding &info) {
+            return map->neighborCells(origin).oneTrue([&](int cellId) {
+                int fieldId = info.flowField.fieldId(cellId);
+                return fieldId != -1 &&
+                       info.flowField.getFieldCell(fieldId).distance < uint32_t(Infinity);
+            });
         };
 
         // Build flowfield
-        while (!isOriginReached(info.originId, map, info)) {
-            for (int roadOffset = 0; roadOffset < info.bufferSize;
+        while (!isOriginReached(info.origin, map, info)) {
+            for (int roadOffset = 0; roadOffset < info.flowField.length();
                  roadOffset += block.num_threads()) {
-                int currentRoadBufferId = roadOffset + block.thread_rank();
-                if (currentRoadBufferId > info.bufferSize) {
+                int currentFieldId = roadOffset + block.thread_rank();
+                if (currentFieldId > info.flowField.length()) {
                     break;
                 }
 
-                PathCell cell = info.buffer[currentRoadBufferId];
-                if (cell.cellId == -1) {
+                FieldCell &fieldCell = info.flowField.getFieldCell(currentFieldId);
+                if (fieldCell.cellId == -1) {
                     continue;
                 }
 
                 // Retrieve neighbor tiles
-                auto neighbors = map->neighborCells(cell.cellId);
-                for (int i = 0; i < 4; ++i) {
-                    int neighborId = neighbors.data[i];
-                    if (neighborId != -1 && map->getTileId(neighborId) == ROAD &&
-                        info.networkIds.contains(map->roadNetworkRepr(neighborId))) {
-                        int neighborBufferId = pathfindingBufferIndex(map, info, neighborId);
-                        // Atomically update neighbor tiles id if not set
-                        int oldNeighborId =
-                            atomicCAS(&(info.buffer[neighborBufferId].cellId), -1, neighborId);
-
-                        if (oldNeighborId != -1) {
-                            // Set distance value
-                            info.buffer[currentRoadBufferId].distance =
-                                min(info.buffer[currentRoadBufferId].distance,
-                                    info.buffer[neighborBufferId].distance + 1);
-                        }
+                map->neighborCells(fieldCell.cellId).forEach([&](int neighborId) {
+                    int neighborFieldId = flowField.fieldId(neighborId);
+                    if (neighborFieldId == -1) {
+                        return;
                     }
-                }
+
+                    auto &neighborFieldCell = flowField.getFieldCell(neighborFieldId);
+                    // Atomically update neighbor tiles id if not set
+                    int oldNeighborId = atomicCAS(&neighborFieldCell.cellId, -1, neighborId);
+
+                    if (oldNeighborId != -1) {
+                        // Set distance value
+                        fieldCell.distance =
+                            min(fieldCell.distance, neighborFieldCell.distance + 1);
+                    }
+                });
             }
             // not sure if this is needed or not
             block.sync();
@@ -489,7 +438,7 @@ void performPathFinding(Map *map, Entities *entities) {
 
         // Extract path
         if (block.thread_rank() == 0) {
-            int current = info.originId;
+            int current = info.origin;
             bool reached = false;
             Path &path = entities->get(info.entityIdx).path;
             path.reset();
@@ -500,17 +449,24 @@ void performPathFinding(Map *map, Entities *entities) {
                 Direction dir;
                 int nextCell;
                 for (int i = 0; i < 4; ++i) {
-                    int nId = neighbors.data[i];
-                    if (nId == info.targetId) {
+                    int neighborId = neighbors.data[i];
+                    if (neighborId == -1) {
+                        continue;
+                    }
+                    if (neighborId == info.target) {
                         reached = true;
                         dir = Direction(i);
                         break;
-                    } else if (map->getTileId(nId) == ROAD) {
-                        int bufferId = pathfindingBufferIndex(map, info, nId);
-                        if (info.buffer[bufferId].distance < min) {
-                            min = info.buffer[bufferId].distance;
+                    } else {
+                        int fieldId = info.flowField.fieldId(neighborId);
+                        if (fieldId == -1) {
+                            continue;
+                        }
+                        uint32_t distance = info.flowField.getFieldCell(fieldId).distance;
+                        if (distance < min) {
+                            min = distance;
                             dir = Direction(i);
-                            nextCell = nId;
+                            nextCell = neighborId;
                         }
                     }
                 }
