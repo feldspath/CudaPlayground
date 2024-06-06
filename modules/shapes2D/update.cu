@@ -375,7 +375,7 @@ void performPathFinding(Map *map, Entities *entities) {
     for (int i = 0; i < lostCount; ++i) {
         int bufferSize = 0;
         for (int j = 0; j < 4; ++j) {
-            int n = ((int *)(&(lostEntities[i].networkIds)))[j];
+            int n = lostEntities[i].networkIds.data[j];
             if (n == -1) {
                 break;
             }
@@ -435,17 +435,13 @@ void performPathFinding(Map *map, Entities *entities) {
         block.sync();
 
         auto isOriginReached = [](int origin, Map *map, PathfindingInfo &info) {
-            if (map->getTileId(origin) == ROAD) {
-                int bufferId = pathfindingBufferIndex(map, info, origin);
-                return info.buffer[bufferId].distance != uint32_t(Infinity);
-            }
-
             auto originNeighbors = map->neighborCells(origin);
             for (int i = 0; i < 4; ++i) {
                 int nId = originNeighbors.data[i];
-                if (map->getTileId(nId) == ROAD) {
+                if (map->getTileId(nId) == ROAD &&
+                    info.networkIds.contains(map->roadNetworkRepr(nId))) {
                     int bufferId = pathfindingBufferIndex(map, info, nId);
-                    if (info.buffer[bufferId].distance != uint32_t(Infinity)) {
+                    if (info.buffer[bufferId].distance < uint32_t(Infinity)) {
                         return true;
                     }
                 }
@@ -471,7 +467,8 @@ void performPathFinding(Map *map, Entities *entities) {
                 auto neighbors = map->neighborCells(cell.cellId);
                 for (int i = 0; i < 4; ++i) {
                     int neighborId = neighbors.data[i];
-                    if (neighborId != -1 && map->getTileId(neighborId) == ROAD) {
+                    if (neighborId != -1 && map->getTileId(neighborId) == ROAD &&
+                        info.networkIds.contains(map->roadNetworkRepr(neighborId))) {
                         int neighborBufferId = pathfindingBufferIndex(map, info, neighborId);
                         // Atomically update neighbor tiles id if not set
                         int oldNeighborId =
