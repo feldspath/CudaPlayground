@@ -124,28 +124,67 @@ void assignOneHouse(Map *map, Entities *entities) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
-    int32_t &assigned = *allocator->alloc<int32_t *>(4);
-    if (grid.thread_rank() == 0) {
-        assigned = 0;
-    }
     grid.sync();
 
-    // TODO: first scan the tiles that require assignment using the whole grid
+    int32_t &assigned = *allocator->alloc<int32_t *>(4);
+    uint32_t &unassignedHouseCount = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
+    uint32_t &availableFactoriesCount = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
+    uint32_t &globalHouseIdx = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
+    uint32_t &globalFactoryIdx = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
+
+    if (grid.thread_rank() == 0) {
+        unassignedHouseCount = 0;
+        availableFactoriesCount = 0;
+        globalHouseIdx = 0;
+        globalFactoryIdx = 0;
+        assigned = 0;
+    }
+
+    grid.sync();
+
+    map->processEachCell(HOUSE | FACTORY, [&](int cellId) {
+        if (map->getTileId(cellId) == HOUSE && *map->houseTileData(cellId) == -1) {
+            atomicAdd(&unassignedHouseCount, 1);
+        } else if (map->getTileId(cellId) == FACTORY && *map->factoryTileData(cellId) > 0) {
+            atomicAdd(&availableFactoriesCount, 1);
+        }
+    });
+
+    grid.sync();
+
+    if (unassignedHouseCount == 0 || availableFactoriesCount == 0) {
+        return;
+    }
+
+    uint32_t *availableFactories =
+        allocator->alloc<uint32_t *>(sizeof(uint32_t) * availableFactoriesCount);
+    uint32_t *unassignedHouses =
+        allocator->alloc<uint32_t *>(sizeof(uint32_t) * unassignedHouseCount);
+
+    map->processEachCell(HOUSE | FACTORY, [&](int cellId) {
+        if (map->getTileId(cellId) == HOUSE && *map->houseTileData(cellId) == -1) {
+            int idx = atomicAdd(&globalHouseIdx, 1);
+            unassignedHouses[idx] = cellId;
+        } else if (map->getTileId(cellId) == FACTORY && *map->factoryTileData(cellId) > 0) {
+            int idx = atomicAdd(&globalFactoryIdx, 1);
+            availableFactories[idx] = cellId;
+        }
+    });
+
+    grid.sync();
+
     __shared__ uint64_t targetFactory;
-    for (int offset = 0; offset < map->count; offset += grid.num_blocks()) {
-        int currentTile = offset + grid.block_rank();
-        if (currentTile > map->count) {
+    for (int gridOffset = 0; gridOffset < unassignedHouseCount; gridOffset += grid.num_blocks()) {
+        int hIdx = gridOffset + grid.block_rank();
+        if (hIdx >= unassignedHouseCount) {
             break;
         }
 
-        // Skip if tile is not a house or already assigned
-        if (map->getTileId(currentTile) != HOUSE || *map->houseTileData(currentTile) != -1) {
-            continue;
-        }
+        int houseId = unassignedHouses[hIdx];
 
         // Get neighbor networks
-        auto houseNets = map->neighborNetworks(currentTile);
-        int2 tileCoords = map->cellCoords(currentTile);
+        auto houseNets = map->neighborNetworks(houseId);
+        int2 tileCoords = map->cellCoords(houseId);
 
         if (block.thread_rank() == 0) {
             targetFactory = uint64_t(Infinity) << 32ull;
@@ -154,46 +193,35 @@ void assignOneHouse(Map *map, Entities *entities) {
         block.sync();
 
         // Check all tiles for factories
-        for (int offset = 0; offset < map->count; offset += block.num_threads()) {
-            int factoryId = block.thread_rank() + offset;
-            if (factoryId >= map->count) {
+        for (int blockOffset = 0; blockOffset < availableFactoriesCount;
+             blockOffset += block.num_threads()) {
+            int fIdx = block.thread_rank() + blockOffset;
+            if (fIdx >= availableFactoriesCount) {
                 break;
             }
-
-            // Look for factories ...
-            if (map->getTileId(factoryId) != FACTORY) {
-                continue;
-            }
-            // ... with some capacity
-            if (*map->factoryTileData(factoryId) == 0) {
-                continue;
-            }
+            int factoryId = availableFactories[fIdx];
 
             // Get the networks the factory is connected to
             auto factoryNets = map->neighborNetworks(factoryId);
-            for (int i = 0; i < 16; i++) {
-                int f = factoryNets.data[i % 4];
-                int h = houseNets.data[i / 4];
-                if (f != -1 && f == h) {
-                    // This factory shares the same network
-                    int2 factoryCoords = map->cellCoords(factoryId);
-                    int2 diff = factoryCoords - tileCoords;
-                    uint32_t distance = abs(diff.x) + abs(diff.y);
-                    uint64_t target = (uint64_t(distance) << 32ull) | uint64_t(factoryId);
-                    // keep the closest factory
-                    atomicMin(&targetFactory, target);
-                    break;
-                }
+            if (map->sharedNetworks(factoryNets, houseNets).data[0] != -1) {
+                // This factory shares the same network
+                int2 factoryCoords = map->cellCoords(factoryId);
+                int2 diff = factoryCoords - tileCoords;
+                uint32_t distance = abs(diff.x) + abs(diff.y);
+                uint64_t target = (uint64_t(distance) << 32ull) | uint64_t(factoryId);
+                // keep the closest factory
+                atomicMin(&targetFactory, target);
+                break;
             }
         }
 
         block.sync();
 
         if (block.thread_rank() == 0) {
-            int32_t *houseData = map->houseTileData(currentTile);
+            int32_t *houseData = map->houseTileData(houseId);
             if (targetFactory != uint64_t(Infinity) << 32ull && !atomicAdd(&assigned, 1)) {
                 int32_t factoryId = targetFactory & 0xffffffffull;
-                assignHouseToFactory(map, entities, currentTile, factoryId);
+                assignHouseToFactory(map, entities, houseId, factoryId);
             } else {
                 *houseData = -1;
             }
