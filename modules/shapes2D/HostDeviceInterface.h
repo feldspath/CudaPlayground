@@ -124,6 +124,7 @@ enum EntityState {
 // alignment = 8 bytes. No padding
 struct Entity {
     float2 position;
+    float2 velocity;
     uint32_t houseId;
     uint32_t factoryId;
     EntityState state;

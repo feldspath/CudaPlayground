@@ -22,6 +22,7 @@ struct Entities {
 
         Entity &entity = get(id);
         entity.position = position;
+        entity.velocity = {0.0f, 0.0f};
         entity.houseId = house;
         entity.factoryId = factory;
         entity.state = GoToWork;
