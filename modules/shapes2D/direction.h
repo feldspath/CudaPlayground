@@ -25,11 +25,11 @@ template <typename T> struct NeighborInfo {
     // 3 -> down
     T data[4];
 
-    bool contains(T other) {
+    bool contains(T other) const {
         return oneTrue([&](T val) { return val == other; });
     }
 
-    T getDir(Direction dir) { return data[static_cast<int32_t>(dir)]; }
+    T getDir(Direction dir) const { return data[static_cast<int32_t>(dir)]; }
 
     NeighborInfo() {
         data[0] = -1;
@@ -39,7 +39,7 @@ template <typename T> struct NeighborInfo {
     }
 
     // Apply f to every value in data that is not -1
-    template <typename Function> NeighborInfo<T> apply(Function &&f) {
+    template <typename Function> NeighborInfo<T> apply(Function &&f) const {
         NeighborInfo<T> result;
         for (int i = 0; i < 4; ++i) {
             if (data[i] == -1) {
@@ -51,7 +51,7 @@ template <typename T> struct NeighborInfo {
     }
 
     // Run f to every value in data that is not -1
-    template <typename Function> void forEach(Function &&f) {
+    template <typename Function> void forEach(Function &&f) const {
         for (int i = 0; i < 4; ++i) {
             if (data[i] == -1) {
                 continue;
@@ -60,7 +60,16 @@ template <typename T> struct NeighborInfo {
         }
     }
 
-    template <typename Function> bool oneTrue(Function &&f) {
+    template <typename Function> void forEachDir(Function &&f) const {
+        for (int i = 0; i < 4; ++i) {
+            if (data[i] == -1) {
+                continue;
+            }
+            f(Direction(i), data[i]);
+        }
+    }
+
+    template <typename Function> bool oneTrue(Function &&f) const {
         for (int i = 0; i < 4; ++i) {
             if (data[i] == -1) {
                 continue;

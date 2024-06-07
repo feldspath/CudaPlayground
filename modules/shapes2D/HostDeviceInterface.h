@@ -86,8 +86,8 @@ struct mat4 {
     }
 };
 
-int RENDERMODE_DEFAULT = 0;
-int RENDERMODE_NETWORK = 1;
+static int RENDERMODE_DEFAULT = 0;
+static int RENDERMODE_NETWORK = 1;
 
 // DATA FORMATS
 
@@ -110,7 +110,7 @@ struct Cell {
     char additionalData[8];
 };
 
-int BYTES_PER_CELL = sizeof(Cell);
+static int BYTES_PER_CELL = sizeof(Cell);
 
 // ENTITIES
 
@@ -130,9 +130,11 @@ struct Entity {
     uint32_t stateStart_ms;
     // Path is a uint64_t
     Path path;
+
+    inline bool isLost() { return (state == GoHome || state == GoToWork) && !path.isValid(); }
 };
 
-int BYTES_PER_ENTITY = sizeof(Entity);
+static int BYTES_PER_ENTITY = sizeof(Entity);
 
 struct Uniforms {
     float width;

@@ -232,6 +232,7 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer) {
                                                   "./modules/common/utils.cu",
                                                   "./modules/shapes2D/update.cu",
                                                   "./modules/shapes2D/path.cu",
+                                                  "./modules/shapes2D/pathfinding.cu",
                                               },
                                           .kernels = {"update"}});
 

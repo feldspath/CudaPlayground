@@ -18,4 +18,6 @@ struct Path {
     Direction nextDir();
     void pop();
     void append(Direction dir);
+
+    Path() { reset(); }
 };
