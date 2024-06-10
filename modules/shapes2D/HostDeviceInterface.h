@@ -149,6 +149,7 @@ struct Uniforms {
     mat4 invproj;
     mat4 invview;
     int renderMode;
+    bool printTimings;
 
     // Inputs
     double2 cursorPos;
@@ -162,4 +163,10 @@ struct GameState {
     uint64_t previousFrameTime_ns;
     uint32_t currentTime_ms;
     float dt;
+
+    float assignOneHouse_ms;
+    float performPathFinding_ms;
+    float fillCells_ms;
+    float moveEntities_ms;
+    float updateEntitiesState_ms;
 };

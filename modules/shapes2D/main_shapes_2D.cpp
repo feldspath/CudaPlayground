@@ -32,6 +32,7 @@ CudaModularProgram *cuda_update = nullptr;
 CUevent cevent_start, cevent_end;
 
 int renderMode = RENDERMODE_DEFAULT;
+bool printTimings = false;
 
 void initCuda() {
     cuInit(0);
@@ -75,6 +76,8 @@ void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
     uniforms.time = now();
     uniforms.renderMode = renderMode;
     uniforms.modeId = runtime->modeId;
+    uniforms.printTimings = printTimings;
+
     memcpy(&uniforms.cursorPos, &runtime->mousePosition, sizeof(runtime->mousePosition));
     uniforms.mouseButtons = Runtime::getInstance()->mouseButtons;
 
@@ -151,6 +154,7 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
     uniforms.height = renderer->height;
     uniforms.time = now();
     uniforms.renderMode = renderMode;
+    uniforms.printTimings = printTimings;
 
     glm::mat4 view = renderer->camera->viewMatrix();
     glm::mat4 proj = renderer->camera->projMatrix();
@@ -290,6 +294,9 @@ int main() {
             ImGui::Text("Render mode:");
             ImGui::RadioButton("Default", &renderMode, RENDERMODE_DEFAULT);
             ImGui::RadioButton("Network", &renderMode, RENDERMODE_NETWORK);
+
+            ImGui::Text("Options");
+            ImGui::Checkbox("Pring Timings", &printTimings);
 
             ImGui::End();
         }

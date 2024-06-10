@@ -295,6 +295,32 @@ float generateRandomNumber() {
     return myrandf;
 }
 
+template <typename Function> void printDuration(char *name, Function &&f) {
+    if (!uniforms.printTimings) {
+        f();
+        return;
+    }
+
+    auto grid = cg::this_grid();
+    auto block = cg::this_thread_block();
+
+    grid.sync();
+
+    uint64_t t_start = nanotime();
+
+    f();
+
+    grid.sync();
+
+    uint64_t t_end = nanotime();
+
+    if (grid.thread_rank() == 0) {
+        double nanos = double(t_end) - double(t_start);
+        float millis = nanos / 1e6;
+        printf("%s: %f ms\n", name, millis);
+    }
+}
+
 void updateGrid(Map *map, Entities *entities) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
@@ -302,7 +328,7 @@ void updateGrid(Map *map, Entities *entities) {
     int idx = threadIdx.x + blockDim.x * blockIdx.x;
     curand_init(idx, idx, 0, &crState);
 
-    asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(nanotime_start));
+    nanotime_start = nanotime();
 
     if (uniforms.cursorPos.x >= 0 && uniforms.cursorPos.x < uniforms.width &&
         uniforms.cursorPos.y >= 0 && uniforms.cursorPos.y < uniforms.height) {
@@ -323,12 +349,12 @@ void updateGrid(Map *map, Entities *entities) {
                 updateInfo.newTileId = (TileId)uniforms.modeId;
             }
 
-            processRange(entities->getCount(), [&](int entityIdx) {
-                Entity &entity = entities->get(entityIdx);
-                if (length(entity.position - float2{pos_W.x, pos_W.y}) < ENTITY_RADIUS) {
-                    entity.path.reset();
-                }
-            });
+            // processRange(entities->getCount(), [&](int entityIdx) {
+            //     Entity &entity = entities->get(entityIdx);
+            //     if (length(entity.position - float2{pos_W.x, pos_W.y}) < ENTITY_RADIUS) {
+            //         entity.path.reset();
+            //     }
+            // });
         }
 
         if (updateInfo.update) {
@@ -336,15 +362,11 @@ void updateGrid(Map *map, Entities *entities) {
         }
     }
 
-    assignOneHouse(map, entities);
-
-    performPathFinding(map, entities, allocator);
-
-    fillCells(map, entities);
-
-    moveEntities(map, entities, allocator, gameState->dt);
-
-    updateEntitiesState(map, entities);
+    printDuration("assignOneHouse", [&]() { assignOneHouse(map, entities); });
+    printDuration("performPathFinding", [&]() { performPathFinding(map, entities, allocator); });
+    printDuration("fillCells", [&]() { fillCells(map, entities); });
+    printDuration("moveEntities", [&]() { moveEntities(map, entities, allocator, gameState->dt); });
+    printDuration("updateEntitiesState", [&]() { updateEntitiesState(map, entities); });
 
     // grid.sync();
     if (grid.thread_rank() == 0) {
