@@ -5,13 +5,45 @@
 #include "entities.h"
 #include "map.h"
 
+void fillCells(Map *map, Entities *entities) {
+    auto grid = cg::this_grid();
+    auto block = cg::this_thread_block();
+
+    // Reset cell occupation
+    processRange(map->count, [&](int cellId) {
+        int32_t *cellEntities = map->cellsData[cellId].entities;
+        for (int i = 0; i < ENTITIES_PER_CELL; ++i) {
+            cellEntities[i] = -1;
+        }
+    });
+
+    grid.sync();
+
+    processRange(entities->getCount(), [&](int entityIdx) {
+        Entity &entity = entities->get(entityIdx);
+        EntityState state = entity.state;
+        if (state == GoHome || state == GoToWork) {
+            int cell = map->cellAtPosition(entity.position);
+            int32_t *cellEntities = map->cellsData[cell].entities;
+
+            for (int i = 0; i < ENTITIES_PER_CELL; ++i) {
+                if (atomicCAS(&cellEntities[i], -1, entityIdx) == -1) {
+                    break;
+                }
+            }
+        }
+    });
+
+    grid.sync();
+}
+
 void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) {
-    // Count entities to move
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
     grid.sync();
 
+    // Count entities to move
     uint32_t &entitiesToMoveCount = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
     uint32_t &bufferIdx = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
 
@@ -61,20 +93,38 @@ void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) 
 
         float2 forces = {0.0f, 0.0f};
 
+        int cellId = map->cellAtPosition(entity.position);
+        int2 coords = map->cellCoords(cellId);
+
         // Compute repulsive force of other entities
-        for (int i = 0; i < entitiesToMoveCount; ++i) {
-            if (i == idx) {
-                continue;
-            }
-            Entity &other = entities->get(entitiesToMove[i]);
-            float2 diffVector = entity.position - other.position;
-            float norm = length(diffVector);
-            if (norm < 1e-6) {
-                continue;
-            }
-            if (norm < KERNEL_RADIUS) {
-                forces += diffVector / norm * powf((KERNEL_RADIUS - norm), 3.0) *
-                          REPULSIVE_STRENGTH * pressure_normalization;
+        for (int i = -1; i <= 1; ++i) {
+            for (int j = -1; j <= 1; ++j) {
+                int neighborCellId = map->idFromCoords(coords.x + i, coords.y + j);
+                if (neighborCellId == -1) {
+                    continue;
+                }
+
+                for (int k = 0; k < ENTITIES_PER_CELL; ++k) {
+                    int otherIdx = map->cellsData[neighborCellId].entities[k];
+                    if (otherIdx == -1) {
+                        break;
+                    }
+                    if (otherIdx == idx) {
+                        continue;
+                    }
+
+                    Entity &other = entities->get(otherIdx);
+
+                    float2 diffVector = entity.position - other.position;
+                    float norm = length(diffVector);
+                    if (norm < 1e-6) {
+                        continue;
+                    }
+                    if (norm < KERNEL_RADIUS) {
+                        forces += diffVector / norm * powf((KERNEL_RADIUS - norm), 3.0) *
+                                  REPULSIVE_STRENGTH * pressure_normalization;
+                    }
+                }
             }
         }
 
@@ -104,7 +154,7 @@ void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) 
 
         forces += normalize(target - entity.position) * STIR_STRENGTH;
 
-        forces -= 5.0 * entity.velocity;
+        forces -= 10.0 * entity.velocity;
 
         // float angle = generateRandomNumber() * 2.0 * 3.141592;
         // forces += length(forces) * 0.5 * float2{cos(angle), sin(angle)};

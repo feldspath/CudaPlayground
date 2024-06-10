@@ -340,6 +340,8 @@ void updateGrid(Map *map, Entities *entities) {
 
     performPathFinding(map, entities, allocator);
 
+    fillCells(map, entities);
+
     moveEntities(map, entities, allocator, gameState->dt);
 
     updateEntitiesState(map, entities);

@@ -105,8 +105,11 @@ inline TileId operator|(TileId a, TileId b) {
     return static_cast<TileId>(static_cast<int>(a) | static_cast<int>(b));
 }
 
+#define ENTITIES_PER_CELL 8
+
 struct Cell {
     TileId tileId;
+    int32_t entities[ENTITIES_PER_CELL];
     char additionalData[8];
 };
 
