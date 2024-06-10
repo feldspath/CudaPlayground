@@ -50,6 +50,17 @@ template <typename T> struct NeighborInfo {
         return result;
     }
 
+    template <typename Function> void applyDir(Function &&f) const {
+        NeighborInfo<T> result;
+        for (int i = 0; i < 4; ++i) {
+            if (data[i] == -1) {
+                continue;
+            }
+            result.data[i] = f(Direction(i), data[i]);
+        }
+        return result;
+    }
+
     // Run f to every value in data that is not -1
     template <typename Function> void forEach(Function &&f) const {
         for (int i = 0; i < 4; ++i) {

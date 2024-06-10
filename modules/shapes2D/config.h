@@ -12,5 +12,5 @@ static uint32_t WORK_TIME_MS = 5000;
 static uint32_t REST_TIME_MS = 5000;
 
 static float KERNEL_RADIUS = 1.5f;
-static float REPULSIVE_STRENGTH = 70.0f;
-static float STIR_STRENGTH = 40.0f;
+static float REPULSIVE_STRENGTH = 30.0f;
+static float STIR_STRENGTH = 20.0f;

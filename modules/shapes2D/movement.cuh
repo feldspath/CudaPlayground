@@ -1,0 +1,172 @@
+#pragma once
+
+#include "../common/utils.cuh"
+#include "direction.h"
+#include "entities.h"
+#include "map.h"
+
+void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) {
+    // Count entities to move
+    auto grid = cg::this_grid();
+    auto block = cg::this_thread_block();
+
+    grid.sync();
+
+    uint32_t &entitiesToMoveCount = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
+    uint32_t &bufferIdx = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
+
+    if (grid.thread_rank() == 0) {
+        entitiesToMoveCount = 0;
+        bufferIdx = 0;
+    }
+
+    grid.sync();
+
+    // Count entities to move
+    processRange(entities->getCount(), [&](int entityIdx) {
+        EntityState state = entities->get(entityIdx).state;
+        if (state == GoHome || state == GoToWork) {
+            atomicAdd(&entitiesToMoveCount, 1);
+        }
+    });
+
+    grid.sync();
+
+    if (entitiesToMoveCount == 0) {
+        return;
+    }
+
+    // Allocate buffer and store entities to move
+    uint32_t *entitiesToMove = allocator->alloc<uint32_t *>(sizeof(uint32_t) * entitiesToMoveCount);
+    processRange(entities->getCount(), [&](int entityIdx) {
+        EntityState state = entities->get(entityIdx).state;
+        if (state == GoHome || state == GoToWork) {
+            int idx = atomicAdd(&bufferIdx, 1);
+            entitiesToMove[idx] = entityIdx;
+        }
+    });
+
+    grid.sync();
+
+    float pressure_normalization = 15.0f / (3.141592 * powf(KERNEL_RADIUS, 6.0f));
+
+    // Update velocities
+    processRange(entitiesToMoveCount, [&](int idx) {
+        auto &entity = entities->get(entitiesToMove[idx]);
+
+        if (!entity.path.isValid()) {
+            entity.velocity = {0.0f, 0.0f};
+            return;
+        }
+
+        float2 forces = {0.0f, 0.0f};
+
+        // Compute repulsive force of other entities
+        for (int i = 0; i < entitiesToMoveCount; ++i) {
+            if (i == idx) {
+                continue;
+            }
+            Entity &other = entities->get(entitiesToMove[i]);
+            float2 diffVector = entity.position - other.position;
+            float norm = length(diffVector);
+            if (norm < 1e-6) {
+                continue;
+            }
+            if (norm < KERNEL_RADIUS) {
+                forces += diffVector / norm * powf((KERNEL_RADIUS - norm), 3.0) *
+                          REPULSIVE_STRENGTH * pressure_normalization;
+            }
+        }
+
+        // Stirring force
+        // TODO: improve by choosing a continuous location, not discrete
+        float2 dirVector = directionFromEnum(entity.path.nextDir());
+        float2 parVector = {dirVector.y, dirVector.x};
+        float2 targetCenter =
+            map->getCellPosition(map->cellAtPosition(entity.position)) + dirVector * CELL_RADIUS;
+
+        float2 targetSide1 = targetCenter + parVector * CELL_RADIUS * 0.25;
+        float2 targetSide2 = targetCenter - parVector * CELL_RADIUS * 0.25;
+
+        float2 target = targetCenter;
+        float targetDistance = targetDistance;
+
+        float dist1 = length(targetSide1 - entity.position);
+        if (dist1 < targetDistance) {
+            target = targetSide1;
+            targetDistance = dist1;
+        }
+        float dist2 = length(targetSide2 - entity.position);
+        if (dist2 < targetDistance) {
+            target = targetSide2;
+            targetDistance = dist2;
+        }
+
+        forces += normalize(target - entity.position) * STIR_STRENGTH;
+
+        forces -= 5.0 * entity.velocity;
+
+        // float angle = generateRandomNumber() * 2.0 * 3.141592;
+        // forces += length(forces) * 0.5 * float2{cos(angle), sin(angle)};
+
+        entity.velocity += forces * dt;
+
+        // Clamp velocity
+        float velocityNorm = length(entity.velocity);
+        if (velocityNorm > ENTITY_SPEED) {
+            entity.velocity = entity.velocity / velocityNorm * ENTITY_SPEED;
+        }
+    });
+
+    grid.sync();
+
+    // Update positions
+    processRange(entitiesToMoveCount, [&](int idx) {
+        uint32_t entityId = entitiesToMove[idx];
+        auto &entity = entities->get(entityId);
+
+        if (!entity.path.isValid()) {
+            return;
+        }
+
+        uint32_t previousCellId = map->cellAtPosition(entity.position);
+        auto neighborCells = map->neighborCells(previousCellId);
+        entity.position += entity.velocity * dt;
+
+        // check each side of the entity for wall collision
+        neighborCells.forEachDir([&](Direction direction, uint32_t cellId) {
+            // no collision with roads, house and assigned factory
+            if (map->getTileId(cellId) == ROAD || cellId == entity.factoryId ||
+                cellId == entity.houseId) {
+                return;
+            }
+
+            float2 vectorDir = directionFromEnum(direction);
+            if (map->cellAtPosition(entity.position + vectorDir * ENTITY_RADIUS) == cellId) {
+                // Collision with wall, project back to boundary
+                float2 posToPreviousCellCenter = entity.position + vectorDir * ENTITY_RADIUS -
+                                                 map->getCellPosition(previousCellId);
+                entity.position -=
+                    (dot(posToPreviousCellCenter, vectorDir) - CELL_RADIUS) * vectorDir;
+            }
+        });
+
+        uint32_t newCellId = map->cellAtPosition(entity.position);
+        if (newCellId != previousCellId) {
+            int dir = -1;
+            neighborCells.forEachDir([&](Direction direction, uint32_t cellId) {
+                if (cellId == newCellId) {
+                    dir = int(direction);
+                }
+            });
+
+            if (dir != -1 && Direction(dir) == entity.path.nextDir()) {
+                // Entity is on intended road
+                entity.path.pop();
+            } else {
+                // if the entity went too far, or is not an intended road, invalidate path
+                entity.path.reset();
+            }
+        }
+    });
+}

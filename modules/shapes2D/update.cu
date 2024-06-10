@@ -8,6 +8,7 @@
 #include "helper_math.h"
 #include "map.h"
 #include "matrix_math.h"
+#include "movement.cuh"
 #include "pathfinding.h"
 
 namespace cg = cooperative_groups;
@@ -294,140 +295,6 @@ float generateRandomNumber() {
     return myrandf;
 }
 
-void moveEntities(Map *map, Entities *entities) {
-    // Count entities to move
-    auto grid = cg::this_grid();
-    auto block = cg::this_thread_block();
-
-    grid.sync();
-
-    uint32_t &entitiesToMoveCount = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
-    uint32_t &bufferIdx = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
-
-    if (grid.thread_rank() == 0) {
-        entitiesToMoveCount = 0;
-        bufferIdx = 0;
-    }
-
-    grid.sync();
-
-    processRange(entities->getCount(), [&](int entityIdx) {
-        if (entities->get(entityIdx).path.isValid()) {
-            atomicAdd(&entitiesToMoveCount, 1);
-        }
-    });
-
-    grid.sync();
-
-    if (entitiesToMoveCount == 0) {
-        return;
-    }
-
-    uint32_t *entitiesToMove = allocator->alloc<uint32_t *>(sizeof(uint32_t) * entitiesToMoveCount);
-
-    processRange(entities->getCount(), [&](int entityIdx) {
-        if (entities->get(entityIdx).path.isValid()) {
-            int idx = atomicAdd(&bufferIdx, 1);
-            entitiesToMove[idx] = entityIdx;
-        }
-    });
-
-    grid.sync();
-
-    float pressure_normalization = 15.0f / (3.141592 * powf(KERNEL_RADIUS, 6.0f));
-
-    // Update velocities
-    processRange(entitiesToMoveCount, [&](int idx) {
-        auto &entity = entities->get(entitiesToMove[idx]);
-
-        float2 forces = {0.0f, 0.0f};
-
-        // Compute repulsive force of other entities
-        for (int i = 0; i < entitiesToMoveCount; ++i) {
-            if (i == idx) {
-                continue;
-            }
-            Entity &other = entities->get(entitiesToMove[i]);
-            float2 diffVector = entity.position - other.position;
-            float norm = length(diffVector);
-            if (norm < 1e-6) {
-                continue;
-            }
-            if (norm < KERNEL_RADIUS) {
-                forces += diffVector / norm * powf((KERNEL_RADIUS - norm), 3.0) *
-                          REPULSIVE_STRENGTH * pressure_normalization;
-            }
-        }
-
-        // Stirring force
-        forces += directionFromEnum(entity.path.nextDir()) * STIR_STRENGTH;
-
-        // float angle = generateRandomNumber() * 2.0 * 3.141592;
-        // forces += length(forces) * 0.5 * float2{cos(angle), sin(angle)};
-
-        entity.velocity += forces * gameState->dt;
-
-        // Clamp velocity
-        float velocityNorm = length(entity.velocity);
-        if (velocityNorm > ENTITY_SPEED) {
-            entity.velocity = entity.velocity / velocityNorm * ENTITY_SPEED;
-        }
-    });
-
-    grid.sync();
-
-    // Update positions
-    processRange(entitiesToMoveCount, [&](int idx) {
-        uint32_t entityId = entitiesToMove[idx];
-        auto &entity = entities->get(entityId);
-
-        float2 entityDirVector = directionFromEnum(entity.path.nextDir());
-        uint32_t previousCellId = map->cellAtPosition(entity.position);
-        uint32_t previousMaxCellId =
-            map->cellAtPosition(entity.position - entityDirVector * ENTITY_RADIUS * 1.2);
-        entity.position += entity.velocity * gameState->dt;
-
-        // check each side of the entity for collision
-        auto neighborCells = map->neighborCells(previousCellId);
-        neighborCells.forEachDir([&](Direction direction, uint32_t cellId) {
-            // no collision with roads, house and assigned factory
-            if (map->getTileId(cellId) == ROAD || cellId == entity.factoryId ||
-                cellId == entity.houseId) {
-                return;
-            }
-
-            float2 vectorDir = directionFromEnum(direction);
-            if (map->cellAtPosition(entity.position + vectorDir * ENTITY_RADIUS) == cellId) {
-                // Collision with wall, project back to boundary
-                float2 posToPreviousCellCenter = entity.position + vectorDir * ENTITY_RADIUS -
-                                                 map->getCellPosition(previousCellId);
-                entity.position -=
-                    (dot(posToPreviousCellCenter, vectorDir) - CELL_RADIUS) * vectorDir;
-            }
-        });
-
-        uint32_t newCellId =
-            map->cellAtPosition(entity.position - entityDirVector * ENTITY_RADIUS * 1.2);
-
-        if (newCellId != previousMaxCellId) {
-            int dir = -1;
-            neighborCells.forEachDir([&](Direction direction, uint32_t cellId) {
-                if (cellId = newCellId) {
-                    dir = int(direction);
-                }
-            });
-
-            if (dir != -1 && Direction(dir) == entity.path.nextDir()) {
-                // Entity is on intended road
-                entity.path.pop();
-            } else {
-                // if the entity went too far, or is not an intended road, invalidate path
-                entity.path.reset();
-            }
-        }
-    });
-}
-
 void updateGrid(Map *map, Entities *entities) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
@@ -455,6 +322,13 @@ void updateGrid(Map *map, Entities *entities) {
                 updateInfo.tileToUpdate = id;
                 updateInfo.newTileId = (TileId)uniforms.modeId;
             }
+
+            processRange(entities->getCount(), [&](int entityIdx) {
+                Entity &entity = entities->get(entityIdx);
+                if (length(entity.position - float2{pos_W.x, pos_W.y}) < ENTITY_RADIUS) {
+                    entity.path.reset();
+                }
+            });
         }
 
         if (updateInfo.update) {
@@ -466,7 +340,7 @@ void updateGrid(Map *map, Entities *entities) {
 
     performPathFinding(map, entities, allocator);
 
-    moveEntities(map, entities);
+    moveEntities(map, entities, allocator, gameState->dt);
 
     updateEntitiesState(map, entities);
 
