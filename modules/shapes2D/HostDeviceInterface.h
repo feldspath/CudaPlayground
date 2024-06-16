@@ -169,4 +169,6 @@ struct GameState {
     float fillCells_ms;
     float moveEntities_ms;
     float updateEntitiesState_ms;
+
+    unsigned int playerMoney;
 };

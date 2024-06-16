@@ -200,9 +200,18 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
     cuGraphicsUnregisterResource(cugl_colorbuffer);
 }
 
+void initGameState() {
+    GameState state;
+    state.playerMoney = 2000;
+
+    cuMemcpyHtoD(cptr_gameState, &state, sizeof(GameState));
+}
+
 void initCudaProgram(std::shared_ptr<GLRenderer> renderer) {
     cuMemAlloc(&cptr_buffer, 100'000'000);
     cuMemAlloc(&cptr_gameState, sizeof(GameState));
+
+    initGameState();
 
     gridRows = 512;
     gridCols = 512;

@@ -18,8 +18,6 @@ GameState *gameState;
 Allocator *allocator;
 uint64_t nanotime_start;
 
-curandState crState;
-
 struct UpdateInfo {
     bool update;
     int tileToUpdate;
@@ -35,9 +33,17 @@ void updateCell(Map *map, UpdateInfo updateInfo) {
 
     grid.sync();
     if (grid.thread_rank() == 0) {
-        map->setTileId(id, new_tile);
+        if (tileCost(new_tile) <= gameState->playerMoney) {
+            gameState->playerMoney -= tileCost(new_tile);
+            map->setTileId(id, new_tile);
+        }
     }
     grid.sync();
+
+    if (map->getTileId(id) != new_tile) {
+        // tile was not updated
+        return;
+    }
 
     switch (new_tile) {
     case ROAD: {
@@ -290,11 +296,6 @@ void updateGameState() {
     gameState->currentTime_ms = currentTime_ms();
 }
 
-float generateRandomNumber() {
-    float myrandf = curand_uniform(&crState);
-    return myrandf;
-}
-
 template <typename Function> void printDuration(char *name, Function &&f) {
     if (!uniforms.printTimings) {
         f();
@@ -326,7 +327,6 @@ void updateGrid(Map *map, Entities *entities) {
     auto block = cg::this_thread_block();
 
     int idx = threadIdx.x + blockDim.x * blockIdx.x;
-    curand_init(idx, idx, 0, &crState);
 
     nanotime_start = nanotime();
 
@@ -348,13 +348,6 @@ void updateGrid(Map *map, Entities *entities) {
                 updateInfo.tileToUpdate = id;
                 updateInfo.newTileId = (TileId)uniforms.modeId;
             }
-
-            // processRange(entities->getCount(), [&](int entityIdx) {
-            //     Entity &entity = entities->get(entityIdx);
-            //     if (length(entity.position - float2{pos_W.x, pos_W.y}) < ENTITY_RADIUS) {
-            //         entity.path.reset();
-            //     }
-            // });
         }
 
         if (updateInfo.update) {

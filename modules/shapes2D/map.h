@@ -9,6 +9,23 @@
 typedef NeighborInfo<int32_t> NeighborCells;
 typedef NeighborInfo<int32_t> NeighborNetworks;
 
+static unsigned int tileCost(TileId tile) {
+    switch (tile) {
+    case UNKNOWN:
+        return 0;
+    case GRASS:
+        return 0;
+    case ROAD:
+        return ROAD_COST;
+    case HOUSE:
+        return HOUSE_COST;
+    case FACTORY:
+        return FACTORY_COST;
+    default:
+        return 0;
+    }
+}
+
 struct Map {
     Cell *cellsData;
     int rows;
