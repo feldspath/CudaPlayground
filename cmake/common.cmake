@@ -25,6 +25,12 @@ function(ADD_GLM TARGET_NAME)
 	target_include_directories(${TARGET_NAME} PRIVATE libs/glm)
 endfunction()
 
+function(ADD_LODEPNG TARGET_NAME)
+	target_include_directories(${TARGET_NAME} PRIVATE libs/lodepng)
+		target_sources(${TARGET_NAME} PRIVATE
+		libs/lodepng/lodepng.cpp)
+endfunction()
+
 function(ADD_CUDA TARGET_NAME)
 	find_package(CUDAToolkit 12.4 REQUIRED)
 	target_include_directories(${TARGET_NAME} PRIVATE CUDAToolkit_INCLUDE_DIRS)

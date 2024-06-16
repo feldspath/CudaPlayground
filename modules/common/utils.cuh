@@ -128,3 +128,17 @@ inline uint64_t nanotime() {
 
     return nanotime;
 }
+
+inline int strlen(const char *text) {
+    int MAX_STRLEN = 100;
+    int numchars = 0;
+
+    for (int i = 0; i < MAX_STRLEN; i++) {
+        if (text[i] == 0)
+            break;
+
+        numchars++;
+    }
+
+    return numchars;
+}
