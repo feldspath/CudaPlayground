@@ -86,6 +86,7 @@ ADD_OPENGL(${TARGET_NAME})
 ADD_GLM(${TARGET_NAME})
 ADD_IMGUI(${TARGET_NAME})
 ADD_IMPLOT(${TARGET_NAME})
+ADD_LODEPNG(${TARGET_NAME})
 
 ##############################################
 ## SUBPROJECT: RPG

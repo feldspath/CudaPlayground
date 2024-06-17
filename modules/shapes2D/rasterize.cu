@@ -5,9 +5,11 @@
 #include "HostDeviceInterface.h"
 #include "builtin_types.h"
 #include "entities.h"
+#include "framebuffer.h"
 #include "helper_math.h"
 #include "map.h"
 #include "matrix_math.h"
+#include "text.cuh"
 
 uint32_t rgb8color(float3 color) {
     uint32_t r = color.x * 255.0f;
@@ -53,7 +55,7 @@ float3 colorFromId(uint32_t id) {
 // - <framebuffer> stores interleaved 32bit depth and color values
 // - The closest fragments are rendered via atomicMin on a combined 64bit depth&color integer
 //   atomicMin(&framebuffer[pixelIndex], (depth << 32 | color));
-void rasterizeGrid(Map *map, Entities *entities, uint64_t *framebuffer) {
+void rasterizeGrid(Map *map, Entities *entities, Framebuffer framebuffer) {
 
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
@@ -127,11 +129,11 @@ void rasterizeGrid(Map *map, Entities *entities, uint64_t *framebuffer) {
         uint64_t udepth = *((uint32_t *)&depth);
         uint64_t pixel = (udepth << 32ull) | rgb8color(pixelColor);
 
-        atomicMin(&framebuffer[pixelId], pixel);
+        atomicMin(&framebuffer.data[pixelId], pixel);
     }
 }
 
-void rasterizeEntities(Entities *entities, uint64_t *framebuffer) {
+void rasterizeEntities(Entities *entities, Framebuffer framebuffer) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -184,7 +186,7 @@ void rasterizeEntities(Entities *entities, uint64_t *framebuffer) {
             uint64_t udepth = *((uint32_t *)&depth);
             uint64_t pixel = (udepth << 32ull) | rgb8color(color);
 
-            atomicMin(&framebuffer[pixelID], pixel);
+            atomicMin(&framebuffer.data[pixelID], pixel);
         }
     }
 }
@@ -192,7 +194,7 @@ void rasterizeEntities(Entities *entities, uint64_t *framebuffer) {
 extern "C" __global__ void kernel(const Uniforms _uniforms, GameState *_gameState,
                                   unsigned int *buffer, cudaSurfaceObject_t gl_colorbuffer,
                                   uint32_t numRows, uint32_t numCols, char *cells,
-                                  void *entitiesBuffer) {
+                                  void *entitiesBuffer, uint32_t *img_ascii_16) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -205,14 +207,16 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, GameState *_gameStat
 
     gameState = _gameState;
 
+    TextRenderer textRenderer(img_ascii_16);
+
     // allocate framebuffer memory
     int framebufferSize = int(uniforms.width) * int(uniforms.height) * sizeof(uint64_t);
-    uint64_t *framebuffer = allocator->alloc<uint64_t *>(framebufferSize);
+    uint64_t *framebufferData = allocator->alloc<uint64_t *>(framebufferSize);
+
+    Framebuffer framebuffer(uint32_t(uniforms.width), uint32_t(uniforms.height), framebufferData);
 
     // clear framebuffer
-    processRange(0, uniforms.width * uniforms.height, [&](int pixelIndex) {
-        framebuffer[pixelIndex] = (uint64_t(Infinity) << 32ull) | uint64_t(BACKGROUND_COLOR);
-    });
+    framebuffer.clear(uint64_t(BACKGROUND_COLOR));
 
     grid.sync();
 
@@ -225,7 +229,13 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, GameState *_gameStat
 
         rasterizeGrid(map, entities, framebuffer);
 
+        grid.sync();
+
         rasterizeEntities(entities, framebuffer);
+
+        grid.sync();
+
+        textRenderer.drawText("test", 500.0, 200.0, 32, framebuffer);
     }
 
     grid.sync();
@@ -233,11 +243,11 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, GameState *_gameStat
     uint32_t &maxNanos = *allocator->alloc<uint32_t *>(4);
 
     // transfer framebuffer to opengl texture
-    processRange(0, uniforms.width * uniforms.height, [&](int pixelIndex) {
-        int x = pixelIndex % int(uniforms.width);
-        int y = pixelIndex / int(uniforms.width);
+    processRange(0, framebuffer.width * framebuffer.height, [&](int pixelIndex) {
+        int x = pixelIndex % int(framebuffer.width);
+        int y = pixelIndex / int(framebuffer.width);
 
-        uint64_t encoded = framebuffer[pixelIndex];
+        uint64_t encoded = framebuffer.data[pixelIndex];
         uint32_t color = encoded & 0xffffffffull;
 
         surf2Dwrite(color, gl_colorbuffer, x * 4, y);
