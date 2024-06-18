@@ -277,6 +277,7 @@ void updateEntitiesState(Map *map, Entities *entities) {
         case Work:
             if (gameState->currentTime_ms - entity.stateStart_ms >= WORK_TIME_MS) {
                 entity.state = GoHome;
+                atomicAdd(&gameState->playerMoney, 10);
             }
             break;
         case Rest:

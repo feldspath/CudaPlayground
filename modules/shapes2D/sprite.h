@@ -12,6 +12,13 @@ struct Sprite {
             int l_x = index % int(ceil(width * scale));
             int l_y = index / int(ceil(width * scale));
 
+            int t_x = l_x + drawx;
+            int t_y = l_y + drawy;
+
+            if (t_x < 0 || t_x >= framebuffer.width || t_y < 0 || t_y >= framebuffer.height) {
+                return;
+            }
+
             float u = float(l_x) / ceil(width * scale);
             float v = 1.0f - float(l_y) / ceil(height * scale);
 
@@ -22,8 +29,6 @@ struct Sprite {
             uint32_t color = data[sourceTexel];
             uint8_t *rgba = (uint8_t *)&color;
 
-            int t_x = l_x + drawx;
-            int t_y = l_y + drawy;
             int targetPixelIndex = t_x + t_y * framebuffer.width;
 
             // blend with current framebuffer value
