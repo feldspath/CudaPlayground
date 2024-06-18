@@ -24,6 +24,7 @@ CUdeviceptr cptr_buffer;
 CUdeviceptr cptr_grid;
 CUdeviceptr cptr_entities;
 CUdeviceptr cptr_gameState;
+CUdeviceptr cptr_spriteSheet;
 CUdeviceptr cptr_ascii_16;
 uint32_t gridRows;
 uint32_t gridCols;
@@ -172,8 +173,8 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
     memcpy(&uniforms.invproj, &invproj, sizeof(invproj));
     memcpy(&uniforms.invview, &invview, sizeof(invview));
 
-    void *args[] = {&uniforms, &cptr_gameState, &cptr_buffer,   &output_surf,  &gridRows,
-                    &gridCols, &cptr_grid,      &cptr_entities, &cptr_ascii_16};
+    void *args[] = {&uniforms, &cptr_gameState, &cptr_buffer,   &output_surf,   &gridRows,
+                    &gridCols, &cptr_grid,      &cptr_entities, &cptr_ascii_16, &cptr_spriteSheet};
 
     auto res_launch = cuLaunchCooperativeKernel(cuda_program->kernels["kernel"], numGroups, 1, 1,
                                                 workgroupSize, 1, 1, 0, 0, args);
@@ -209,7 +210,8 @@ void initGameState() {
     cuMemcpyHtoD(cptr_gameState, &state, sizeof(GameState));
 }
 
-void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> &img_ascii_16) {
+void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> &img_ascii_16,
+                     std::vector<uint8_t> &img_spritesheet) {
     cuMemAlloc(&cptr_buffer, 100'000'000);
     cuMemAlloc(&cptr_gameState, sizeof(GameState));
 
@@ -237,6 +239,10 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
     // Font rendering
     cuMemAlloc(&cptr_ascii_16, img_ascii_16.size());
     cuMemcpyHtoD(cptr_ascii_16, img_ascii_16.data(), img_ascii_16.size());
+
+    // Sprites
+    cuMemAlloc(&cptr_spriteSheet, img_spritesheet.size());
+    cuMemcpyHtoD(cptr_spriteSheet, img_spritesheet.data(), img_spritesheet.size());
 
     cuda_program = new CudaModularProgram({.modules =
                                                {
@@ -284,7 +290,16 @@ int main() {
                         size_t(asciidata->size));
     }
 
-    initCudaProgram(renderer, img_ascii_16);
+    std::vector<uint8_t> img_spritesheet;
+    {
+        auto data = readBinaryFile("./resources/sprites/sprite_sheet.png");
+        uint32_t width;
+        uint32_t height;
+        lodepng::decode(img_spritesheet, width, height, (const unsigned char *)data->data_char,
+                        size_t(data->size));
+    }
+
+    initCudaProgram(renderer, img_ascii_16, img_spritesheet);
 
     auto update = [&]() { updateCUDA(renderer); };
 

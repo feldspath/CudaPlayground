@@ -142,3 +142,11 @@ inline int strlen(const char *text) {
 
     return numchars;
 }
+
+inline uint32_t rgb8color(float3 color) {
+    uint32_t r = color.x * 255.0f;
+    uint32_t g = color.y * 255.0f;
+    uint32_t b = color.z * 255.0f;
+    uint32_t rgb8color = r | (g << 8) | (b << 16);
+    return rgb8color;
+}

@@ -6,18 +6,12 @@
 #include "builtin_types.h"
 #include "entities.h"
 #include "framebuffer.h"
+#include "gui.h"
 #include "helper_math.h"
 #include "map.h"
 #include "matrix_math.h"
+#include "sprite.h"
 #include "text.cuh"
-
-uint32_t rgb8color(float3 color) {
-    uint32_t r = color.x * 255.0f;
-    uint32_t g = color.y * 255.0f;
-    uint32_t b = color.z * 255.0f;
-    uint32_t rgb8color = r | (g << 8) | (b << 16);
-    return rgb8color;
-}
 
 namespace cg = cooperative_groups;
 
@@ -194,7 +188,8 @@ void rasterizeEntities(Entities *entities, Framebuffer framebuffer) {
 extern "C" __global__ void kernel(const Uniforms _uniforms, GameState *_gameState,
                                   unsigned int *buffer, cudaSurfaceObject_t gl_colorbuffer,
                                   uint32_t numRows, uint32_t numCols, char *cells,
-                                  void *entitiesBuffer, uint32_t *img_ascii_16) {
+                                  void *entitiesBuffer, uint32_t *img_ascii_16,
+                                  uint32_t *img_spritesheet) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -208,6 +203,7 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, GameState *_gameStat
     gameState = _gameState;
 
     TextRenderer textRenderer(img_ascii_16);
+    SpriteSheet sprites(img_spritesheet);
 
     // allocate framebuffer memory
     int framebufferSize = int(uniforms.width) * int(uniforms.height) * sizeof(uint64_t);
@@ -235,7 +231,9 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, GameState *_gameStat
 
         grid.sync();
 
-        textRenderer.drawText("test", 500.0, 200.0, 32, framebuffer);
+        GUI gui(framebuffer.width, framebuffer.height, textRenderer, sprites);
+
+        gui.render(framebuffer, gameState);
     }
 
     grid.sync();
