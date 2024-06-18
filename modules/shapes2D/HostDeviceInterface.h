@@ -171,4 +171,5 @@ struct GameState {
     float updateEntitiesState_ms;
 
     unsigned int playerMoney;
+    unsigned int population;
 };

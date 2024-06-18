@@ -290,10 +290,11 @@ void updateEntitiesState(Map *map, Entities *entities) {
     }
 }
 
-void updateGameState() {
+void updateGameState(Entities *entities) {
     gameState->dt = ((float)(nanotime_start - gameState->previousFrameTime_ns)) / 1e9;
     gameState->previousFrameTime_ns = nanotime_start;
     gameState->currentTime_ms = currentTime_ms();
+    gameState->population = *entities->count;
 }
 
 template <typename Function> void printDuration(char *name, Function &&f) {
@@ -363,7 +364,7 @@ void updateGrid(Map *map, Entities *entities) {
 
     // grid.sync();
     if (grid.thread_rank() == 0) {
-        updateGameState();
+        updateGameState(entities);
     }
 }
 
