@@ -79,6 +79,10 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
         float2 cellCenter = map->getCellPosition(sh_cellIndex);
         float2 diff = float2{pos_W.x - cellCenter.x, pos_W.y - cellCenter.y};
 
+        float2 diffToCorner = diff + float2{CELL_RADIUS, CELL_RADIUS};
+        float u = diffToCorner.x / (CELL_RADIUS * 2);
+        float v = diffToCorner.y / (CELL_RADIUS * 2);
+
         if (abs(diff.x) > CELL_RADIUS || abs(diff.y) > CELL_RADIUS) {
             continue;
         }
@@ -87,10 +91,13 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
         if (uniforms.renderMode == RENDERMODE_DEFAULT) {
             switch (map->getTileId(sh_cellIndex)) {
             case GRASS:
-                float2 diffToCorner = diff + float2{CELL_RADIUS, CELL_RADIUS};
-                color = sprites.grass.sampleFloat(diffToCorner.x / (CELL_RADIUS * 2),
-                                                  diffToCorner.y / (CELL_RADIUS * 2));
+                color = sprites.grass.sampleFloat(u, v);
                 break;
+            case HOUSE:
+                if (*map->houseTileData(sh_cellIndex) != -1) {
+                    color = sprites.house.sampleFloat(u, v);
+                    break;
+                }
             default:
                 color = colorFromId(map->getTileId(sh_cellIndex));
                 break;

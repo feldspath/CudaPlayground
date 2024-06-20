@@ -58,6 +58,7 @@ struct SpriteSheet {
     Sprite moneyDisplay;
     Sprite populationDisplay;
     Sprite grass;
+    Sprite house;
 
     SpriteSheet(uint32_t *data) : data(data) {
         moneyDisplay.x = 0;
@@ -80,5 +81,12 @@ struct SpriteSheet {
         grass.height = 8;
         grass.data = data;
         grass.textureSize = int2{512, 512};
+
+        house.x = 128;
+        house.y = 8;
+        house.width = 8;
+        house.height = 8;
+        house.data = data;
+        house.textureSize = int2{512, 512};
     }
 };
