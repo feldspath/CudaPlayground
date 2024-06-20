@@ -99,6 +99,7 @@ enum TileId {
     ROAD = 2,
     HOUSE = 4,
     FACTORY = 8,
+    SHOP = 16,
 };
 
 inline TileId operator|(TileId a, TileId b) {
@@ -122,6 +123,8 @@ enum EntityState {
     GoToWork,
     Work,
     GoHome,
+    Shop,
+    GoShopping,
 };
 
 // alignment = 8 bytes. No padding
@@ -150,6 +153,7 @@ struct Uniforms {
     mat4 invview;
     int renderMode;
     bool printTimings;
+    bool creativeMode;
 
     // Inputs
     double2 cursorPos;

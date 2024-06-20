@@ -33,6 +33,8 @@ void GLRenderer::onKey(GLFWwindow *window, int key, int scancode, int action, in
         Runtime::getInstance()->modeId = 4;
     } else if (key == GLFW_KEY_F && action == GLFW_PRESS) {
         Runtime::getInstance()->modeId = 8;
+    } else if (key == GLFW_KEY_T && action == GLFW_PRESS) {
+        Runtime::getInstance()->modeId = 16;
     }
 
     Runtime::keyStates[key] = action;

@@ -23,24 +23,28 @@ uint64_t nanotime_start;
 constexpr uint32_t BACKGROUND_COLOR = 0x00332211ull;
 
 // https://coolors.co/palette/8cb369-f4e285-f4a259-5b8e7d-bc4b51
-float3 GRASS_COLOR = float3{140.0 / 255, 179.0 / 255, 105.0 / 255};
-float3 HOUSE_COLOR = float3{91.0 / 255, 142.0 / 255, 125.0 / 255};
-float3 FACTORY_COLOR = float3{188.0 / 255, 75.0 / 255, 81.0 / 255};
-float3 ROAD_COLOR = float3{244.0 / 255, 226.0 / 255, 133.0 / 255};
-float3 UNKOWN_COLOR = float3{1.0, 0.0, 1.0};
+float3 LIGHT_GREEN = float3{140.0 / 255, 179.0 / 255, 105.0 / 255};
+float3 GREEN = float3{0.8f * 140.0 / 255, 0.8f * 179.0 / 255, 0.8f * 105.0 / 255};
+float3 LIGHT_BLUE = float3{91.0 / 255, 142.0 / 255, 125.0 / 255};
+float3 RED = float3{188.0 / 255, 75.0 / 255, 81.0 / 255};
+float3 YELLOW = float3{244.0 / 255, 226.0 / 255, 133.0 / 255};
+float3 GRAY = float3{0.5f, 0.5f, 0.5f};
+float3 PURPLE = float3{1.0, 0.0, 1.0};
 
 float3 colorFromId(uint32_t id) {
     switch (id) {
     case GRASS:
-        return GRASS_COLOR;
+        return GREEN;
     case ROAD:
-        return ROAD_COLOR;
+        return GRAY;
     case HOUSE:
-        return HOUSE_COLOR;
+        return LIGHT_GREEN;
     case FACTORY:
-        return FACTORY_COLOR;
+        return YELLOW;
+    case SHOP:
+        return LIGHT_BLUE;
     default:
-        return UNKOWN_COLOR;
+        return PURPLE;
     }
 }
 
@@ -49,7 +53,7 @@ float3 colorFromId(uint32_t id) {
 // - <framebuffer> stores interleaved 32bit depth and color values
 // - The closest fragments are rendered via atomicMin on a combined 64bit depth&color integer
 //   atomicMin(&framebuffer[pixelIndex], (depth << 32 | color));
-void rasterizeGrid(Map *map, Entities *entities, Framebuffer framebuffer) {
+void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffer framebuffer) {
 
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
@@ -81,7 +85,18 @@ void rasterizeGrid(Map *map, Entities *entities, Framebuffer framebuffer) {
 
         float3 color;
         if (uniforms.renderMode == RENDERMODE_DEFAULT) {
-            color = colorFromId(map->getTileId(sh_cellIndex));
+            switch (map->getTileId(sh_cellIndex)) {
+            case GRASS:
+                float2 diffToCorner = diff + float2{CELL_RADIUS, CELL_RADIUS};
+                color = sprites.grass.sampleFloat(diffToCorner.x / (CELL_RADIUS * 2),
+                                                  diffToCorner.y / (CELL_RADIUS * 2));
+                break;
+            default:
+                color = colorFromId(map->getTileId(sh_cellIndex));
+                break;
+            }
+            // color = colorFromId(map->getTileId(sh_cellIndex));
+
         } else if (uniforms.renderMode == RENDERMODE_NETWORK) {
             TileId tileId = map->getTileId(sh_cellIndex);
             if (tileId == GRASS || tileId == UNKNOWN) {
@@ -223,7 +238,7 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, GameState *_gameStat
         Entities *entities = allocator->alloc<Entities *>(sizeof(Entities));
         *entities = Entities(entitiesBuffer);
 
-        rasterizeGrid(map, entities, framebuffer);
+        rasterizeGrid(map, entities, sprites, framebuffer);
 
         grid.sync();
 

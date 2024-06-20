@@ -22,11 +22,7 @@ struct Sprite {
             float u = float(l_x) / ceil(width * scale);
             float v = 1.0f - float(l_y) / ceil(height * scale);
 
-            int sx = x + width * u;
-            int sy = y + height * v;
-            int sourceTexel = sx + sy * textureSize.x;
-
-            uint32_t color = data[sourceTexel];
+            uint32_t color = sample(u, v);
             uint8_t *rgba = (uint8_t *)&color;
 
             int targetPixelIndex = t_x + t_y * framebuffer.width;
@@ -44,6 +40,16 @@ struct Sprite {
             framebuffer.data[targetPixelIndex] = color;
         });
     }
+
+    uint32_t sample(float u, float v) {
+        int sx = x + width * u;
+        int sy = y + height * v;
+        int sourceTexel = sx + sy * textureSize.x;
+
+        return data[sourceTexel];
+    }
+
+    float3 sampleFloat(float u, float v) { return float3color(sample(u, v)); }
 };
 
 struct SpriteSheet {
@@ -51,6 +57,7 @@ struct SpriteSheet {
 
     Sprite moneyDisplay;
     Sprite populationDisplay;
+    Sprite grass;
 
     SpriteSheet(uint32_t *data) : data(data) {
         moneyDisplay.x = 0;
@@ -66,5 +73,12 @@ struct SpriteSheet {
         populationDisplay.height = 32;
         populationDisplay.data = data;
         populationDisplay.textureSize = int2{512, 512};
+
+        grass.x = 128;
+        grass.y = 0;
+        grass.width = 8;
+        grass.height = 8;
+        grass.data = data;
+        grass.textureSize = int2{512, 512};
     }
 };

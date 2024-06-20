@@ -33,7 +33,9 @@ void updateCell(Map *map, UpdateInfo updateInfo) {
 
     grid.sync();
     if (grid.thread_rank() == 0) {
-        if (tileCost(new_tile) <= gameState->playerMoney) {
+        if (uniforms.creativeMode) {
+            map->setTileId(id, new_tile);
+        } else if (tileCost(new_tile) <= gameState->playerMoney) {
             gameState->playerMoney -= tileCost(new_tile);
             map->setTileId(id, new_tile);
         }
