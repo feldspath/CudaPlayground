@@ -1,6 +1,7 @@
 #pragma once
 
 static int FACTORY_CAPACITY = 4;
+static int SHOP_CAPACITY = 2;
 
 static float ENTITY_RADIUS = 0.2f;
 static float ENTITY_SPEED = 2.0f;

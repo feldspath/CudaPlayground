@@ -87,6 +87,9 @@ struct Map {
     // HOUSE DATA
     int32_t *houseTileData(int cellId) { return (int32_t *)(tileData(cellId)); }
 
+    // SHOP DATA
+    int32_t *shopTileData(int cellId) { return (int32_t *)(tileData(cellId)); }
+
     // Network logic
     NeighborNetworks neighborNetworks(int cellId) {
         auto neighbors = neighborCells(cellId);

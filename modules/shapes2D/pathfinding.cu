@@ -28,7 +28,7 @@ static PathfindingList locateLostEntities(Map *map, Entities *entities, Allocato
         Entity &entity = entities->get(entityIndex);
         if (entity.isLost()) {
             uint32_t id = atomicAdd(&lostCount, 1);
-            uint32_t targetId = entity.state == GoHome ? entity.houseId : entity.factoryId;
+            uint32_t targetId = entity.state == GoHome ? entity.houseId : entity.workplaceId;
             int originId = map->cellAtPosition(entity.position);
             Pathfinding p;
             p.flowField = FlowField(map, targetId, originId);

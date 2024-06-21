@@ -127,14 +127,18 @@ enum EntityState {
     GoShopping,
 };
 
-// alignment = 8 bytes. No padding
 struct Entity {
+    // movement
     float2 position;
     float2 velocity;
+
+    // state logic
     uint32_t houseId;
-    uint32_t factoryId;
+    uint32_t workplaceId;
     EntityState state;
     uint32_t stateStart_ms;
+    uint32_t money;
+
     // Path is a uint64_t
     Path path;
 

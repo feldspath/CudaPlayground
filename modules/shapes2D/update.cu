@@ -119,17 +119,27 @@ void updateCell(Map *map, UpdateInfo updateInfo) {
             *map->houseTileData(id) = -1;
         }
         break;
+    case SHOP:
+        if (grid.thread_rank() == 0) {
+            // Set capacity
+            *map->shopTileData(id) = SHOP_CAPACITY;
+        }
+        break;
     default:
         break;
     }
 }
 
-void assignHouseToFactory(Map *map, Entities *entities, int32_t houseId, int32_t factoryId) {
-    int32_t newEntity = entities->newEntity(map->getCellPosition(houseId), houseId, factoryId);
+void assignHouseToWorkplace(Map *map, Entities *entities, int32_t houseId, int32_t workplaceId) {
+    int32_t newEntity = entities->newEntity(map->getCellPosition(houseId), houseId, workplaceId);
     int32_t *houseData = map->houseTileData(houseId);
     *houseData = newEntity;
 
-    *map->factoryTileData(factoryId) -= 1;
+    if (map->getTileId(workplaceId) == FACTORY) {
+        *map->factoryTileData(workplaceId) -= 1;
+    } else if (map->getTileId(workplaceId) == SHOP) {
+        *map->shopTileData(workplaceId) -= 1;
+    }
 }
 
 void assignOneHouse(Map *map, Entities *entities) {
@@ -140,52 +150,54 @@ void assignOneHouse(Map *map, Entities *entities) {
 
     int32_t &assigned = *allocator->alloc<int32_t *>(4);
     uint32_t &unassignedHouseCount = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
-    uint32_t &availableFactoriesCount = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
+    uint32_t &availableWorkplaceCount = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
     uint32_t &globalHouseIdx = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
-    uint32_t &globalFactoryIdx = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
+    uint32_t &globalWorkplaceIdx = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
 
     if (grid.thread_rank() == 0) {
         unassignedHouseCount = 0;
-        availableFactoriesCount = 0;
+        availableWorkplaceCount = 0;
         globalHouseIdx = 0;
-        globalFactoryIdx = 0;
+        globalWorkplaceIdx = 0;
         assigned = 0;
     }
 
     grid.sync();
 
-    map->processEachCell(HOUSE | FACTORY, [&](int cellId) {
+    map->processEachCell(HOUSE | FACTORY | SHOP, [&](int cellId) {
         if (map->getTileId(cellId) == HOUSE && *map->houseTileData(cellId) == -1) {
             atomicAdd(&unassignedHouseCount, 1);
-        } else if (map->getTileId(cellId) == FACTORY && *map->factoryTileData(cellId) > 0) {
-            atomicAdd(&availableFactoriesCount, 1);
+        } else if ((map->getTileId(cellId) == FACTORY && *map->factoryTileData(cellId) > 0) ||
+                   (map->getTileId(cellId) == SHOP && *map->shopTileData(cellId) > 0)) {
+            atomicAdd(&availableWorkplaceCount, 1);
         }
     });
 
     grid.sync();
 
-    if (unassignedHouseCount == 0 || availableFactoriesCount == 0) {
+    if (unassignedHouseCount == 0 || availableWorkplaceCount == 0) {
         return;
     }
 
-    uint32_t *availableFactories =
-        allocator->alloc<uint32_t *>(sizeof(uint32_t) * availableFactoriesCount);
+    uint32_t *availableWorkplaces =
+        allocator->alloc<uint32_t *>(sizeof(uint32_t) * availableWorkplaceCount);
     uint32_t *unassignedHouses =
         allocator->alloc<uint32_t *>(sizeof(uint32_t) * unassignedHouseCount);
 
-    map->processEachCell(HOUSE | FACTORY, [&](int cellId) {
+    map->processEachCell(HOUSE | FACTORY | SHOP, [&](int cellId) {
         if (map->getTileId(cellId) == HOUSE && *map->houseTileData(cellId) == -1) {
             int idx = atomicAdd(&globalHouseIdx, 1);
             unassignedHouses[idx] = cellId;
-        } else if (map->getTileId(cellId) == FACTORY && *map->factoryTileData(cellId) > 0) {
-            int idx = atomicAdd(&globalFactoryIdx, 1);
-            availableFactories[idx] = cellId;
+        } else if ((map->getTileId(cellId) == FACTORY && *map->factoryTileData(cellId) > 0) ||
+                   (map->getTileId(cellId) == SHOP && *map->shopTileData(cellId) > 0)) {
+            int idx = atomicAdd(&globalWorkplaceIdx, 1);
+            availableWorkplaces[idx] = cellId;
         }
     });
 
     grid.sync();
 
-    __shared__ uint64_t targetFactory;
+    __shared__ uint64_t targetWorkplace;
     for (int gridOffset = 0; gridOffset < unassignedHouseCount; gridOffset += grid.num_blocks()) {
         int hIdx = gridOffset + grid.block_rank();
         if (hIdx >= unassignedHouseCount) {
@@ -199,30 +211,30 @@ void assignOneHouse(Map *map, Entities *entities) {
         int2 tileCoords = map->cellCoords(houseId);
 
         if (block.thread_rank() == 0) {
-            targetFactory = uint64_t(Infinity) << 32ull;
+            targetWorkplace = uint64_t(Infinity) << 32ull;
         }
 
         block.sync();
 
         // Check all tiles for factories
-        for (int blockOffset = 0; blockOffset < availableFactoriesCount;
+        for (int blockOffset = 0; blockOffset < availableWorkplaceCount;
              blockOffset += block.num_threads()) {
             int fIdx = block.thread_rank() + blockOffset;
-            if (fIdx >= availableFactoriesCount) {
+            if (fIdx >= availableWorkplaceCount) {
                 break;
             }
-            int factoryId = availableFactories[fIdx];
+            int workplaceId = availableWorkplaces[fIdx];
 
             // Get the networks the factory is connected to
-            auto factoryNets = map->neighborNetworks(factoryId);
+            auto factoryNets = map->neighborNetworks(workplaceId);
             if (map->sharedNetworks(factoryNets, houseNets).data[0] != -1) {
                 // This factory shares the same network
-                int2 factoryCoords = map->cellCoords(factoryId);
-                int2 diff = factoryCoords - tileCoords;
+                int2 workplaceCoords = map->cellCoords(workplaceId);
+                int2 diff = workplaceCoords - tileCoords;
                 uint32_t distance = abs(diff.x) + abs(diff.y);
-                uint64_t target = (uint64_t(distance) << 32ull) | uint64_t(factoryId);
+                uint64_t target = (uint64_t(distance) << 32ull) | uint64_t(workplaceId);
                 // keep the closest factory
-                atomicMin(&targetFactory, target);
+                atomicMin(&targetWorkplace, target);
                 break;
             }
         }
@@ -231,9 +243,9 @@ void assignOneHouse(Map *map, Entities *entities) {
 
         if (block.thread_rank() == 0) {
             int32_t *houseData = map->houseTileData(houseId);
-            if (targetFactory != uint64_t(Infinity) << 32ull && !atomicAdd(&assigned, 1)) {
-                int32_t factoryId = targetFactory & 0xffffffffull;
-                assignHouseToFactory(map, entities, houseId, factoryId);
+            if (targetWorkplace != uint64_t(Infinity) << 32ull && !atomicAdd(&assigned, 1)) {
+                int32_t workplaceId = targetWorkplace & 0xffffffffull;
+                assignHouseToWorkplace(map, entities, houseId, workplaceId);
             } else {
                 *houseData = -1;
             }
@@ -268,11 +280,11 @@ void updateEntitiesState(Map *map, Entities *entities) {
             break;
         }
         case GoToWork: {
-            if (map->cellAtPosition(entity.position) == entity.factoryId) {
+            if (map->cellAtPosition(entity.position) == entity.workplaceId) {
                 entity.path.reset();
                 entity.state = Work;
                 entity.stateStart_ms = gameState->currentTime_ms;
-                entity.position = map->getCellPosition(entity.factoryId);
+                entity.position = map->getCellPosition(entity.workplaceId);
             }
             break;
         }

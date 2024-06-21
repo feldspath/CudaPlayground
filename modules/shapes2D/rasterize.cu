@@ -115,7 +115,7 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
                     if (entityId == -1) {
                         colorId = -1;
                     } else {
-                        colorId = entities->get(entityId).factoryId;
+                        colorId = entities->get(entityId).workplaceId;
                     }
                 } else if (tileId == ROAD) {
                     colorId = map->roadNetworkRepr(sh_cellIndex);

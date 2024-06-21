@@ -16,7 +16,7 @@ struct Entities {
 
     uint32_t getCount() { return *count; }
 
-    uint32_t newEntity(float2 position, uint32_t house, uint32_t factory) {
+    uint32_t newEntity(float2 position, uint32_t house, uint32_t workplace) {
         int32_t id = getCount();
         *count += 1;
 
@@ -24,9 +24,10 @@ struct Entities {
         entity.position = position;
         entity.velocity = {0.0f, 0.0f};
         entity.houseId = house;
-        entity.factoryId = factory;
+        entity.workplaceId = workplace;
         entity.state = GoToWork;
         entity.path.reset();
+        entity.money = 0;
 
         return id;
     }
