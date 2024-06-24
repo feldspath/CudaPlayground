@@ -90,6 +90,9 @@ struct Map {
     // SHOP DATA
     int32_t *shopTileData(int cellId) { return (int32_t *)(tileData(cellId)); }
 
+    int32_t &shopWorkCapacity(int cellId) { return shopTileData(cellId)[0]; }
+    int32_t &shopCurrentWorkerCount(int cellId) { return shopTileData(cellId)[1]; }
+
     // Network logic
     NeighborNetworks neighborNetworks(int cellId) {
         auto neighbors = neighborCells(cellId);

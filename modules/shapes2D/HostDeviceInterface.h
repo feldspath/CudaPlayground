@@ -141,8 +141,9 @@ struct Entity {
 
     // Path is a uint64_t
     Path path;
+    int32_t destination;
 
-    inline bool isLost() { return (state == GoHome || state == GoToWork) && !path.isValid(); }
+    inline bool isLost() { return destination != -1 && !path.isValid(); }
 };
 
 static int BYTES_PER_ENTITY = sizeof(Entity);

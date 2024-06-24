@@ -121,8 +121,9 @@ void updateCell(Map *map, UpdateInfo updateInfo) {
         break;
     case SHOP:
         if (grid.thread_rank() == 0) {
-            // Set capacity
-            *map->shopTileData(id) = SHOP_CAPACITY;
+            // Set capacities
+            map->shopWorkCapacity(id) = SHOP_WORK_CAPACITY;
+            map->shopCurrentWorkerCount(id) = 0;
         }
         break;
     default:
@@ -255,6 +256,111 @@ void assignOneHouse(Map *map, Entities *entities) {
     }
 }
 
+void assignOneCustomerToShop(Map *map, Entities *entities) {
+    auto grid = cg::this_grid();
+    auto block = cg::this_thread_block();
+
+    grid.sync();
+
+    int32_t &assigned = *allocator->alloc<int32_t *>(4);
+    uint32_t &availableShopsCount = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
+    uint32_t &globalShopIdx = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
+
+    if (grid.thread_rank() == 0) {
+        assigned = 0;
+        availableShopsCount = 0;
+        globalShopIdx = 0;
+    }
+
+    grid.sync();
+
+    map->processEachCell(SHOP, [&](int cellId) {
+        atomicAdd(&availableShopsCount, 1);
+
+        // if (map->shopCurrentWorkerCount(cellId) > 0) {
+        //     atomicAdd(&availableShopsCount, 1);
+        // }
+    });
+
+    grid.sync();
+
+    if (availableShopsCount == 0) {
+        return;
+    }
+
+    uint32_t *availableShops = allocator->alloc<uint32_t *>(sizeof(uint32_t) * availableShopsCount);
+
+    map->processEachCell(SHOP, [&](int cellId) {
+        int idx = atomicAdd(&globalShopIdx, 1);
+        availableShops[idx] = cellId;
+
+        // if (map->shopCurrentWorkerCount(cellId) > 0) {
+        //     int idx = atomicAdd(&globalShopIdx, 1);
+        //     availableShops[idx] = cellId;
+        // }
+    });
+
+    grid.sync();
+
+    __shared__ uint64_t targetShop;
+    for (int gridOffset = 0; gridOffset < entities->getCount(); gridOffset += grid.num_blocks()) {
+        int entityIdx = gridOffset + grid.block_rank();
+        if (entityIdx >= entities->getCount()) {
+            break;
+        }
+
+        Entity &entity = entities->get(entityIdx);
+        if (entity.state != GoShopping || entity.destination != -1) {
+            continue;
+        }
+
+        int entityCell = map->cellAtPosition(entity.position);
+
+        // Get neighbor networks
+        auto entityNets = map->neighborNetworks(entityCell);
+        int2 tileCoords = map->cellCoords(entityCell);
+
+        if (block.thread_rank() == 0) {
+            targetShop = uint64_t(Infinity) << 32ull;
+        }
+
+        block.sync();
+
+        for (int blockOffset = 0; blockOffset < availableShopsCount;
+             blockOffset += block.num_threads()) {
+            int sIdx = block.thread_rank() + blockOffset;
+            if (sIdx >= availableShopsCount) {
+                break;
+            }
+            int shopId = availableShops[sIdx];
+
+            // Get the networks the shop is connected to
+            auto shopNets = map->neighborNetworks(shopId);
+            if (map->sharedNetworks(shopNets, entityNets).data[0] != -1) {
+                // This factory shares the same network
+                int2 shopCoords = map->cellCoords(shopId);
+                int2 diff = shopCoords - tileCoords;
+                uint32_t distance = abs(diff.x) + abs(diff.y);
+                uint64_t target = (uint64_t(distance) << 32ull) | uint64_t(shopId);
+                // keep the closest factory
+                atomicMin(&targetShop, target);
+                break;
+            }
+        }
+
+        block.sync();
+
+        if (block.thread_rank() == 0) {
+            if (targetShop != uint64_t(Infinity) << 32ull && !atomicAdd(&assigned, 1)) {
+                int32_t shopId = targetShop & 0xffffffffull;
+                entity.destination = shopId;
+            }
+        }
+
+        break;
+    }
+}
+
 uint32_t currentTime_ms() { return uint32_t((nanotime_start / (uint64_t)1e6) & 0xffffffff); }
 
 void updateEntitiesState(Map *map, Entities *entities) {
@@ -269,34 +375,56 @@ void updateEntitiesState(Map *map, Entities *entities) {
         }
         Entity &entity = entities->get(entityIndex);
 
+        bool destinationReached = false;
+        if (entity.destination != -1 &&
+            map->cellAtPosition(entity.position) == entity.destination) {
+            destinationReached = true;
+            entity.path.reset();
+            entity.stateStart_ms = gameState->currentTime_ms;
+            entity.position = map->getCellPosition(entity.destination);
+            entity.destination = -1;
+        }
+
         switch (entity.state) {
         case GoHome: {
-            if (map->cellAtPosition(entity.position) == entity.houseId) {
-                entity.path.reset();
+            if (destinationReached) {
                 entity.state = Rest;
-                entity.stateStart_ms = gameState->currentTime_ms;
-                entity.position = map->getCellPosition(entity.houseId);
+
+            } else if (entity.destination == -1) {
+                entity.destination = entity.houseId;
             }
             break;
         }
         case GoToWork: {
-            if (map->cellAtPosition(entity.position) == entity.workplaceId) {
-                entity.path.reset();
+            if (destinationReached) {
                 entity.state = Work;
-                entity.stateStart_ms = gameState->currentTime_ms;
-                entity.position = map->getCellPosition(entity.workplaceId);
+
+            } else if (entity.destination == -1) {
+                entity.destination = entity.workplaceId;
+            }
+            break;
+        }
+        case GoShopping: {
+            // entity destination is not handled here
+            if (destinationReached) {
+                entity.state = Shop;
             }
             break;
         }
         case Work:
             if (gameState->currentTime_ms - entity.stateStart_ms >= WORK_TIME_MS) {
-                entity.state = GoHome;
+                entity.state = GoShopping;
                 atomicAdd(&gameState->playerMoney, 10);
             }
             break;
         case Rest:
             if (gameState->currentTime_ms - entity.stateStart_ms >= REST_TIME_MS) {
                 entity.state = GoToWork;
+            }
+            break;
+        case Shop:
+            if (gameState->currentTime_ms - entity.stateStart_ms >= SHOP_TIME_MS) {
+                entity.state = GoHome;
             }
             break;
         default:
@@ -372,6 +500,7 @@ void updateGrid(Map *map, Entities *entities) {
     }
 
     printDuration("assignOneHouse", [&]() { assignOneHouse(map, entities); });
+    printDuration("assignOneCustomerToShop", [&]() { assignOneCustomerToShop(map, entities); });
     printDuration("performPathFinding", [&]() { performPathFinding(map, entities, allocator); });
     printDuration("fillCells", [&]() { fillCells(map, entities); });
     printDuration("moveEntities", [&]() { moveEntities(map, entities, allocator, gameState->dt); });

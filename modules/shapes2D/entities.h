@@ -28,6 +28,7 @@ struct Entities {
         entity.state = GoToWork;
         entity.path.reset();
         entity.money = 0;
+        entity.destination = -1;
 
         return id;
     }

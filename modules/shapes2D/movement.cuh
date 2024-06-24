@@ -56,8 +56,8 @@ void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) 
 
     // Count entities to move
     processRange(entities->getCount(), [&](int entityIdx) {
-        EntityState state = entities->get(entityIdx).state;
-        if (state == GoHome || state == GoToWork) {
+        Entity &entity = entities->get(entityIdx);
+        if (entity.path.isValid()) {
             atomicAdd(&entitiesToMoveCount, 1);
         }
     });
@@ -71,8 +71,8 @@ void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) 
     // Allocate buffer and store entities to move
     uint32_t *entitiesToMove = allocator->alloc<uint32_t *>(sizeof(uint32_t) * entitiesToMoveCount);
     processRange(entities->getCount(), [&](int entityIdx) {
-        EntityState state = entities->get(entityIdx).state;
-        if (state == GoHome || state == GoToWork) {
+        Entity &entity = entities->get(entityIdx);
+        if (entity.path.isValid()) {
             int idx = atomicAdd(&bufferIdx, 1);
             entitiesToMove[idx] = entityIdx;
         }
@@ -85,11 +85,6 @@ void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) 
     // Update velocities
     processRange(entitiesToMoveCount, [&](int idx) {
         auto &entity = entities->get(entitiesToMove[idx]);
-
-        if (!entity.path.isValid()) {
-            entity.velocity = {0.0f, 0.0f};
-            return;
-        }
 
         float2 forces = {0.0f, 0.0f};
 

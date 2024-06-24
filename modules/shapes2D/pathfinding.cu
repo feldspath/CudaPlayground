@@ -28,7 +28,7 @@ static PathfindingList locateLostEntities(Map *map, Entities *entities, Allocato
         Entity &entity = entities->get(entityIndex);
         if (entity.isLost()) {
             uint32_t id = atomicAdd(&lostCount, 1);
-            uint32_t targetId = entity.state == GoHome ? entity.houseId : entity.workplaceId;
+            uint32_t targetId = entity.destination;
             int originId = map->cellAtPosition(entity.position);
             Pathfinding p;
             p.flowField = FlowField(map, targetId, originId);
@@ -61,6 +61,10 @@ void performPathFinding(Map *map, Entities *entities, Allocator *allocator) {
     auto block = cg::this_thread_block();
 
     PathfindingList pathfindingList = locateLostEntities(map, entities, allocator);
+
+    if (grid.thread_rank() == 0) {
+        printf("count: %d\n", pathfindingList.count);
+    }
 
     // Each block handles a lost entity
     for (int offset = 0; offset < pathfindingList.count; offset += grid.num_blocks()) {
