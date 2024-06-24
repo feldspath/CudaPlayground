@@ -62,10 +62,6 @@ void performPathFinding(Map *map, Entities *entities, Allocator *allocator) {
 
     PathfindingList pathfindingList = locateLostEntities(map, entities, allocator);
 
-    if (grid.thread_rank() == 0) {
-        printf("count: %d\n", pathfindingList.count);
-    }
-
     // Each block handles a lost entity
     for (int offset = 0; offset < pathfindingList.count; offset += grid.num_blocks()) {
         int bufferIdx = offset + grid.block_rank();
