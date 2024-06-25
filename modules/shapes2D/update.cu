@@ -438,7 +438,7 @@ void updateEntitiesState(Map *map, Entities *entities) {
 
 void updateGameState(Entities *entities) {
     float dt = ((float)(nanotime_start - gameState->previousFrameTime_ns)) / 1e9;
-    gameState->gameTime.incrementRealTime(dt);
+    gameState->gameTime.incrementRealTime(dt * uniforms.timeMultiplier);
     gameState->previousFrameTime_ns = nanotime_start;
     gameState->currentTime_ms = currentTime_ms();
     gameState->population = *entities->count;
@@ -520,10 +520,6 @@ void updateGrid(Map *map, Entities *entities) {
     // grid.sync();
     if (grid.thread_rank() == 0) {
         updateGameState(entities);
-
-        auto time = gameState->gameTime.formattedTime();
-        printf("y:%d w:%d d:%d h:%d m:%d\n", time.years, time.weeks, time.days, time.hours,
-               time.minutes);
     }
 }
 

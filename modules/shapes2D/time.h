@@ -13,6 +13,24 @@ struct FormattedTime {
     unsigned int days;
     unsigned int weeks;
     unsigned int years;
+
+    void clocktoString(char *timeString) {
+        timeString[0] = (hours / 10) + '0';
+        timeString[1] = (hours % 10) + '0';
+        timeString[2] = ':';
+        timeString[3] = (minutes / 10) + '0';
+        timeString[4] = (minutes % 10) + '0';
+        timeString[5] = 0;
+    }
+
+    // day value between 0 and 1 (0 is midnight , 1 midday)
+    float timeOfDay() const {
+        if (hours < 12) {
+            return float(hours) / 12.0 + float(minutes) / 60.0 / 12.0;
+        } else {
+            return 1.0f - float(hours - 12) / 12.0 - float(minutes) / 60.0 / 12.0;
+        }
+    }
 };
 
 struct GameTime {

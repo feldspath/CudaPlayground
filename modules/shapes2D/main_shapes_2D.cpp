@@ -37,6 +37,7 @@ CUevent cevent_start, cevent_end;
 int renderMode = RENDERMODE_DEFAULT;
 bool printTimings = false;
 bool creativeMode = false;
+float timeMultiplier = 1.0f;
 
 void initCuda() {
     cuInit(0);
@@ -82,6 +83,7 @@ void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
     uniforms.modeId = runtime->modeId;
     uniforms.printTimings = printTimings;
     uniforms.creativeMode = creativeMode;
+    uniforms.timeMultiplier = timeMultiplier;
 
     memcpy(&uniforms.cursorPos, &runtime->mousePosition, sizeof(runtime->mousePosition));
     uniforms.mouseButtons = Runtime::getInstance()->mouseButtons;
@@ -161,6 +163,7 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
     uniforms.renderMode = renderMode;
     uniforms.printTimings = printTimings;
     uniforms.creativeMode = creativeMode;
+    uniforms.timeMultiplier = timeMultiplier;
 
     glm::mat4 view = renderer->camera->viewMatrix();
     glm::mat4 proj = renderer->camera->projMatrix();
@@ -341,6 +344,7 @@ int main() {
             ImGui::Text("Options");
             ImGui::Checkbox("Pring Timings", &printTimings);
             ImGui::Checkbox("Creative Mode", &creativeMode);
+            ImGui::SliderFloat("Time multiplier", &timeMultiplier, 0.1f, 10.0f);
 
             ImGui::End();
         }

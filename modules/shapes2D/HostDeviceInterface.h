@@ -160,6 +160,7 @@ struct Uniforms {
     int renderMode;
     bool printTimings;
     bool creativeMode;
+    float timeMultiplier;
 
     // Inputs
     double2 cursorPos;

@@ -157,3 +157,22 @@ inline float3 float3color(uint32_t color) {
     uint32_t b = (color >> 16) & 0xFF;
     return float3{float(r) / 255.0f, float(g) / 255.0f, float(b) / 255.0f};
 }
+
+#define MAX_STRING_LENGTH 16
+
+static void itos(unsigned int value, char *string) {
+    char chars[MAX_STRING_LENGTH];
+    int i;
+    for (i = 0; i < 10; ++i) {
+        if (i > 0 && value == 0) {
+            break;
+        }
+        chars[i] = value % 10 + '0';
+        value = value / 10;
+    }
+
+    for (int j = 0; j < i; j++) {
+        string[i - 1 - j] = chars[j];
+    }
+    string[i] = 0;
+}

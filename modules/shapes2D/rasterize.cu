@@ -12,6 +12,7 @@
 #include "matrix_math.h"
 #include "sprite.h"
 #include "text.cuh"
+#include "time.h"
 
 namespace cg = cooperative_groups;
 
@@ -139,7 +140,7 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
             }
         }
 
-        float3 pixelColor = color;
+        float3 pixelColor = color * (gameState->gameTime.formattedTime().timeOfDay() * 0.5 + 0.5);
 
         float depth = 1.0f;
         uint64_t udepth = *((uint32_t *)&depth);
@@ -196,7 +197,8 @@ void rasterizeEntities(Entities *entities, Framebuffer framebuffer) {
             int pixelID = pixelCoords.x + pixelCoords.y * uniforms.width;
             pixelID = clamp(pixelID, 0, int(uniforms.width * uniforms.height) - 1);
 
-            float3 color = {1.0f, 0.0f, 0.0f};
+            float3 color = make_float3(1.0f, 0.0f, 0.0f) *
+                           (gameState->gameTime.formattedTime().timeOfDay() * 0.5 + 0.5);
 
             float depth = 0.9f;
             uint64_t udepth = *((uint32_t *)&depth);

@@ -57,6 +57,7 @@ struct SpriteSheet {
 
     Sprite moneyDisplay;
     Sprite populationDisplay;
+    Sprite timeDisplay;
     Sprite grass;
     Sprite house;
 
@@ -74,6 +75,13 @@ struct SpriteSheet {
         populationDisplay.height = 32;
         populationDisplay.data = data;
         populationDisplay.textureSize = int2{512, 512};
+
+        timeDisplay.x = 0;
+        timeDisplay.y = 64;
+        timeDisplay.width = 128;
+        timeDisplay.height = 32;
+        timeDisplay.data = data;
+        timeDisplay.textureSize = int2{512, 512};
 
         grass.x = 128;
         grass.y = 0;
