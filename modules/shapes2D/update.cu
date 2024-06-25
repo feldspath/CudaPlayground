@@ -10,6 +10,7 @@
 #include "matrix_math.h"
 #include "movement.cuh"
 #include "pathfinding.h"
+#include "time.h"
 
 namespace cg = cooperative_groups;
 
@@ -436,10 +437,17 @@ void updateEntitiesState(Map *map, Entities *entities) {
 }
 
 void updateGameState(Entities *entities) {
-    gameState->dt = ((float)(nanotime_start - gameState->previousFrameTime_ns)) / 1e9;
+    float dt = ((float)(nanotime_start - gameState->previousFrameTime_ns)) / 1e9;
+    gameState->gameTime.incrementRealTime(dt);
     gameState->previousFrameTime_ns = nanotime_start;
     gameState->currentTime_ms = currentTime_ms();
     gameState->population = *entities->count;
+
+    if (gameState->firstFrame) {
+        gameState->firstFrame = false;
+        gameState->gameTime.realTime_s = 0.0f;
+        gameState->gameTime.dt = 0.0f;
+    }
 }
 
 template <typename Function> void printDuration(char *name, Function &&f) {
@@ -505,12 +513,17 @@ void updateGrid(Map *map, Entities *entities) {
     printDuration("assignOneCustomerToShop", [&]() { assignOneCustomerToShop(map, entities); });
     printDuration("performPathFinding", [&]() { performPathFinding(map, entities, allocator); });
     printDuration("fillCells", [&]() { fillCells(map, entities); });
-    printDuration("moveEntities", [&]() { moveEntities(map, entities, allocator, gameState->dt); });
+    printDuration("moveEntities",
+                  [&]() { moveEntities(map, entities, allocator, gameState->gameTime.getDt()); });
     printDuration("updateEntitiesState", [&]() { updateEntitiesState(map, entities); });
 
     // grid.sync();
     if (grid.thread_rank() == 0) {
         updateGameState(entities);
+
+        auto time = gameState->gameTime.formattedTime();
+        printf("y:%d w:%d d:%d h:%d m:%d\n", time.years, time.weeks, time.days, time.hours,
+               time.minutes);
     }
 }
 

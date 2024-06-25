@@ -208,6 +208,7 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
 
 void initGameState() {
     GameState state;
+    state.firstFrame = true;
     state.playerMoney = 2000;
 
     cuMemcpyHtoD(cptr_gameState, &state, sizeof(GameState));

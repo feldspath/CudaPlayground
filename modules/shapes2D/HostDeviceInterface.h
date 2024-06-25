@@ -3,6 +3,7 @@
 
 #include "builtin_types.h"
 #include "path.h"
+#include "time.h"
 
 struct mat4 {
     float4 rows[4];
@@ -169,9 +170,11 @@ struct Uniforms {
 // GAME RELATED
 
 struct GameState {
+    bool firstFrame;
+
     uint64_t previousFrameTime_ns;
     uint32_t currentTime_ms;
-    float dt;
+    GameTime gameTime;
 
     float assignOneHouse_ms;
     float performPathFinding_ms;
