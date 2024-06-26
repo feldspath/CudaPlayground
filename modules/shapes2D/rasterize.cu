@@ -17,7 +17,7 @@
 namespace cg = cooperative_groups;
 
 Uniforms uniforms;
-GameState *gameState;
+GameState *GameState::instance;
 Allocator *allocator;
 uint64_t nanotime_start;
 
@@ -140,7 +140,8 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
             }
         }
 
-        float3 pixelColor = color * (gameState->gameTime.formattedTime().timeOfDay() * 0.5 + 0.5);
+        float3 pixelColor =
+            color * (GameState::instance->gameTime.formattedTime().timeOfDay() * 0.5 + 0.5);
 
         float depth = 1.0f;
         uint64_t udepth = *((uint32_t *)&depth);
@@ -198,7 +199,7 @@ void rasterizeEntities(Entities *entities, Framebuffer framebuffer) {
             pixelID = clamp(pixelID, 0, int(uniforms.width * uniforms.height) - 1);
 
             float3 color = make_float3(1.0f, 0.0f, 0.0f) *
-                           (gameState->gameTime.formattedTime().timeOfDay() * 0.5 + 0.5);
+                           (GameState::instance->gameTime.formattedTime().timeOfDay() * 0.5 + 0.5);
 
             float depth = 0.9f;
             uint64_t udepth = *((uint32_t *)&depth);
@@ -224,7 +225,7 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, GameState *_gameStat
     Allocator _allocator(buffer, 0);
     allocator = &_allocator;
 
-    gameState = _gameState;
+    GameState::instance = _gameState;
 
     TextRenderer textRenderer(img_ascii_16);
     SpriteSheet sprites(img_spritesheet);
@@ -257,7 +258,7 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, GameState *_gameStat
 
         GUI gui(framebuffer.width, framebuffer.height, textRenderer, sprites);
 
-        gui.render(framebuffer, gameState);
+        gui.render(framebuffer);
     }
 
     grid.sync();

@@ -256,6 +256,7 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
                                                    "./modules/shapes2D/rasterize.cu",
                                                    "./modules/common/utils.cu",
                                                    "./modules/shapes2D/path.cu",
+                                                   "./modules/shapes2D/time.cu",
                                                },
                                            .kernels = {"kernel"}});
 
@@ -265,6 +266,7 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
                                                   "./modules/shapes2D/update.cu",
                                                   "./modules/shapes2D/path.cu",
                                                   "./modules/shapes2D/pathfinding.cu",
+                                                  "./modules/shapes2D/time.cu",
                                               },
                                           .kernels = {"update"}});
 

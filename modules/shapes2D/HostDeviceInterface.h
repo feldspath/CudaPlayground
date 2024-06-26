@@ -92,6 +92,25 @@ static int RENDERMODE_NETWORK = 1;
 
 // DATA FORMATS
 
+struct GameState {
+    bool firstFrame;
+
+    uint64_t previousFrameTime_ns;
+    uint32_t currentTime_ms;
+    GameTime gameTime;
+
+    float assignOneHouse_ms;
+    float performPathFinding_ms;
+    float fillCells_ms;
+    float moveEntities_ms;
+    float updateEntitiesState_ms;
+
+    unsigned int playerMoney;
+    unsigned int population;
+
+    static GameState *instance;
+};
+
 // CELLS
 
 enum TileId {
@@ -128,27 +147,6 @@ enum EntityState {
     GoShopping,
 };
 
-struct Entity {
-    // movement
-    float2 position;
-    float2 velocity;
-
-    // state logic
-    uint32_t houseId;
-    uint32_t workplaceId;
-    EntityState state;
-    uint32_t stateStart_ms;
-    uint32_t money;
-
-    // Path is a uint64_t
-    Path path;
-    int32_t destination;
-
-    inline bool isLost() { return destination != -1 && !path.isValid(); }
-};
-
-static int BYTES_PER_ENTITY = sizeof(Entity);
-
 struct Uniforms {
     float width;
     float height;
@@ -168,21 +166,30 @@ struct Uniforms {
     int modeId;
 };
 
-// GAME RELATED
+struct Entity {
+    // movement
+    float2 position;
+    float2 velocity;
 
-struct GameState {
-    bool firstFrame;
+    // state logic
+    uint32_t houseId;
+    uint32_t workplaceId;
+    EntityState state;
+    uint32_t money;
+    FormattedTOD stateStart;
 
-    uint64_t previousFrameTime_ns;
-    uint32_t currentTime_ms;
-    GameTime gameTime;
+    // Path is a uint64_t
+    Path path;
+    int32_t destination;
 
-    float assignOneHouse_ms;
-    float performPathFinding_ms;
-    float fillCells_ms;
-    float moveEntities_ms;
-    float updateEntitiesState_ms;
+    inline bool isLost() { return destination != -1 && !path.isValid(); }
 
-    unsigned int playerMoney;
-    unsigned int population;
+    void changeState(EntityState newState) {
+        path.reset();
+        stateStart = GameState::instance->gameTime.formattedTime();
+        destination = -1;
+        state = newState;
+    }
 };
+
+static int BYTES_PER_ENTITY = sizeof(Entity);

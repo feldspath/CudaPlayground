@@ -27,18 +27,18 @@ public:
           populationDisplay(width - 400, height - 200, 100, 30, sprites.populationDisplay),
           timeDisplay(width - 400, height - 300, 100, 30, sprites.timeDisplay) {}
 
-    void render(Framebuffer framebuffer, GameState *gameState) {
+    void render(Framebuffer framebuffer) {
         char displayString[MAX_STRING_LENGTH + 1];
 
-        unsigned int money = gameState->playerMoney;
+        unsigned int money = GameState::instance->playerMoney;
         itos(money, displayString);
         renderDisplay(moneyDisplay, displayString, framebuffer);
 
-        unsigned int population = gameState->population;
+        unsigned int population = GameState::instance->population;
         itos(population, displayString);
         renderDisplay(populationDisplay, displayString, framebuffer);
 
-        gameState->gameTime.formattedTime().clocktoString(displayString);
+        GameState::instance->gameTime.formattedTime().clocktoString(displayString);
         renderDisplay(timeDisplay, displayString, framebuffer);
     }
 

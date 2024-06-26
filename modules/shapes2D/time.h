@@ -7,12 +7,13 @@ static constexpr unsigned int MIN_PER_DAY = MIN_PER_HOUR * 24;
 static constexpr unsigned int MIN_PER_WEEK = MIN_PER_DAY * 7;
 static constexpr unsigned int MIN_PER_YEAR = MIN_PER_WEEK * 52;
 
-struct FormattedTime {
-    unsigned int minutes;
-    unsigned int hours;
-    unsigned int days;
-    unsigned int weeks;
-    unsigned int years;
+struct FormattedTOD {
+    unsigned char hours;
+    unsigned char minutes;
+
+    constexpr FormattedTOD(unsigned char hours, unsigned char minutes)
+        : hours(hours), minutes(minutes) {}
+    constexpr FormattedTOD() : hours(0), minutes(0) {}
 
     void clocktoString(char *timeString) {
         timeString[0] = (hours / 10) + '0';
@@ -31,6 +32,43 @@ struct FormattedTime {
             return 1.0f - float(hours - 12) / 12.0 - float(minutes) / 60.0 / 12.0;
         }
     }
+
+    bool operator<(const FormattedTOD &other) const {
+        return hours < other.hours || (hours == other.hours && minutes < other.minutes);
+    }
+
+    bool operator<=(const FormattedTOD &other) const {
+        return hours < other.hours || (hours == other.hours && minutes <= other.minutes);
+    }
+
+    FormattedTOD operator-(const FormattedTOD &other) const {
+        if (*this < other) {
+            printf("invalid date substration");
+        }
+        return FormattedTOD(hours - other.hours, minutes - other.minutes);
+    }
+
+    unsigned int totalMinutes() const { return minutes + hours * 60; }
+};
+
+struct TimeInterval {
+    FormattedTOD start;
+    FormattedTOD end;
+
+    constexpr TimeInterval(FormattedTOD start, FormattedTOD end) : start(start), end(end) {}
+    constexpr TimeInterval() : start({0, 0}), end({0, 0}) {}
+
+    bool contains(FormattedTOD time) const { return start <= time && time <= end; }
+
+    static const TimeInterval factoryHours;
+    static const TimeInterval shopHours;
+};
+
+struct FormattedDate {
+    FormattedTOD tod;
+    unsigned int days;
+    unsigned int weeks;
+    unsigned int years;
 };
 
 struct GameTime {
@@ -46,25 +84,36 @@ public:
 
     float getDt() const { return dt; }
 
-    FormattedTime formattedTime() const {
+    FormattedDate formattedDate() const {
         uint64_t inGameMinutes = uint64_t(realTime_s / REAL_SECONDS_PER_GAME_MIN);
 
-        FormattedTime gameTime;
+        FormattedDate date;
 
-        gameTime.years = inGameMinutes / MIN_PER_YEAR;
+        date.years = inGameMinutes / MIN_PER_YEAR;
         inGameMinutes = inGameMinutes % MIN_PER_YEAR;
 
-        gameTime.weeks = inGameMinutes / MIN_PER_WEEK;
+        date.weeks = inGameMinutes / MIN_PER_WEEK;
         inGameMinutes = inGameMinutes % MIN_PER_WEEK;
 
-        gameTime.days = inGameMinutes / MIN_PER_DAY;
+        date.days = inGameMinutes / MIN_PER_DAY;
         inGameMinutes = inGameMinutes % MIN_PER_DAY;
 
-        gameTime.hours = inGameMinutes / MIN_PER_HOUR;
+        date.tod = formattedTime();
+
+        return date;
+    }
+
+    FormattedTOD formattedTime() const {
+        uint64_t inGameMinutes = uint64_t(realTime_s / REAL_SECONDS_PER_GAME_MIN);
+        inGameMinutes = inGameMinutes % MIN_PER_DAY;
+
+        FormattedTOD tod;
+
+        tod.hours = inGameMinutes / MIN_PER_HOUR;
         inGameMinutes = inGameMinutes % MIN_PER_HOUR;
 
-        gameTime.minutes = inGameMinutes;
+        tod.minutes = inGameMinutes;
 
-        return gameTime;
+        return tod;
     }
 };

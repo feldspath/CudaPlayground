@@ -15,7 +15,6 @@
 namespace cg = cooperative_groups;
 
 Uniforms uniforms;
-GameState *gameState;
 Allocator *allocator;
 uint64_t nanotime_start;
 
@@ -36,8 +35,8 @@ void updateCell(Map *map, UpdateInfo updateInfo) {
     if (grid.thread_rank() == 0) {
         if (uniforms.creativeMode) {
             map->setTileId(id, new_tile);
-        } else if (tileCost(new_tile) <= gameState->playerMoney) {
-            gameState->playerMoney -= tileCost(new_tile);
+        } else if (tileCost(new_tile) <= GameState::instance->playerMoney) {
+            GameState::instance->playerMoney -= tileCost(new_tile);
             map->setTileId(id, new_tile);
         }
     }
@@ -380,17 +379,22 @@ void updateEntitiesState(Map *map, Entities *entities) {
         if (entity.destination != -1 &&
             map->cellAtPosition(entity.position) == entity.destination) {
             destinationReached = true;
-            entity.path.reset();
-            entity.stateStart_ms = gameState->currentTime_ms;
             entity.position = map->getCellPosition(entity.destination);
-            entity.destination = -1;
         }
+
+        TimeInterval workHours;
+        if (map->getTileId(entity.workplaceId) == SHOP) {
+            workHours = TimeInterval::shopHours;
+        } else if (map->getTileId(entity.workplaceId) == FACTORY) {
+            workHours = TimeInterval::factoryHours;
+        }
+
+        auto tod = GameState::instance->gameTime.formattedTime();
 
         switch (entity.state) {
         case GoHome: {
             if (destinationReached) {
-                entity.state = Rest;
-
+                entity.changeState(Rest);
             } else if (entity.destination == -1) {
                 entity.destination = entity.houseId;
             }
@@ -398,7 +402,7 @@ void updateEntitiesState(Map *map, Entities *entities) {
         }
         case GoToWork: {
             if (destinationReached) {
-                entity.state = Work;
+                entity.changeState(Work);
 
             } else if (entity.destination == -1) {
                 entity.destination = entity.workplaceId;
@@ -408,25 +412,27 @@ void updateEntitiesState(Map *map, Entities *entities) {
         case GoShopping: {
             // entity destination is not handled here
             if (destinationReached) {
-                entity.state = Shop;
+                entity.changeState(Shop);
+            } else if (!TimeInterval::shopHours.contains(tod)) {
+                entity.changeState(GoHome);
             }
             break;
         }
         case Work:
-            if (gameState->currentTime_ms - entity.stateStart_ms >= WORK_TIME_MS) {
-                entity.state = GoShopping;
-                entity.money += 20;
+            if (!workHours.contains(tod)) {
+                entity.changeState(GoShopping);
+                entity.money += (entity.stateStart - tod).totalMinutes() / 10;
             }
             break;
         case Rest:
-            if (gameState->currentTime_ms - entity.stateStart_ms >= REST_TIME_MS) {
-                entity.state = GoToWork;
+            if (workHours.contains(tod)) {
+                entity.changeState(GoToWork);
             }
             break;
         case Shop:
-            if (gameState->currentTime_ms - entity.stateStart_ms >= SHOP_TIME_MS) {
-                entity.state = GoHome;
-                atomicAdd(&gameState->playerMoney, entity.money);
+            if ((tod - entity.stateStart).totalMinutes() >= SHOP_TIME_MIN) {
+                entity.changeState(GoHome);
+                atomicAdd(&GameState::instance->playerMoney, entity.money);
                 entity.money = 0;
             }
             break;
@@ -437,16 +443,16 @@ void updateEntitiesState(Map *map, Entities *entities) {
 }
 
 void updateGameState(Entities *entities) {
-    float dt = ((float)(nanotime_start - gameState->previousFrameTime_ns)) / 1e9;
-    gameState->gameTime.incrementRealTime(dt * uniforms.timeMultiplier);
-    gameState->previousFrameTime_ns = nanotime_start;
-    gameState->currentTime_ms = currentTime_ms();
-    gameState->population = *entities->count;
+    float dt = ((float)(nanotime_start - GameState::instance->previousFrameTime_ns)) / 1e9;
+    GameState::instance->gameTime.incrementRealTime(dt * uniforms.timeMultiplier);
+    GameState::instance->previousFrameTime_ns = nanotime_start;
+    GameState::instance->currentTime_ms = currentTime_ms();
+    GameState::instance->population = *entities->count;
 
-    if (gameState->firstFrame) {
-        gameState->firstFrame = false;
-        gameState->gameTime.realTime_s = 0.0f;
-        gameState->gameTime.dt = 0.0f;
+    if (GameState::instance->firstFrame) {
+        GameState::instance->firstFrame = false;
+        GameState::instance->gameTime.realTime_s = 0.0f;
+        GameState::instance->gameTime.dt = 0.0f;
     }
 }
 
@@ -513,8 +519,9 @@ void updateGrid(Map *map, Entities *entities) {
     printDuration("assignOneCustomerToShop", [&]() { assignOneCustomerToShop(map, entities); });
     printDuration("performPathFinding", [&]() { performPathFinding(map, entities, allocator); });
     printDuration("fillCells", [&]() { fillCells(map, entities); });
-    printDuration("moveEntities",
-                  [&]() { moveEntities(map, entities, allocator, gameState->gameTime.getDt()); });
+    printDuration("moveEntities", [&]() {
+        moveEntities(map, entities, allocator, GameState::instance->gameTime.getDt());
+    });
     printDuration("updateEntitiesState", [&]() { updateEntitiesState(map, entities); });
 
     // grid.sync();
@@ -534,7 +541,7 @@ extern "C" __global__ void update(const Uniforms _uniforms, GameState *_gameStat
     Allocator _allocator(buffer, 0);
     allocator = &_allocator;
 
-    gameState = _gameState;
+    GameState::instance = _gameState;
 
     grid.sync();
 

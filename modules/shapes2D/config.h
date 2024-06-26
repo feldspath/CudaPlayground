@@ -10,9 +10,7 @@ static float ENTITY_SPEED = 2.0f;
 static float CELL_RADIUS = 0.5f;
 static float CELL_PADDING = 0.0f;
 
-static uint32_t WORK_TIME_MS = 5000;
-static uint32_t REST_TIME_MS = 5000;
-static uint32_t SHOP_TIME_MS = 5000;
+static uint32_t SHOP_TIME_MIN = 60;
 
 static float KERNEL_RADIUS = 1.5f;
 static float REPULSIVE_STRENGTH = 30.0f;
@@ -22,4 +20,4 @@ static unsigned int ROAD_COST = 5;
 static unsigned int FACTORY_COST = 100;
 static unsigned int HOUSE_COST = 50;
 
-static float REAL_SECONDS_PER_GAME_MIN = 180.0 / (60.0 * 24.0);
+static float REAL_SECONDS_PER_GAME_MIN = 60.0 / (60.0 * 24.0);

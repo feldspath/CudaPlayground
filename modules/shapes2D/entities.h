@@ -25,7 +25,7 @@ struct Entities {
         entity.velocity = {0.0f, 0.0f};
         entity.houseId = house;
         entity.workplaceId = workplace;
-        entity.state = GoToWork;
+        entity.state = Rest;
         entity.path.reset();
         entity.money = 0;
         entity.destination = -1;
