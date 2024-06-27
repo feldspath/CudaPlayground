@@ -158,6 +158,14 @@ inline float3 float3color(uint32_t color) {
     return float3{float(r) / 255.0f, float(g) / 255.0f, float(b) / 255.0f};
 }
 
+inline float4 float4color(uint32_t color) {
+    uint32_t r = color & 0xFF;
+    uint32_t g = (color >> 8) & 0xFF;
+    uint32_t b = (color >> 16) & 0xFF;
+    uint32_t a = (color >> 24) & 0xFF;
+    return float4{float(r) / 255.0f, float(g) / 255.0f, float(b) / 255.0f, float(a) / 255.0f};
+}
+
 #define MAX_STRING_LENGTH 16
 
 static void itos(unsigned int value, char *string) {

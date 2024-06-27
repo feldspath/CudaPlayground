@@ -49,6 +49,7 @@ public:
 
         grid.sync();
 
-        textRenderer.drawText(displayString, box.x + 150.0, box.y + 30.0, 30, framebuffer);
+        textRenderer.drawText(displayString, box.x + 150.0, box.y + 30.0, 30,
+                              float3{0.0f, 0.0f, 0.0f}, framebuffer);
     }
 };
