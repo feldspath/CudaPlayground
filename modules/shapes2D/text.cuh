@@ -36,7 +36,7 @@ public:
                 float v = 1.0f - float(l_y) / fontsize;
 
                 int sx = tilepx + tilesizeX * u;
-                int sy = tilesizeY * v;
+                int sy = min(tilesizeY * v, tilesizeY - 1);
                 int sourceTexel = sx + sy * NUM_CHARS * tilesizeX;
 
                 uint32_t color = image[sourceTexel];

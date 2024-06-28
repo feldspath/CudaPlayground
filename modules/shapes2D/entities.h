@@ -29,6 +29,7 @@ struct Entities {
         entity.path.reset();
         entity.money = 0;
         entity.destination = -1;
+        entity.interaction = -1;
 
         return id;
     }

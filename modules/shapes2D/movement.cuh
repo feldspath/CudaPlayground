@@ -22,7 +22,7 @@ void fillCells(Map *map, Entities *entities) {
     processRange(entities->getCount(), [&](int entityIdx) {
         Entity &entity = entities->get(entityIdx);
         EntityState state = entity.state;
-        if (state == GoHome || state == GoToWork) {
+        if (state == GoHome || state == GoToWork || state == GoShopping || state == Shop) {
             int cell = map->cellAtPosition(entity.position);
             int32_t *cellEntities = map->cellsData[cell].entities;
 

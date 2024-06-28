@@ -420,8 +420,8 @@ void updateEntitiesState(Map *map, Entities *entities) {
         }
         case Work:
             if (!workHours.contains(tod)) {
+                entity.money += (tod - entity.stateStart).totalMinutes() / 10;
                 entity.changeState(GoShopping);
-                entity.money += (entity.stateStart - tod).totalMinutes() / 10;
             }
             break;
         case Rest:
@@ -430,12 +430,56 @@ void updateEntitiesState(Map *map, Entities *entities) {
             }
             break;
         case Shop:
-            if ((tod - entity.stateStart).totalMinutes() >= SHOP_TIME_MIN) {
+            // waiting to be handled by a shop worker
+            if (!TimeInterval::shopHours.contains(tod)) {
                 entity.changeState(GoHome);
-                atomicAdd(&GameState::instance->playerMoney, entity.money);
-                entity.money = 0;
             }
             break;
+        default:
+            break;
+        }
+    }
+}
+
+void entitiesInteractions(Map *map, Entities *entities) {
+    auto grid = cg::this_grid();
+    auto block = cg::this_thread_block();
+
+    // Update interactions
+    for (int offset = 0; offset < entities->getCount(); offset += grid.num_threads()) {
+        int entityIndex = offset + grid.thread_rank();
+        if (entityIndex >= entities->getCount()) {
+            break;
+        }
+        Entity &entity = entities->get(entityIndex);
+
+        switch (entity.state) {
+        case Work: {
+            if (map->getTileId(entity.workplaceId) == SHOP) {
+                if (entity.interaction == -1) {
+                    for (int i = 0; i < ENTITIES_PER_CELL; ++i) {
+                        int otherIndex = map->cellsData[entity.workplaceId].entities[i];
+                        if (otherIndex == -1) {
+                            break;
+                        }
+                        auto &other = entities->get(otherIndex);
+                        if (other.state == Shop &&
+                            atomicCAS(&other.interaction, -1, entityIndex) == -1) {
+                            entity.interaction = otherIndex;
+                            entity.resetStateStart();
+                        }
+                    }
+                } else if ((GameState::instance->gameTime.formattedTime() - entity.stateStart)
+                               .totalMinutes() > SHOP_TIME_MIN) {
+                    auto &other = entities->get(entity.interaction);
+                    entity.interaction = -1;
+                    other.interaction = -1;
+                    other.changeState(GoHome);
+                    atomicAdd(&GameState::instance->playerMoney, other.money);
+                    other.money = 0;
+                }
+            }
+        }
         default:
             break;
         }
@@ -523,6 +567,7 @@ void updateGrid(Map *map, Entities *entities) {
         moveEntities(map, entities, allocator, GameState::instance->gameTime.getDt());
     });
     printDuration("updateEntitiesState", [&]() { updateEntitiesState(map, entities); });
+    printDuration("entitiesInteractions", [&]() { entitiesInteractions(map, entities); });
 
     // grid.sync();
     if (grid.thread_rank() == 0) {
