@@ -18,6 +18,8 @@ Uniforms uniforms;
 Allocator *allocator;
 uint64_t nanotime_start;
 
+curandStateXORWOW_t thread_random_state;
+
 struct UpdateInfo {
     bool update;
     int tileToUpdate;
@@ -275,11 +277,10 @@ void assignOneCustomerToShop(Map *map, Entities *entities) {
     grid.sync();
 
     map->processEachCell(SHOP, [&](int cellId) {
-        atomicAdd(&availableShopsCount, 1);
-
-        // if (map->shopCurrentWorkerCount(cellId) > 0) {
-        //     atomicAdd(&availableShopsCount, 1);
-        // }
+        // Look for open shop
+        if (map->shopCurrentWorkerCount(cellId) > 0) {
+            atomicAdd(&availableShopsCount, 1);
+        }
     });
 
     grid.sync();
@@ -289,30 +290,28 @@ void assignOneCustomerToShop(Map *map, Entities *entities) {
     }
 
     uint32_t *availableShops = allocator->alloc<uint32_t *>(sizeof(uint32_t) * availableShopsCount);
+    uint32_t *reachableShops = allocator->alloc<uint32_t *>(sizeof(uint32_t) * availableShopsCount);
 
     map->processEachCell(SHOP, [&](int cellId) {
-        int idx = atomicAdd(&globalShopIdx, 1);
-        availableShops[idx] = cellId;
-
-        // if (map->shopCurrentWorkerCount(cellId) > 0) {
-        //     int idx = atomicAdd(&globalShopIdx, 1);
-        //     availableShops[idx] = cellId;
-        // }
+        // Look for open shop
+        if (map->shopCurrentWorkerCount(cellId) > 0) {
+            int idx = atomicAdd(&globalShopIdx, 1);
+            availableShops[idx] = cellId;
+        }
     });
 
     grid.sync();
 
-    __shared__ uint64_t targetShop;
-    for (int gridOffset = 0; gridOffset < entities->getCount(); gridOffset += grid.num_blocks()) {
-        int entityIdx = gridOffset + grid.block_rank();
-        if (entityIdx >= entities->getCount()) {
-            break;
-        }
-
+    for (int entityIdx = 0; entityIdx < entities->getCount(); entityIdx++) {
         Entity &entity = entities->get(entityIdx);
         if (entity.state != GoShopping || entity.destination != -1) {
             continue;
         }
+
+        if (grid.thread_rank() == 0) {
+            globalShopIdx = 0;
+        }
+        grid.sync();
 
         int entityCell = map->cellAtPosition(entity.position);
 
@@ -320,43 +319,29 @@ void assignOneCustomerToShop(Map *map, Entities *entities) {
         auto entityNets = map->neighborNetworks(entityCell);
         int2 tileCoords = map->cellCoords(entityCell);
 
-        if (block.thread_rank() == 0) {
-            targetShop = uint64_t(Infinity) << 32ull;
-        }
-
-        block.sync();
-
-        for (int blockOffset = 0; blockOffset < availableShopsCount;
-             blockOffset += block.num_threads()) {
-            int sIdx = block.thread_rank() + blockOffset;
-            if (sIdx >= availableShopsCount) {
-                break;
-            }
+        processRange(availableShopsCount, [&](int sIdx) {
             int shopId = availableShops[sIdx];
 
             // Get the networks the shop is connected to
             auto shopNets = map->neighborNetworks(shopId);
             if (map->sharedNetworks(shopNets, entityNets).data[0] != -1) {
                 // This factory shares the same network
-                int2 shopCoords = map->cellCoords(shopId);
-                int2 diff = shopCoords - tileCoords;
-                uint32_t distance = abs(diff.x) + abs(diff.y);
-                uint64_t target = (uint64_t(distance) << 32ull) | uint64_t(shopId);
-                // keep the closest factory
-                atomicMin(&targetShop, target);
-                break;
+                int bufferIdx = atomicAdd(&globalShopIdx, 1);
+                reachableShops[bufferIdx] = shopId;
             }
+        });
+
+        grid.sync();
+
+        if (globalShopIdx == 0) {
+            // No reachable shop
+            continue;
         }
 
-        block.sync();
-
-        if (block.thread_rank() == 0) {
-            if (targetShop != uint64_t(Infinity) << 32ull && !atomicAdd(&assigned, 1)) {
-                int32_t shopId = targetShop & 0xffffffffull;
-                entity.destination = shopId;
-            }
+        if (grid.thread_rank() == 0) {
+            uint32_t randomShopIdx = curand(&thread_random_state) % globalShopIdx;
+            entity.destination = reachableShops[randomShopIdx];
         }
-
         break;
     }
 }
@@ -401,8 +386,16 @@ void updateEntitiesState(Map *map, Entities *entities) {
             break;
         }
         case GoToWork: {
+            if (!workHours.contains(tod)) {
+                entity.changeState(GoShopping);
+                break;
+            }
+
             if (destinationReached) {
                 entity.changeState(Work);
+                if (map->getTileId(entity.workplaceId) == SHOP) {
+                    atomicAdd(&map->shopCurrentWorkerCount(entity.workplaceId), 1);
+                }
 
             } else if (entity.destination == -1) {
                 entity.destination = entity.workplaceId;
@@ -410,6 +403,10 @@ void updateEntitiesState(Map *map, Entities *entities) {
             break;
         }
         case GoShopping: {
+            if (!TimeInterval::shopHours.contains(tod)) {
+                entity.changeState(GoHome);
+                break;
+            }
             // entity destination is not handled here
             if (destinationReached) {
                 entity.changeState(Shop);
@@ -422,6 +419,10 @@ void updateEntitiesState(Map *map, Entities *entities) {
             if (!workHours.contains(tod)) {
                 entity.money += (tod - entity.stateStart).totalMinutes() / 10;
                 entity.changeState(GoShopping);
+
+                if (map->getTileId(entity.workplaceId) == SHOP) {
+                    atomicAdd(&map->shopCurrentWorkerCount(entity.workplaceId), -1);
+                }
             }
             break;
         case Rest:
@@ -587,6 +588,9 @@ extern "C" __global__ void update(const Uniforms _uniforms, GameState *_gameStat
     allocator = &_allocator;
 
     GameState::instance = _gameState;
+
+    curand_init(grid.thread_rank() + GameState::instance->currentTime_ms, 0, 0,
+                &thread_random_state);
 
     grid.sync();
 

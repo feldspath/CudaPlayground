@@ -5,14 +5,14 @@ static int SHOP_WORK_CAPACITY = 2;
 static int SHOP_CUSTOMERS_PER_WORKER = 4;
 
 static float ENTITY_RADIUS = 0.2f;
-static float ENTITY_SPEED = 2.0f;
+static float ENTITY_SPEED = 5.0f;
 
 static float CELL_RADIUS = 0.5f;
 static float CELL_PADDING = 0.0f;
 
 static uint32_t SHOP_TIME_MIN = 60;
 
-static float KERNEL_RADIUS = 1.5f;
+static float KERNEL_RADIUS = 1.0f;
 static float REPULSIVE_STRENGTH = 30.0f;
 static float STIR_STRENGTH = 20.0f;
 

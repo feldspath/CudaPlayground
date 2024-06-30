@@ -192,6 +192,7 @@ struct Entity {
         path.reset();
         resetStateStart();
         destination = -1;
+        interaction = -1;
         state = newState;
     }
 };
