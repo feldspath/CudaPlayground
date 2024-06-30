@@ -1,9 +1,7 @@
-#pragma once
+#include "common/utils.cuh"
 
-#include "../common/utils.cuh"
-#include "direction.h"
-#include "entities.h"
-#include "map.h"
+#include "common/helper_math.h"
+#include "movement.cuh"
 
 void fillCells(Map *map, Entities *entities) {
     auto grid = cg::this_grid();

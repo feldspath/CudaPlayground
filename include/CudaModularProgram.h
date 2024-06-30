@@ -50,9 +50,13 @@ struct CudaModule {
     // size_t nvvmSize;
     // char *nvvm = nullptr;
 
-    CudaModule(std::string path, std::string name) {
+    std::vector<std::string> customIncludeDirs;
+
+    CudaModule(std::string path, std::string name,
+               std::vector<std::string> includeDirs = std::vector<std::string>()) {
         this->path = path;
         this->name = name;
+        this->customIncludeDirs = includeDirs;
     }
 
     void compile() {
@@ -98,6 +102,11 @@ struct CudaModule {
         std::string i_thrust = std::format(
             "-I {}", "D:/dev/workspaces/CudaPlayground/gaussian_private/libs/cccl-main/thrust");
 
+        std::vector<std::string> i_customs;
+        for (auto &dir : customIncludeDirs) {
+            i_customs.push_back(std::format(" -I {}", dir));
+        }
+
         nvrtcProgram prog;
         std::string source = readFile(path);
         nvrtcCreateProgram(&prog, source.c_str(), name.c_str(), 0, NULL, NULL);
@@ -126,6 +135,10 @@ struct CudaModule {
             "--std=c++20",
             "--disable-warnings",
         };
+
+        for (auto &i : i_customs) {
+            opts.push_back(i.c_str());
+        }
 
         for (auto opt : opts) {
             std::cout << opt << '\n';
@@ -184,6 +197,7 @@ struct CudaModularProgram {
     struct CudaModularProgramArgs {
         std::vector<std::string> modules;
         std::vector<std::string> kernels;
+        std::vector<std::string> customIncludeDirs;
     };
 
     void cu_checked(CUresult result) {
@@ -219,7 +233,7 @@ struct CudaModularProgram {
         for (auto modulePath : modulePaths) {
 
             std::string moduleName = fs::path(modulePath).filename().string();
-            auto module = new CudaModule(modulePath, moduleName);
+            auto module = new CudaModule(modulePath, moduleName, args.customIncludeDirs);
 
             module->compile();
 

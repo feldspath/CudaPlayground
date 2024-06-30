@@ -1,18 +1,17 @@
 #include <cooperative_groups.h>
 #include <curand_kernel.h>
 
-#include "./../common/utils.cuh"
 #include "HostDeviceInterface.h"
+#include "World/Entities/entities.cuh"
+#include "World/map.cuh"
 #include "builtin_types.h"
-#include "entities.h"
-#include "framebuffer.h"
-#include "gui.h"
-#include "helper_math.h"
-#include "map.h"
-#include "matrix_math.h"
-#include "sprite.h"
+#include "common/helper_math.h"
+#include "common/matrix_math.h"
+#include "common/utils.cuh"
+#include "framebuffer.cuh"
+#include "gui.cuh"
+#include "sprite.cuh"
 #include "text.cuh"
-#include "time.h"
 
 namespace cg = cooperative_groups;
 

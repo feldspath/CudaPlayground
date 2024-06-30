@@ -1,7 +1,7 @@
 #pragma once
 
 #include "./../common/utils.cuh"
-#include "framebuffer.h"
+#include "framebuffer.cuh"
 
 class TextRenderer {
     uint32_t *font_image;

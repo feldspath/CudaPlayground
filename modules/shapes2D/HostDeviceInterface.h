@@ -1,9 +1,9 @@
 
 #pragma once
 
+#include "World/Path/path.h"
+#include "World/time.h"
 #include "builtin_types.h"
-#include "path.h"
-#include "time.h"
 
 struct mat4 {
     float4 rows[4];

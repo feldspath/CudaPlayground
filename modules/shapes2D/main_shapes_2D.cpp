@@ -251,24 +251,31 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
     cuMemAlloc(&cptr_spriteSheet, img_spritesheet.size());
     cuMemcpyHtoD(cptr_spriteSheet, img_spritesheet.data(), img_spritesheet.size());
 
-    cuda_program = new CudaModularProgram({.modules =
-                                               {
-                                                   "./modules/shapes2D/rasterize.cu",
-                                                   "./modules/common/utils.cu",
-                                                   "./modules/shapes2D/path.cu",
-                                                   "./modules/shapes2D/time.cu",
-                                               },
-                                           .kernels = {"kernel"}});
+    cuda_program =
+        new CudaModularProgram({.modules =
+                                    {
+                                        "./modules/common/utils.cu",
+                                        "./modules/shapes2D/Rendering/rasterize.cu",
+                                        "./modules/shapes2D/Rendering/gui.cu",
+                                        "./modules/shapes2D/Rendering/sprite.cu",
+                                        "./modules/shapes2D/World/time.cu",
+                                    },
+                                .kernels = {"kernel"},
+                                .customIncludeDirs = {"./modules/shapes2D", " ./modules"}});
 
-    cuda_update = new CudaModularProgram({.modules =
-                                              {
-                                                  "./modules/common/utils.cu",
-                                                  "./modules/shapes2D/update.cu",
-                                                  "./modules/shapes2D/path.cu",
-                                                  "./modules/shapes2D/pathfinding.cu",
-                                                  "./modules/shapes2D/time.cu",
-                                              },
-                                          .kernels = {"update"}});
+    cuda_update =
+        new CudaModularProgram({.modules =
+                                    {
+                                        "./modules/common/utils.cu",
+                                        "./modules/shapes2D/World/update.cu",
+                                        "./modules/shapes2D/World/Path/path.cu",
+                                        "./modules/shapes2D/World/Path/pathfinding.cu",
+                                        "./modules/shapes2D/World/time.cu",
+                                        "./modules/shapes2D/World/Entities/entities.cu",
+                                        "./modules/shapes2D/World/Entities/movement.cu",
+                                    },
+                                .kernels = {"update"},
+                                .customIncludeDirs = {"./modules/shapes2D", " ./modules"}});
 
     cuEventCreate(&cevent_start, 0);
     cuEventCreate(&cevent_end, 0);

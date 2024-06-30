@@ -1,6 +1,6 @@
 #pragma once
-#include "entities.h"
-#include "map.h"
+#include "World/Entities/entities.cuh"
+#include "World/map.cuh"
 
 void performPathFinding(Map *map, Entities *entities, Allocator *allocator);
 

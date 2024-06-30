@@ -1,5 +1,5 @@
 #include "../common/utils.cuh"
-#include "pathfinding.h"
+#include "pathfinding.cuh"
 
 struct PathfindingList {
     Pathfinding *data;

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "direction.h"
+#include "World/direction.h"
 
 struct Path {
     // first bit not used

@@ -1,4 +1,5 @@
-#include "./../common/utils.cuh"
+#include "common/utils.cuh"
+
 #include "time.h"
 
 const TimeInterval TimeInterval::factoryHours = {{6, 0}, {15, 0}};
