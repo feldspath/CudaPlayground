@@ -20,16 +20,16 @@ class GUI {
     GUIBox timeDisplay;
 
     TextRenderer &textRenderer;
+    Framebuffer &framebuffer;
     SpriteSheet &sprites;
 
     mat4 viewProj;
 
 public:
-    GUI(uint32_t width, uint32_t height, TextRenderer &textRenderer, SpriteSheet &sprites,
-        mat4 viewProj);
-    void render(Framebuffer framebuffer, Map *map, Entities *entities);
+    GUI(Framebuffer &framebuffer, TextRenderer &textRenderer, SpriteSheet &sprites, mat4 viewProj);
+    void render(Map *map, Entities *entities);
 
 private:
-    void renderDisplay(GUIBox box, char *displayString, Framebuffer framebuffer);
-    void renderInfoPanel(Framebuffer framebuffer, Map *map, Entities *entities);
+    void renderDisplay(GUIBox box, char *displayString);
+    void renderInfoPanel(Map *map, Entities *entities);
 };

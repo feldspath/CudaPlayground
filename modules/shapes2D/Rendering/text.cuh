@@ -1,24 +1,60 @@
 #pragma once
 
-#include "./../common/utils.cuh"
 #include "framebuffer.cuh"
 
+struct Font {
+    uint32_t *texture;
+
+    int tilesizeX = 26;
+    int tilesizeY = 32;
+    int numchars = 94;
+
+    Font(uint32_t *texture) : texture(texture) {}
+
+    float textureWidth() const { return numchars * tilesizeX; }
+    float textureHeight() const { return tilesizeY; }
+
+    float sample(char charcode, float u, float v) const {
+        int tilepx = (charcode - 33) * tilesizeX;
+
+        int sx = tilepx + tilesizeX * u;
+        int sy = min(float(tilesizeY) * v, float(tilesizeY) - 1.0f);
+        int sourceTexel = sx + sy * textureWidth();
+
+        return texture[sourceTexel];
+    }
+};
+
+class Cursor {
+public:
+    Font font;
+
+    float fontsize;
+    float posX, posY;
+    float lineStartX;
+    float3 textColor = {0.0f, 0.0f, 0.0f};
+
+    Cursor(float fontsize, float x, float y, Font font)
+        : font(font), fontsize(fontsize), posX(x), posY(y), lineStartX(x) {}
+    float charSizeX() const { return fontsize / font.tilesizeY * font.tilesizeX; }
+    float charSizeY() const { return fontsize; }
+    void advance() { posX += charSizeX(); }
+    void newline() {
+        posY -= charSizeY() * 1.5f;
+        posX = lineStartX;
+    }
+};
+
 class TextRenderer {
-    uint32_t *font_image;
+private:
+    Font font;
 
 public:
-    TextRenderer(uint32_t *font) : font_image(font) {}
+    TextRenderer(Font font) : font(font) {}
 
-    void drawText(const char *text, float x, float y, float fontsize, float3 textColor,
-                  Framebuffer framebuffer) {
+    void drawText(const char *text, Cursor &cursor, Framebuffer framebuffer) {
 
         auto grid = cg::this_grid();
-
-        uint32_t *image = font_image;
-
-        float tilesizeX = 26;
-        float tilesizeY = 32;
-        int NUM_CHARS = 94;
 
         int numchars = strlen(text);
 
@@ -27,46 +63,33 @@ public:
 
             int charcode = text[i];
             if (charcode == ' ') {
+                cursor.advance();
                 continue;
             }
 
-            int tilepx = (charcode - 33) * tilesizeX;
+            processRange(ceil(cursor.charSizeX()) * ceil(cursor.charSizeY()), [&](int index) {
+                int l_x = index % int(ceil(cursor.charSizeX()));
+                int l_y = index / int(ceil(cursor.charSizeX()));
 
-            processRange(ceil(fontsize) * ceil(fontsize), [&](int index) {
-                int l_x = index % int(ceil(fontsize));
-                int l_y = index / int(ceil(fontsize));
+                float u = float(l_x) / cursor.charSizeX();
+                float v = 1.0f - float(l_y) / cursor.fontsize;
 
-                float u = float(l_x) / fontsize;
-                float v = 1.0f - float(l_y) / fontsize;
+                float alpha = float4color(font.sample(charcode, u, v)).w;
 
-                int sx = tilepx + tilesizeX * u;
-                int sy = min(tilesizeY * v, tilesizeY - 1);
-                int sourceTexel = sx + sy * NUM_CHARS * tilesizeX;
-
-                uint32_t color = image[sourceTexel];
-                uint8_t *rgba = (uint8_t *)&color;
-
-                int t_x = l_x + x + i * fontsize;
-                int t_y = l_y + y;
+                int t_x = l_x + cursor.posX;
+                int t_y = l_y + cursor.posY;
                 int targetPixelIndex = t_x + t_y * framebuffer.width;
 
                 // blend with current framebuffer value
-                uint64_t current = framebuffer.data[targetPixelIndex];
-                uint32_t currentColor = current & 0xffffffff;
-                uint8_t *currentRGBA = (uint8_t *)&currentColor;
-                uint32_t fontrgb8 = rgb8color(textColor);
-                uint8_t *fontColor = (uint8_t *)&fontrgb8;
-
-                float w = float4color(color).w;
-
-                rgba[0] = (1.0f - w) * float(currentRGBA[0]) + w * fontColor[0];
-                rgba[1] = (1.0f - w) * float(currentRGBA[1]) + w * fontColor[1];
-                rgba[2] = (1.0f - w) * float(currentRGBA[2]) + w * fontColor[2];
-
-                framebuffer.data[targetPixelIndex] = color;
+                float4 color = make_float4(cursor.textColor, alpha);
+                framebuffer.blend(targetPixelIndex, rgba8color(color));
             });
 
             grid.sync();
+
+            cursor.advance();
         }
     }
+
+    Cursor newCursor(float fontsize, float x, float y) { return Cursor(fontsize, x, y, font); }
 };

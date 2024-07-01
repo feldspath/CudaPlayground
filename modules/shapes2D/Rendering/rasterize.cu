@@ -226,7 +226,8 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, GameState *_gameStat
 
     GameState::instance = _gameState;
 
-    TextRenderer textRenderer(img_ascii_16);
+    Font font(img_ascii_16);
+    TextRenderer textRenderer(font);
     SpriteSheet sprites(img_spritesheet);
 
     // allocate framebuffer memory
@@ -251,9 +252,8 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, GameState *_gameStat
         grid.sync();
         rasterizeEntities(entities, framebuffer);
         grid.sync();
-        GUI gui(framebuffer.width, framebuffer.height, textRenderer, sprites,
-                uniforms.proj * uniforms.view);
-        gui.render(framebuffer, map, entities);
+        GUI gui(framebuffer, textRenderer, sprites, uniforms.proj * uniforms.view);
+        gui.render(map, entities);
     }
 
     grid.sync();

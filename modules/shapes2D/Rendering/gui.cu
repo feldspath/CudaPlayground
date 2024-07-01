@@ -6,36 +6,38 @@
 #include "common/matrix_math.h"
 #include "gui.cuh"
 
-GUI::GUI(uint32_t width, uint32_t height, TextRenderer &textRenderer, SpriteSheet &sprites,
-         mat4 viewProj)
-    : textRenderer(textRenderer), sprites(sprites), viewProj(viewProj),
-      moneyDisplay(width - 400, height - 100, 100, 30, sprites.moneyDisplay),
-      populationDisplay(width - 400, height - 200, 100, 30, sprites.populationDisplay),
-      timeDisplay(width - 400, height - 300, 100, 30, sprites.timeDisplay) {}
+GUI::GUI(Framebuffer &framebuffer, TextRenderer &textRenderer, SpriteSheet &sprites, mat4 viewProj)
+    : textRenderer(textRenderer), framebuffer(framebuffer), sprites(sprites), viewProj(viewProj),
+      moneyDisplay(framebuffer.width - 400, framebuffer.height - 100, 100, 30,
+                   sprites.moneyDisplay),
+      populationDisplay(framebuffer.width - 400, framebuffer.height - 200, 100, 30,
+                        sprites.populationDisplay),
+      timeDisplay(framebuffer.width - 400, framebuffer.height - 300, 100, 30, sprites.timeDisplay) {
+}
 
-void GUI::render(Framebuffer framebuffer, Map *map, Entities *entities) {
+void GUI::render(Map *map, Entities *entities) {
 
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
-    renderInfoPanel(framebuffer, map, entities);
+    renderInfoPanel(map, entities);
 
     GameState &gameState = *GameState::instance;
     char displayString[MAX_STRING_LENGTH + 1];
 
     unsigned int money = gameState.playerMoney;
     itos(money, displayString);
-    renderDisplay(moneyDisplay, displayString, framebuffer);
+    renderDisplay(moneyDisplay, displayString);
 
     unsigned int population = gameState.population;
     itos(population, displayString);
-    renderDisplay(populationDisplay, displayString, framebuffer);
+    renderDisplay(populationDisplay, displayString);
 
     gameState.gameTime.formattedTime().clocktoString(displayString);
-    renderDisplay(timeDisplay, displayString, framebuffer);
+    renderDisplay(timeDisplay, displayString);
 }
 
-void GUI::renderInfoPanel(Framebuffer framebuffer, Map *map, Entities *entities) {
+void GUI::renderInfoPanel(Map *map, Entities *entities) {
     auto grid = cg::this_grid();
     GameState &gameState = *GameState::instance;
 
@@ -50,83 +52,77 @@ void GUI::renderInfoPanel(Framebuffer framebuffer, Map *map, Entities *entities)
         infoPanel.sprite.draw(framebuffer, infoPanel.x, infoPanel.y, 3.0f);
         grid.sync();
 
-        float line = infoPanel.y + 200.0f - 60.0f;
+        Cursor cursor =
+            textRenderer.newCursor(20.0f, infoPanel.x + 40.0f, infoPanel.y + 200.0f - 60.0f);
+        char displayString[30];
 
         switch (map->getTileId(id)) {
         case HOUSE: {
-            textRenderer.drawText("House", infoPanel.x + 40.0f, line, 20, float3{0.0f, 0.0f, 0.0f},
-                                  framebuffer);
-            line -= 40.0f;
+            textRenderer.drawText("House", cursor, framebuffer);
+            cursor.newline();
 
             int entityId = *map->houseTileData(id);
             if (entityId == -1) {
-                textRenderer.drawText("No resident", infoPanel.x + 40.0f, line, 20,
-                                      float3{0.0f, 0.0f, 0.0f}, framebuffer);
-                line -= 30.0f;
+                textRenderer.drawText("No resident", cursor, framebuffer);
+                cursor.newline();
             } else {
                 auto &entity = entities->get(entityId);
+                cursor.fontsize = 16.0;
 
                 // resident money
-                char displayString[30] = "Money: ";
-                itos(entity.money, displayString + 7);
-                textRenderer.drawText(displayString, infoPanel.x + 40.0f, line, 16,
-                                      float3{0.0f, 0.0f, 0.0f}, framebuffer);
-                line -= 30.0f;
+                textRenderer.drawText("Money: ", cursor, framebuffer);
+                itos(entity.money, displayString);
+                textRenderer.drawText(displayString, cursor, framebuffer);
+                cursor.newline();
 
                 // resident job
                 switch (map->getTileId(entity.workplaceId)) {
                 case SHOP: {
-                    strcpy(displayString, "Job: shop worker");
+                    textRenderer.drawText("Job: shop worker", cursor, framebuffer);
                     break;
                 }
                 case FACTORY: {
-                    strcpy(displayString, "Job: factory worker");
+                    textRenderer.drawText("Job: factory worker", cursor, framebuffer);
                     break;
                 }
                 default:
-                    strcpy(displayString, "Job: unemployed");
+                    textRenderer.drawText("Job: unemployed", cursor, framebuffer);
                     break;
                 }
-                textRenderer.drawText(displayString, infoPanel.x + 40.0f, line, 16,
-                                      float3{0.0f, 0.0f, 0.0f}, framebuffer);
-                line -= 30.0f;
+                cursor.newline();
 
                 // resident current state
             }
             break;
         }
         case FACTORY: {
-            textRenderer.drawText("Factory", infoPanel.x + 40.0f, line, 20,
-                                  float3{0.0f, 0.0f, 0.0f}, framebuffer);
-            line -= 40.0f;
+            textRenderer.drawText("Factory", cursor, framebuffer);
+            cursor.newline();
+
+            cursor.fontsize = 16.0;
 
             // open hours
 
             // worker count
-            char displayString[30] = "Employees: ";
-            itos(FACTORY_CAPACITY - *map->factoryTileData(id), displayString + 10);
-
-            textRenderer.drawText(displayString, infoPanel.x + 40.0f, line, 16,
-                                  float3{0.0f, 0.0f, 0.0f}, framebuffer);
-            line -= 30.0f;
-
+            textRenderer.drawText("Employees: ", cursor, framebuffer);
+            itos(FACTORY_CAPACITY - *map->factoryTileData(id), displayString);
+            textRenderer.drawText(displayString, cursor, framebuffer);
+            cursor.newline();
             break;
         }
         case SHOP: {
-            textRenderer.drawText("Shop", infoPanel.x + 40.0f, line, 20, float3{0.0f, 0.0f, 0.0f},
-                                  framebuffer);
-            line -= 40.0f;
+            textRenderer.drawText("Shop", cursor, framebuffer);
+            cursor.newline();
+
+            cursor.fontsize = 16.0;
 
             // open hours
 
             // worker count
-            char displayString[30] = "Employees: ";
-            itos(SHOP_WORK_CAPACITY - map->shopWorkCapacity(id), displayString + 10);
-
-            textRenderer.drawText(displayString, infoPanel.x + 40.0f, line, 16,
-                                  float3{0.0f, 0.0f, 0.0f}, framebuffer);
-            line -= 30.0f;
-
+            textRenderer.drawText("Employees: ", cursor, framebuffer);
+            itos(SHOP_WORK_CAPACITY - map->shopWorkCapacity(id), displayString);
+            textRenderer.drawText(displayString, cursor, framebuffer);
+            cursor.newline();
             break;
         }
         default:
@@ -135,10 +131,10 @@ void GUI::renderInfoPanel(Framebuffer framebuffer, Map *map, Entities *entities)
     }
 }
 
-void GUI::renderDisplay(GUIBox box, char *displayString, Framebuffer framebuffer) {
+void GUI::renderDisplay(GUIBox box, char *displayString) {
     auto grid = cg::this_grid();
     box.sprite.draw(framebuffer, box.x, box.y, 3.0f);
     grid.sync();
-    textRenderer.drawText(displayString, box.x + 150.0, box.y + 30.0, 30, float3{0.0f, 0.0f, 0.0f},
-                          framebuffer);
+    Cursor cursor = textRenderer.newCursor(30, box.x + 150.0, box.y + 30.0);
+    textRenderer.drawText(displayString, cursor, framebuffer);
 }

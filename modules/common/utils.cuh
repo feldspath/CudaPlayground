@@ -151,6 +151,15 @@ inline uint32_t rgb8color(float3 color) {
     return rgb8color;
 }
 
+inline uint32_t rgba8color(float4 color) {
+    uint32_t r = color.x * 255.0f;
+    uint32_t g = color.y * 255.0f;
+    uint32_t b = color.z * 255.0f;
+    uint32_t a = color.w * 255.0f;
+    uint32_t rgb8color = r | (g << 8) | (b << 16) | (a << 24);
+    return rgb8color;
+}
+
 inline float3 float3color(uint32_t color) {
     uint32_t r = color & 0xFF;
     uint32_t g = (color >> 8) & 0xFF;
