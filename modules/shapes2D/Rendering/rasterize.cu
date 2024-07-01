@@ -248,16 +248,12 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, GameState *_gameStat
         *entities = Entities(entitiesBuffer);
 
         rasterizeGrid(map, entities, sprites, framebuffer);
-
         grid.sync();
-
         rasterizeEntities(entities, framebuffer);
-
         grid.sync();
-
-        GUI gui(framebuffer.width, framebuffer.height, textRenderer, sprites);
-
-        gui.render(framebuffer);
+        GUI gui(framebuffer.width, framebuffer.height, textRenderer, sprites,
+                uniforms.proj * uniforms.view);
+        gui.render(framebuffer, map, entities);
     }
 
     grid.sync();

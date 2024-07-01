@@ -94,21 +94,26 @@ static int RENDERMODE_NETWORK = 1;
 
 struct GameState {
     bool firstFrame;
+    int previousMouseButtons;
 
+    // Time
     uint64_t previousFrameTime_ns;
     uint32_t currentTime_ms;
     GameTime gameTime;
 
+    // Game stuff
+    unsigned int playerMoney;
+    unsigned int population;
+    int32_t buildingDisplay;
+
+    static GameState *instance;
+
+    // Timings
     float assignOneHouse_ms;
     float performPathFinding_ms;
     float fillCells_ms;
     float moveEntities_ms;
     float updateEntitiesState_ms;
-
-    unsigned int playerMoney;
-    unsigned int population;
-
-    static GameState *instance;
 };
 
 // CELLS

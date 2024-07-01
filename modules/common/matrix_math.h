@@ -4,11 +4,11 @@
 
 constexpr float PI = 3.1415;
 
-float4 operator*(const mat4 &a, const float4 &b) {
+static float4 operator*(const mat4 &a, const float4 &b) {
     return make_float4(dot(a.rows[0], b), dot(a.rows[1], b), dot(a.rows[2], b), dot(a.rows[3], b));
 }
 
-mat4 operator*(const mat4 &a, const mat4 &b) {
+static mat4 operator*(const mat4 &a, const mat4 &b) {
 
     mat4 result;
 
@@ -35,7 +35,7 @@ mat4 operator*(const mat4 &a, const mat4 &b) {
     return result;
 }
 
-float3 unproject(float2 pixelCoords, mat4 unprojection, int screenWidth, int screenHeight) {
+static float3 unproject(float2 pixelCoords, mat4 unprojection, int screenWidth, int screenHeight) {
     float4 ndc = {pixelCoords.x / screenWidth * 2.0f - 1.0f,
                   pixelCoords.y / screenHeight * 2.0f - 1.0f, 1.0, 1.0};
     float4 worldPos = unprojection * ndc;
@@ -43,7 +43,8 @@ float3 unproject(float2 pixelCoords, mat4 unprojection, int screenWidth, int scr
     return pos;
 }
 
-float2 projectPosToScreenPos(float3 worldPos, mat4 projection, int screenWidth, int screenHeight) {
+static float2 projectPosToScreenPos(float3 worldPos, mat4 projection, int screenWidth,
+                                    int screenHeight) {
     float4 worldCoord = make_float4(worldPos, 1.0f);
     float4 screenCoord = projection * worldCoord;
 
@@ -52,7 +53,8 @@ float2 projectPosToScreenPos(float3 worldPos, mat4 projection, int screenWidth, 
     return {(ndc.x + 1.0f) * 0.5f * screenWidth, (ndc.y + 1.0f) * 0.5f * screenHeight};
 }
 
-float2 projectVectorToScreenPos(float3 vector, mat4 projection, int screenWidth, int screenHeight) {
+static float2 projectVectorToScreenPos(float3 vector, mat4 projection, int screenWidth,
+                                       int screenHeight) {
     float4 worldCoord = make_float4(vector, 0.0f);
     float4 screenCoord = projection * worldCoord;
 

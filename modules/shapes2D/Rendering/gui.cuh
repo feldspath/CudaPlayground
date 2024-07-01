@@ -2,6 +2,7 @@
 
 #include "common/utils.cuh"
 
+#include "World/map.cuh"
 #include "framebuffer.cuh"
 #include "sprite.cuh"
 #include "text.cuh"
@@ -21,10 +22,14 @@ class GUI {
     TextRenderer &textRenderer;
     SpriteSheet &sprites;
 
+    mat4 viewProj;
+
 public:
-    GUI(uint32_t width, uint32_t height, TextRenderer &textRenderer, SpriteSheet &sprites);
-    void render(Framebuffer framebuffer);
+    GUI(uint32_t width, uint32_t height, TextRenderer &textRenderer, SpriteSheet &sprites,
+        mat4 viewProj);
+    void render(Framebuffer framebuffer, Map *map, Entities *entities);
 
 private:
     void renderDisplay(GUIBox box, char *displayString, Framebuffer framebuffer);
+    void renderInfoPanel(Framebuffer framebuffer, Map *map, Entities *entities);
 };

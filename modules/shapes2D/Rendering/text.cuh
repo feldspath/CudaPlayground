@@ -26,6 +26,10 @@ public:
         for (int i = 0; i < numchars; i++) {
 
             int charcode = text[i];
+            if (charcode == ' ') {
+                continue;
+            }
+
             int tilepx = (charcode - 33) * tilesizeX;
 
             processRange(ceil(fontsize) * ceil(fontsize), [&](int index) {

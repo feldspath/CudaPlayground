@@ -489,16 +489,21 @@ void entitiesInteractions(Map *map, Entities *entities) {
 }
 
 void updateGameState(Entities *entities) {
-    float dt = ((float)(nanotime_start - GameState::instance->previousFrameTime_ns)) / 1e9;
-    GameState::instance->gameTime.incrementRealTime(dt * uniforms.timeMultiplier);
-    GameState::instance->previousFrameTime_ns = nanotime_start;
-    GameState::instance->currentTime_ms = currentTime_ms();
-    GameState::instance->population = *entities->count;
+    auto grid = cg::this_grid();
 
-    if (GameState::instance->firstFrame) {
-        GameState::instance->firstFrame = false;
-        GameState::instance->gameTime.realTime_s = 0.0f;
-        GameState::instance->gameTime.dt = 0.0f;
+    if (grid.thread_rank() == 0) {
+        float dt = ((float)(nanotime_start - GameState::instance->previousFrameTime_ns)) / 1e9;
+        GameState::instance->gameTime.incrementRealTime(dt * uniforms.timeMultiplier);
+        GameState::instance->previousFrameTime_ns = nanotime_start;
+        GameState::instance->currentTime_ms = currentTime_ms();
+        GameState::instance->population = *entities->count;
+        GameState::instance->previousMouseButtons = uniforms.mouseButtons;
+
+        if (GameState::instance->firstFrame) {
+            GameState::instance->firstFrame = false;
+            GameState::instance->gameTime.realTime_s = 0.0f;
+            GameState::instance->gameTime.dt = 0.0f;
+        }
     }
 }
 
@@ -528,53 +533,61 @@ template <typename Function> void printDuration(char *name, Function &&f) {
     }
 }
 
-void updateGrid(Map *map, Entities *entities) {
+void handleInputs(Map *map, Entities *entities) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
-
-    int idx = threadIdx.x + blockDim.x * blockIdx.x;
-
-    nanotime_start = nanotime();
 
     if (uniforms.cursorPos.x >= 0 && uniforms.cursorPos.x < uniforms.width &&
         uniforms.cursorPos.y >= 0 && uniforms.cursorPos.y < uniforms.height) {
         UpdateInfo updateInfo;
 
+        bool mouseClicked =
+            (uniforms.mouseButtons & 1) & ((~GameState::instance->previousMouseButtons) & 1);
         bool mousePressed = uniforms.mouseButtons & 1;
         updateInfo.update = false;
 
-        if (mousePressed) {
-            float2 px = float2{uniforms.cursorPos.x, uniforms.height - uniforms.cursorPos.y};
-            float3 pos_W =
-                unproject(px, uniforms.invview * uniforms.invproj, uniforms.width, uniforms.height);
-            int id = map->cellAtPosition(float2{pos_W.x, pos_W.y});
+        float2 px = float2{uniforms.cursorPos.x, uniforms.height - uniforms.cursorPos.y};
+        float3 pos_W =
+            unproject(px, uniforms.invview * uniforms.invproj, uniforms.width, uniforms.height);
+        int id = map->cellAtPosition(float2{pos_W.x, pos_W.y});
 
+        if (mouseClicked) {
+            if (grid.thread_rank() == 0) {
+                if (map->getTileId(id) & (HOUSE | FACTORY | SHOP)) {
+                    if (GameState::instance->buildingDisplay == id) {
+                        GameState::instance->buildingDisplay = -1;
+                    } else {
+                        GameState::instance->buildingDisplay = id;
+                    }
+                }
+            }
+        } else if (mousePressed) {
             if (id != -1 && map->getTileId(id) == GRASS) {
                 updateInfo.update = true;
                 updateInfo.tileToUpdate = id;
                 updateInfo.newTileId = (TileId)uniforms.modeId;
             }
         }
-
         if (updateInfo.update) {
             updateCell(map, updateInfo);
         }
     }
+}
 
+void updateGrid(Map *map, Entities *entities) {
+    nanotime_start = nanotime();
+
+    printDuration("handleInputs", [&]() { handleInputs(map, entities); });
+    printDuration("fillCells", [&]() { fillCells(map, entities); });
     printDuration("assignOneHouse", [&]() { assignOneHouse(map, entities); });
     printDuration("assignOneCustomerToShop", [&]() { assignOneCustomerToShop(map, entities); });
     printDuration("performPathFinding", [&]() { performPathFinding(map, entities, allocator); });
-    printDuration("fillCells", [&]() { fillCells(map, entities); });
     printDuration("moveEntities", [&]() {
         moveEntities(map, entities, allocator, GameState::instance->gameTime.getDt());
     });
     printDuration("updateEntitiesState", [&]() { updateEntitiesState(map, entities); });
     printDuration("entitiesInteractions", [&]() { entitiesInteractions(map, entities); });
-
-    // grid.sync();
-    if (grid.thread_rank() == 0) {
-        updateGameState(entities);
-    }
+    printDuration("updateGameState", [&]() { updateGameState(entities); });
 }
 
 extern "C" __global__ void update(const Uniforms _uniforms, GameState *_gameState,

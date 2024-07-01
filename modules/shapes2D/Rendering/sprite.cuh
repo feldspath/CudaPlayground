@@ -18,6 +18,7 @@ struct SpriteSheet {
     Sprite moneyDisplay;
     Sprite populationDisplay;
     Sprite timeDisplay;
+    Sprite infoPanel;
     Sprite grass;
     Sprite house;
 

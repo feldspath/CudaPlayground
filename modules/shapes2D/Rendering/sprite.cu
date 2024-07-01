@@ -78,4 +78,11 @@ SpriteSheet::SpriteSheet(uint32_t *data) : data(data) {
     house.height = 8;
     house.data = data;
     house.textureSize = int2{512, 512};
+
+    infoPanel.x = 0;
+    infoPanel.y = 96;
+    infoPanel.width = 128;
+    infoPanel.height = 64;
+    infoPanel.data = data;
+    infoPanel.textureSize = int2{512, 512};
 }

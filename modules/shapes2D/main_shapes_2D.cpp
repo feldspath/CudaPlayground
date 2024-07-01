@@ -213,6 +213,7 @@ void initGameState() {
     GameState state;
     state.firstFrame = true;
     state.playerMoney = 2000;
+    state.buildingDisplay = -1;
 
     cuMemcpyHtoD(cptr_gameState, &state, sizeof(GameState));
 }
