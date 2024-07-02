@@ -230,14 +230,15 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
     int numCells = gridRows * gridCols;
     cuMemAlloc(&cptr_grid, numCells * BYTES_PER_CELL);
 
-    std::vector<char> gridCells(numCells * BYTES_PER_CELL);
+    std::vector<Cell> gridCells(numCells);
     for (int y = 0; y < gridRows; ++y) {
         for (int x = 0; x < gridCols; ++x) {
             int cellId = y * gridCols + x;
-            *(reinterpret_cast<int32_t *>(gridCells.data() + cellId * BYTES_PER_CELL)) = GRASS;
+            gridCells[cellId].tileId = GRASS;
+            gridCells[cellId].landValue = 255;
         }
     }
-    cuMemcpyHtoD(cptr_grid, gridCells.data(), gridCells.size());
+    cuMemcpyHtoD(cptr_grid, gridCells.data(), gridCells.size() * BYTES_PER_CELL);
 
     // Let's assume we can have as much entities as we have cells
     cuMemAlloc(&cptr_entities, sizeof(uint32_t) + numCells * (BYTES_PER_ENTITY));
@@ -350,6 +351,7 @@ int main() {
             ImGui::Text("Render mode:");
             ImGui::RadioButton("Default", &renderMode, RENDERMODE_DEFAULT);
             ImGui::RadioButton("Network", &renderMode, RENDERMODE_NETWORK);
+            ImGui::RadioButton("Land value", &renderMode, RENDERMODE_LANDVALUE);
 
             ImGui::Text("Options");
             ImGui::Checkbox("Pring Timings", &printTimings);

@@ -109,13 +109,24 @@ void updateCell(Map *map, UpdateInfo updateInfo) {
         });
         break;
     }
-    case FACTORY:
+    case FACTORY: {
+
         if (grid.thread_rank() == 0) {
             // Set capacity
             *map->factoryTileData(id) = FACTORY_CAPACITY;
         }
-        break;
 
+        processRange(map->count, [&](int cellId) {
+            auto diff = map->cellCoords(cellId) - map->cellCoords(id);
+            int dist = abs(diff.x) + abs(diff.y);
+            if (dist < 20) {
+                map->cellsData[cellId].landValue =
+                    max(map->cellsData[cellId].landValue - 20 + dist, 0);
+            }
+        });
+
+        break;
+    }
     case HOUSE:
         if (grid.thread_rank() == 0) {
             // Set house to unassigned

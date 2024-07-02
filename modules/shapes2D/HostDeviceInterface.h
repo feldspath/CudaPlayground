@@ -89,6 +89,7 @@ struct mat4 {
 
 static int RENDERMODE_DEFAULT = 0;
 static int RENDERMODE_NETWORK = 1;
+static int RENDERMODE_LANDVALUE = 2;
 
 // DATA FORMATS
 
@@ -135,6 +136,7 @@ inline TileId operator|(TileId a, TileId b) {
 
 struct Cell {
     TileId tileId;
+    int32_t landValue;
     int32_t entities[ENTITIES_PER_CELL];
     char additionalData[8];
 };
