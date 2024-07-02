@@ -87,6 +87,8 @@ struct Map {
     // HOUSE DATA
     int32_t *houseTileData(int cellId) { return (int32_t *)(tileData(cellId)); }
 
+    int32_t rentCost(int cellId) { return cellsData[cellId].landValue / 20 + 10; }
+
     // SHOP DATA
     int32_t *shopTileData(int cellId) { return (int32_t *)(tileData(cellId)); }
 

@@ -183,6 +183,8 @@ struct Entity {
     uint32_t workplaceId;
     EntityState state;
     uint32_t money;
+    uint32_t happiness;
+
     FormattedTOD stateStart;
     // entity id of the current interaction. -1 if the entity is not engaged in any interaction.
     uint32_t interaction;

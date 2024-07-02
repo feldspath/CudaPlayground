@@ -92,6 +92,19 @@ void GUI::renderInfoPanel(Map *map, Entities *entities) {
                 cursor.newline();
 
                 // resident current state
+
+                // resident happinness
+                textRenderer.drawText("Happiness: ", cursor, framebuffer);
+                float happiness_pct = int(float(entity.happiness) / 255.0f * 100.0f);
+                itos(happiness_pct, displayString);
+                textRenderer.drawText(displayString, cursor, framebuffer);
+                cursor.newline();
+
+                // rent cost
+                textRenderer.drawText("Rent: ", cursor, framebuffer);
+                itos(map->rentCost(entity.houseId), displayString);
+                textRenderer.drawText(displayString, cursor, framebuffer);
+                cursor.newline();
             }
             break;
         }

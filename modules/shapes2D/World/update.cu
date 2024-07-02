@@ -364,6 +364,8 @@ void updateEntitiesState(Map *map, Entities *entities) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
+    auto tod = GameState::instance->gameTime.formattedTime();
+
     // Each thread handles an entity
     for (int offset = 0; offset < entities->getCount(); offset += grid.num_threads()) {
         int entityIndex = offset + grid.thread_rank();
@@ -377,6 +379,8 @@ void updateEntitiesState(Map *map, Entities *entities) {
             map->cellAtPosition(entity.position) == entity.destination) {
             destinationReached = true;
             entity.position = map->getCellPosition(entity.destination);
+            entity.happiness =
+                max(entity.happiness - (tod - entity.stateStart).totalMinutes() / 10, 0);
         }
 
         TimeInterval workHours;
@@ -385,8 +389,6 @@ void updateEntitiesState(Map *map, Entities *entities) {
         } else if (map->getTileId(entity.workplaceId) == FACTORY) {
             workHours = TimeInterval::factoryHours;
         }
-
-        auto tod = GameState::instance->gameTime.formattedTime();
 
         switch (entity.state) {
         case GoHome: {
@@ -429,7 +431,11 @@ void updateEntitiesState(Map *map, Entities *entities) {
         }
         case Work:
             if (!workHours.contains(tod)) {
-                entity.money += (tod - entity.stateStart).totalMinutes() / 10;
+                int moneyEarned = (tod - entity.stateStart).totalMinutes() / 7;
+                int taxes = moneyEarned / 10;
+                int rent = map->rentCost(entity.houseId);
+                atomicAdd(&GameState::instance->playerMoney, rent + taxes);
+                entity.money += max(moneyEarned - rent, 0);
                 entity.changeState(GoShopping);
 
                 if (map->getTileId(entity.workplaceId) == SHOP) {
@@ -488,7 +494,9 @@ void entitiesInteractions(Map *map, Entities *entities) {
                     entity.interaction = -1;
                     other.interaction = -1;
                     other.changeState(GoHome);
-                    atomicAdd(&GameState::instance->playerMoney, other.money);
+                    other.happiness += other.money / 10;
+                    int tax = other.money / 10;
+                    atomicAdd(&GameState::instance->playerMoney, tax);
                     other.money = 0;
                 }
             }
