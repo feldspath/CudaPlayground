@@ -118,10 +118,10 @@ void updateCell(Map *map, UpdateInfo updateInfo) {
 
         processRange(map->count, [&](int cellId) {
             auto diff = map->cellCoords(cellId) - map->cellCoords(id);
-            int dist = abs(diff.x) + abs(diff.y);
+            int dist = length(make_float2(diff));
             if (dist < 20) {
                 map->cellsData[cellId].landValue =
-                    max(map->cellsData[cellId].landValue - 20 + dist, 0);
+                    max(map->cellsData[cellId].landValue - 20 + int(dist), 0);
             }
         });
 
@@ -494,7 +494,7 @@ void entitiesInteractions(Map *map, Entities *entities) {
                     entity.interaction = -1;
                     other.interaction = -1;
                     other.changeState(GoHome);
-                    other.happiness += other.money / 10;
+                    other.happiness = min(other.happiness + other.money / 5, 255);
                     int tax = other.money / 10;
                     atomicAdd(&GameState::instance->playerMoney, tax);
                     other.money = 0;

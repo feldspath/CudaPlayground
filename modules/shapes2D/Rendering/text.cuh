@@ -78,6 +78,11 @@ public:
 
                 int t_x = l_x + cursor.posX;
                 int t_y = l_y + cursor.posY;
+
+                if (t_x < 0 || t_x >= framebuffer.width || t_y < 0 || t_y >= framebuffer.height) {
+                    return;
+                }
+
                 int targetPixelIndex = t_x + t_y * framebuffer.width;
 
                 // blend with current framebuffer value
