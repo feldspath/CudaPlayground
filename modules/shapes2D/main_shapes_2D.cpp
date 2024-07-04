@@ -115,6 +115,10 @@ void loadMap() {
     memcpy(entities.data, buffer->data_u8 + offsetEntities, entities.size);
     memcpy(&state, buffer->data_u8 + offsetState, sizeof(state));
 
+    state.firstFrame = true;
+
+    // memset(entities.data, 0, entities.size);
+
     cuMemcpyHtoD(cptr_grid, gridCells.data, gridCells.size);
     cuMemcpyHtoD(cptr_entities, entities.data, entities.size);
     cuMemcpyHtoD(cptr_gameState, &state, sizeof(GameState));
