@@ -173,6 +173,7 @@ void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) 
         }
 
         uint32_t previousCellId = map->cellAtPosition(entity.position);
+        float2 previousCellPosition = map->getCellPosition(previousCellId);
         auto neighborCells = map->neighborCells(previousCellId);
         entity.position += entity.velocity * dt;
 
@@ -187,13 +188,11 @@ void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) 
             }
 
             float2 vectorDir = directionFromEnum(direction);
-            if (map->cellAtPosition(entity.position + vectorDir * ENTITY_RADIUS) == cellId) {
-                // Collision with wall, project back to boundary
-                float2 posToPreviousCellCenter = entity.position + vectorDir * ENTITY_RADIUS -
-                                                 map->getCellPosition(previousCellId);
-                entity.position -=
-                    (dot(posToPreviousCellCenter, vectorDir) - CELL_RADIUS) * vectorDir;
-            }
+            float2 posToPreviousCellCenter =
+                entity.position + vectorDir * ENTITY_RADIUS - previousCellPosition;
+            // Collision with wall, project back to boundary
+            entity.position -=
+                max((dot(posToPreviousCellCenter, vectorDir) - CELL_RADIUS), 0.0f) * vectorDir;
         });
 
         uint32_t newCellId = map->cellAtPosition(entity.position);
