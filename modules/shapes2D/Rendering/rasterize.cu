@@ -102,7 +102,7 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
                 color = colorFromId(map->getTileId(sh_cellIndex));
                 break;
             }
-            color *= GameState::instance->gameTime.formattedTime().timeOfDay() * 0.5 + 0.5;
+            color *= GameState::instance->gameTime.timeOfDay().toFloat() * 0.5 + 0.5;
 
         } else if (uniforms.renderMode == RENDERMODE_NETWORK) {
             TileId tileId = map->getTileId(sh_cellIndex);
@@ -201,7 +201,7 @@ void rasterizeEntities(Entities *entities, Framebuffer framebuffer) {
             pixelID = clamp(pixelID, 0, int(uniforms.width * uniforms.height) - 1);
 
             float3 color = make_float3(1.0f, 0.0f, 0.0f) *
-                           (GameState::instance->gameTime.formattedTime().timeOfDay() * 0.5 + 0.5);
+                           (GameState::instance->gameTime.timeOfDay().toFloat() * 0.5 + 0.5);
 
             float depth = 0.9f;
             uint64_t udepth = *((uint32_t *)&depth);

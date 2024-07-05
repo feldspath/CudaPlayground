@@ -185,7 +185,7 @@ struct Entity {
     uint32_t money;
     uint32_t happiness;
 
-    FormattedTOD stateStart;
+    GameTime stateStart;
     // entity id of the current interaction. -1 if the entity is not engaged in any interaction.
     uint32_t interaction;
 
@@ -195,7 +195,7 @@ struct Entity {
 
     inline bool isLost() { return destination != -1 && !path.isValid(); }
 
-    void resetStateStart() { stateStart = GameState::instance->gameTime.formattedTime(); }
+    void resetStateStart() { stateStart = GameState::instance->gameTime; }
 
     void changeState(EntityState newState) {
         path.reset();

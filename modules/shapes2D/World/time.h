@@ -7,13 +7,12 @@ static constexpr unsigned int MIN_PER_DAY = MIN_PER_HOUR * 24;
 static constexpr unsigned int MIN_PER_WEEK = MIN_PER_DAY * 7;
 static constexpr unsigned int MIN_PER_YEAR = MIN_PER_WEEK * 52;
 
-struct FormattedTOD {
+struct TOD {
     unsigned char hours;
     unsigned char minutes;
 
-    constexpr FormattedTOD(unsigned char hours, unsigned char minutes)
-        : hours(hours), minutes(minutes) {}
-    constexpr FormattedTOD() : hours(0), minutes(0) {}
+    constexpr TOD(unsigned char hours, unsigned char minutes) : hours(hours), minutes(minutes) {}
+    constexpr TOD() : hours(0), minutes(0) {}
 
     void clocktoString(char *timeString) {
         timeString[0] = (hours / 10) + '0';
@@ -25,7 +24,7 @@ struct FormattedTOD {
     }
 
     // day value between 0 and 1 (0 is midnight , 1 midday)
-    float timeOfDay() const {
+    float toFloat() const {
         if (hours < 12) {
             return float(hours) / 12.0 + float(minutes) / 60.0 / 12.0;
         } else {
@@ -33,39 +32,29 @@ struct FormattedTOD {
         }
     }
 
-    bool operator<(const FormattedTOD &other) const {
-        return hours < other.hours || (hours == other.hours && minutes < other.minutes);
-    }
+    bool operator<(const TOD &other) const { return totalMinutes() < other.totalMinutes(); }
 
-    bool operator<=(const FormattedTOD &other) const {
-        return hours < other.hours || (hours == other.hours && minutes <= other.minutes);
-    }
-
-    FormattedTOD operator-(const FormattedTOD &other) const {
-        if (*this < other) {
-            printf("invalid date substration");
-        }
-        return FormattedTOD(hours - other.hours, minutes - other.minutes);
-    }
+    bool operator<=(const TOD &other) const { return totalMinutes() <= other.totalMinutes(); }
 
     unsigned int totalMinutes() const { return minutes + hours * 60; }
 };
 
 struct TimeInterval {
-    FormattedTOD start;
-    FormattedTOD end;
+    TOD start;
+    TOD end;
 
-    constexpr TimeInterval(FormattedTOD start, FormattedTOD end) : start(start), end(end) {}
+    constexpr TimeInterval(TOD start, TOD end) : start(start), end(end) {}
     constexpr TimeInterval() : start({0, 0}), end({0, 0}) {}
 
-    bool contains(FormattedTOD time) const { return start <= time && time <= end; }
+    bool contains(TOD time) const { return start <= time && time <= end; }
 
     static const TimeInterval factoryHours;
     static const TimeInterval shopHours;
 };
 
-struct FormattedDate {
-    FormattedTOD tod;
+/// Used only for display. To perform operations, use GameTime.
+struct Date {
+    TOD tod;
     unsigned int days;
     unsigned int weeks;
     unsigned int years;
@@ -77,6 +66,8 @@ public:
     float dt = 0.0f;
 
 public:
+    GameTime() {}
+    GameTime(float realTime_s) : realTime_s(realTime_s) {}
     void incrementRealTime(float dt) {
         this->dt = dt;
         realTime_s += dt;
@@ -84,36 +75,47 @@ public:
 
     float getDt() const { return dt; }
 
-    FormattedDate formattedDate() const {
-        uint64_t inGameMinutes = uint64_t(realTime_s / REAL_SECONDS_PER_GAME_MIN);
+    uint64_t gameMinutes() const { return uint64_t(realTime_s / REAL_SECONDS_PER_GAME_MIN); }
 
-        FormattedDate date;
+    Date formattedDate() const {
+        uint64_t minutes = gameMinutes();
 
-        date.years = inGameMinutes / MIN_PER_YEAR;
-        inGameMinutes = inGameMinutes % MIN_PER_YEAR;
+        Date date;
 
-        date.weeks = inGameMinutes / MIN_PER_WEEK;
-        inGameMinutes = inGameMinutes % MIN_PER_WEEK;
+        date.years = minutes / MIN_PER_YEAR;
+        minutes = minutes % MIN_PER_YEAR;
 
-        date.days = inGameMinutes / MIN_PER_DAY;
-        inGameMinutes = inGameMinutes % MIN_PER_DAY;
+        date.weeks = minutes / MIN_PER_WEEK;
+        minutes = minutes % MIN_PER_WEEK;
 
-        date.tod = formattedTime();
+        date.days = minutes / MIN_PER_DAY;
+
+        date.tod = timeOfDay();
 
         return date;
     }
 
-    FormattedTOD formattedTime() const {
-        uint64_t inGameMinutes = uint64_t(realTime_s / REAL_SECONDS_PER_GAME_MIN);
-        inGameMinutes = inGameMinutes % MIN_PER_DAY;
+    TOD timeOfDay() const {
+        uint64_t minutes = gameMinutes() % MIN_PER_DAY;
 
-        FormattedTOD tod;
+        TOD tod;
 
-        tod.hours = inGameMinutes / MIN_PER_HOUR;
-        inGameMinutes = inGameMinutes % MIN_PER_HOUR;
+        tod.hours = minutes / MIN_PER_HOUR;
+        minutes = minutes % MIN_PER_HOUR;
 
-        tod.minutes = inGameMinutes;
+        tod.minutes = minutes;
 
         return tod;
     }
+
+    unsigned int minutesElapsedSince(const GameTime &previousTime) {
+        if (*this < previousTime) {
+            printf("previousTime does not happen before the current game time");
+        }
+        GameTime diff(realTime_s - previousTime.realTime_s);
+        return diff.gameMinutes();
+    }
+
+    bool operator<(const GameTime &other) { return realTime_s < other.realTime_s; }
+    bool operator<=(const GameTime &other) { return realTime_s <= other.realTime_s; }
 };

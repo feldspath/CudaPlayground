@@ -364,7 +364,7 @@ void updateEntitiesState(Map *map, Entities *entities) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
-    auto tod = GameState::instance->gameTime.formattedTime();
+    auto gameTime = GameState::instance->gameTime;
 
     // Each thread handles an entity
     for (int offset = 0; offset < entities->getCount(); offset += grid.num_threads()) {
@@ -379,8 +379,8 @@ void updateEntitiesState(Map *map, Entities *entities) {
             map->cellAtPosition(entity.position) == entity.destination) {
             destinationReached = true;
             entity.position = map->getCellPosition(entity.destination);
-            entity.happiness =
-                max(entity.happiness - (tod - entity.stateStart).totalMinutes() / 10, 0);
+            entity.happiness = max(
+                int(entity.happiness) - (gameTime.minutesElapsedSince(entity.stateStart)) / 10, 0);
         }
 
         TimeInterval workHours;
@@ -400,7 +400,7 @@ void updateEntitiesState(Map *map, Entities *entities) {
             break;
         }
         case GoToWork: {
-            if (!workHours.contains(tod)) {
+            if (!workHours.contains(gameTime.timeOfDay())) {
                 entity.changeState(GoShopping);
                 break;
             }
@@ -417,21 +417,21 @@ void updateEntitiesState(Map *map, Entities *entities) {
             break;
         }
         case GoShopping: {
-            if (!TimeInterval::shopHours.contains(tod)) {
+            if (!TimeInterval::shopHours.contains(gameTime.timeOfDay())) {
                 entity.changeState(GoHome);
                 break;
             }
             // entity destination is not handled here
             if (destinationReached) {
                 entity.changeState(Shop);
-            } else if (!TimeInterval::shopHours.contains(tod)) {
+            } else if (!TimeInterval::shopHours.contains(gameTime.timeOfDay())) {
                 entity.changeState(GoHome);
             }
             break;
         }
         case Work:
-            if (!workHours.contains(tod)) {
-                int moneyEarned = (tod - entity.stateStart).totalMinutes() / 7;
+            if (!workHours.contains(gameTime.timeOfDay())) {
+                int moneyEarned = gameTime.minutesElapsedSince(entity.stateStart) / 7;
                 int taxes = moneyEarned / 10;
                 int rent = map->rentCost(entity.houseId);
                 atomicAdd(&GameState::instance->playerMoney, rent + taxes);
@@ -444,13 +444,13 @@ void updateEntitiesState(Map *map, Entities *entities) {
             }
             break;
         case Rest:
-            if (workHours.contains(tod)) {
+            if (workHours.contains(gameTime.timeOfDay())) {
                 entity.changeState(GoToWork);
             }
             break;
         case Shop:
             // waiting to be handled by a shop worker
-            if (!TimeInterval::shopHours.contains(tod)) {
+            if (!TimeInterval::shopHours.contains(gameTime.timeOfDay())) {
                 entity.changeState(GoHome);
             }
             break;
@@ -488,8 +488,8 @@ void entitiesInteractions(Map *map, Entities *entities) {
                             entity.resetStateStart();
                         }
                     }
-                } else if ((GameState::instance->gameTime.formattedTime() - entity.stateStart)
-                               .totalMinutes() > SHOP_TIME_MIN) {
+                } else if ((GameState::instance->gameTime.minutesElapsedSince(entity.stateStart)) >
+                           SHOP_TIME_MIN) {
                     auto &other = entities->get(entity.interaction);
                     entity.interaction = -1;
                     other.interaction = -1;

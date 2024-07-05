@@ -33,7 +33,7 @@ void GUI::render(Map *map, Entities *entities) {
     itos(population, displayString);
     renderDisplay(populationDisplay, displayString);
 
-    gameState.gameTime.formattedTime().clocktoString(displayString);
+    gameState.gameTime.timeOfDay().clocktoString(displayString);
     renderDisplay(timeDisplay, displayString);
 }
 
