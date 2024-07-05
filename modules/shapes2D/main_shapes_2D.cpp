@@ -4,12 +4,12 @@
 #include <format>
 #include <iostream>
 #include <locale.h>
+#include <memory>
 #include <mutex>
 #include <queue>
 #include <string>
 #include <thread>
 #include <vector>
-#include <memory>
 
 #include "Controls2D.h"
 #include "CudaModularProgram.h"
@@ -64,7 +64,7 @@ int maxOccupancy(CudaModularProgram *program, const char *kernel, int workgroupS
     return numGroups;
 }
 
-void saveMap(){
+void saveMap() {
 
     // assume map size is fixed, for now, so we dont store it in file
     int numCells = gridRows * gridCols;
@@ -78,7 +78,6 @@ void saveMap(){
     GameState state;
     cuMemcpyDtoH(&state, cptr_gameState, sizeof(state));
 
-    
     Buffer buffer(gridCells.size + entities.size + sizeof(state));
 
     int64_t offsetGridCells = 0;
@@ -90,13 +89,12 @@ void saveMap(){
     memcpy(buffer.data_u8 + offsetState, &state, sizeof(state));
 
     writeBinaryFile("./savefile.save", buffer);
-
-
 }
 
 void loadMap() {
 
-    if (!fs::exists("./savefile.save")) return;
+    if (!fs::exists("./savefile.save"))
+        return;
 
     shared_ptr<Buffer> buffer = readBinaryFile("./savefile.save");
 
@@ -122,8 +120,6 @@ void loadMap() {
     cuMemcpyHtoD(cptr_grid, gridCells.data, gridCells.size);
     cuMemcpyHtoD(cptr_entities, entities.data, entities.size);
     cuMemcpyHtoD(cptr_gameState, &state, sizeof(GameState));
-
-
 }
 
 void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
@@ -281,6 +277,7 @@ void initGameState() {
     state.firstFrame = true;
     state.playerMoney = 2000;
     state.buildingDisplay = -1;
+    state.gameTime.realTime_s = 0.0f;
 
     cuMemcpyHtoD(cptr_gameState, &state, sizeof(GameState));
 }
@@ -425,11 +422,11 @@ int main() {
             ImGui::Checkbox("Creative Mode", &creativeMode);
             ImGui::SliderFloat("Time multiplier", &timeMultiplier, 0.1f, 10.0f);
 
-            if(ImGui::Button("Save Map")){
+            if (ImGui::Button("Save Map")) {
                 saveMap();
             }
             ImGui::SameLine();
-            if(ImGui::Button("Load Map")){
+            if (ImGui::Button("Load Map")) {
                 loadMap();
             }
 

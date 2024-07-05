@@ -520,7 +520,6 @@ void updateGameState(Entities *entities) {
 
         if (GameState::instance->firstFrame) {
             GameState::instance->firstFrame = false;
-            GameState::instance->gameTime.realTime_s = 0.0f;
             GameState::instance->gameTime.dt = 0.0f;
         }
     }
@@ -603,8 +602,10 @@ void updateGrid(Map *map, Entities *entities) {
     printDuration("handleInputs                ", [&]() { handleInputs(map, entities); });
     printDuration("fillCells                   ", [&]() { fillCells(map, entities); });
     printDuration("assignOneHouse              ", [&]() { assignOneHouse(map, entities); });
-    printDuration("assignOneCustomerToShop     ", [&]() { assignOneCustomerToShop(map, entities); });
-    printDuration("performPathFinding          ", [&]() { performPathFinding(map, entities, allocator); });
+    printDuration("assignOneCustomerToShop     ",
+                  [&]() { assignOneCustomerToShop(map, entities); });
+    printDuration("performPathFinding          ",
+                  [&]() { performPathFinding(map, entities, allocator); });
     printDuration("moveEntities                ", [&]() {
         moveEntities(map, entities, allocator, GameState::instance->gameTime.getDt());
     });
