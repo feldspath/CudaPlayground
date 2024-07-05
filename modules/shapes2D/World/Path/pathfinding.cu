@@ -27,14 +27,18 @@ static PathfindingList locateLostEntities(Map *map, Entities *entities, Allocato
     processRange(entities->getCount(), [&](int entityIndex) {
         Entity &entity = entities->get(entityIndex);
         if (entity.isLost()) {
-            uint32_t id = atomicAdd(&lostCount, 1);
             uint32_t targetId = entity.destination;
             int originId = map->cellAtPosition(entity.position);
             Pathfinding p;
             p.flowField = FlowField(map, targetId, originId);
+            if (p.flowField.length() == 0) {
+                printf("Error: entity %d cannot reach its destination\n", entityIndex);
+                return;
+            }
             p.entityIdx = entityIndex;
             p.origin = originId;
             p.target = targetId;
+            uint32_t id = atomicAdd(&lostCount, 1);
             pathfindingList.data[id] = p;
         }
     });

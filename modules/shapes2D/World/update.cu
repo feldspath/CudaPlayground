@@ -512,7 +512,6 @@ void updateGameState(Entities *entities) {
 
     if (grid.thread_rank() == 0) {
         float dt = ((float)(nanotime_start - GameState::instance->previousFrameTime_ns)) / 1e9;
-        GameState::instance->gameTime.incrementRealTime(dt * uniforms.timeMultiplier);
         GameState::instance->previousFrameTime_ns = nanotime_start;
         GameState::instance->currentTime_ms = currentTime_ms();
         GameState::instance->population = *entities->count;
@@ -521,6 +520,8 @@ void updateGameState(Entities *entities) {
         if (GameState::instance->firstFrame) {
             GameState::instance->firstFrame = false;
             GameState::instance->gameTime.dt = 0.0f;
+        } else {
+            GameState::instance->gameTime.incrementRealTime(dt * uniforms.timeMultiplier);
         }
     }
 }

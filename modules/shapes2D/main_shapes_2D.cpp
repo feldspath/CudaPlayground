@@ -114,6 +114,7 @@ void loadMap() {
     memcpy(&state, buffer->data_u8 + offsetState, sizeof(state));
 
     state.firstFrame = true;
+    state.gameTime.dt = 0.0f;
 
     // memset(entities.data, 0, entities.size);
 
@@ -277,7 +278,7 @@ void initGameState() {
     state.firstFrame = true;
     state.playerMoney = 2000;
     state.buildingDisplay = -1;
-    state.gameTime.realTime_s = 0.0f;
+    state.gameTime = GameTime();
 
     cuMemcpyHtoD(cptr_gameState, &state, sizeof(GameState));
 }

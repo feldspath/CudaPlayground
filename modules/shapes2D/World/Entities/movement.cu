@@ -179,8 +179,10 @@ void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) 
         // check each side of the entity for wall collision
         neighborCells.forEachDir([&](Direction direction, uint32_t cellId) {
             // no collision with roads, house, workplace and shops.
-            if (map->getTileId(cellId) & (SHOP | ROAD) || cellId == entity.workplaceId ||
-                cellId == entity.houseId) {
+            TileId tile = map->getTileId(cellId);
+            if ((tile == ROAD && map->neighborNetworks(entity.destination)
+                                     .contains(map->roadNetworkRepr(cellId))) ||
+                tile == SHOP || cellId == entity.workplaceId || cellId == entity.houseId) {
                 return;
             }
 
