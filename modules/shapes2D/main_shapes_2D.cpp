@@ -9,6 +9,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <memory>
 
 #include "Controls2D.h"
 #include "CudaModularProgram.h"
@@ -19,6 +20,10 @@
 #include "unsuck.hpp"
 
 #include "HostDeviceInterface.h"
+
+using std::shared_ptr;
+
+namespace fs = std::filesystem;
 
 CUdeviceptr cptr_buffer;
 CUdeviceptr cptr_grid;
@@ -57,6 +62,68 @@ int maxOccupancy(CudaModularProgram *program, const char *kernel, int workgroupS
     //  make sure at least 10 workgroups are spawned)
     numGroups = std::clamp(numGroups, 10, 100'000);
     return numGroups;
+}
+
+void saveMap(){
+
+    // assume map size is fixed, for now, so we dont store it in file
+    int numCells = gridRows * gridCols;
+
+    Buffer gridCells(numCells * BYTES_PER_CELL);
+    cuMemcpyDtoH(gridCells.data, cptr_grid, gridCells.size);
+
+    Buffer entities(sizeof(uint32_t) + numCells * (BYTES_PER_ENTITY));
+    cuMemcpyDtoH(entities.data, cptr_entities, entities.size);
+
+    GameState state;
+    cuMemcpyDtoH(&state, cptr_gameState, sizeof(state));
+
+    
+    Buffer buffer(gridCells.size + entities.size + sizeof(state));
+
+    int64_t offsetGridCells = 0;
+    int64_t offsetEntities = offsetGridCells + gridCells.size;
+    int64_t offsetState = offsetEntities + entities.size;
+
+    memcpy(buffer.data_u8 + offsetGridCells, gridCells.data, gridCells.size);
+    memcpy(buffer.data_u8 + offsetEntities, entities.data, entities.size);
+    memcpy(buffer.data_u8 + offsetState, &state, sizeof(state));
+
+    writeBinaryFile("./savefile.save", buffer);
+
+
+}
+
+void loadMap() {
+
+    if (!fs::exists("./savefile.save")) return;
+
+    shared_ptr<Buffer> buffer = readBinaryFile("./savefile.save");
+
+    // assume map size is fixed, for now, so we dont store it in file
+    int numCells = gridRows * gridCols;
+
+    Buffer gridCells(numCells * BYTES_PER_CELL);
+    Buffer entities(sizeof(uint32_t) + numCells * (BYTES_PER_ENTITY));
+    GameState state;
+
+    int64_t offsetGridCells = 0;
+    int64_t offsetEntities = offsetGridCells + gridCells.size;
+    int64_t offsetState = offsetEntities + entities.size;
+
+    memcpy(gridCells.data, buffer->data_u8 + offsetGridCells, gridCells.size);
+    memcpy(entities.data, buffer->data_u8 + offsetEntities, entities.size);
+    memcpy(&state, buffer->data_u8 + offsetState, sizeof(state));
+
+    state.firstFrame = true;
+
+    // memset(entities.data, 0, entities.size);
+
+    cuMemcpyHtoD(cptr_grid, gridCells.data, gridCells.size);
+    cuMemcpyHtoD(cptr_entities, entities.data, entities.size);
+    cuMemcpyHtoD(cptr_gameState, &state, sizeof(GameState));
+
+
 }
 
 void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
@@ -357,6 +424,14 @@ int main() {
             ImGui::Checkbox("Pring Timings", &printTimings);
             ImGui::Checkbox("Creative Mode", &creativeMode);
             ImGui::SliderFloat("Time multiplier", &timeMultiplier, 0.1f, 10.0f);
+
+            if(ImGui::Button("Save Map")){
+                saveMap();
+            }
+            ImGui::SameLine();
+            if(ImGui::Button("Load Map")){
+                loadMap();
+            }
 
             ImGui::End();
         }

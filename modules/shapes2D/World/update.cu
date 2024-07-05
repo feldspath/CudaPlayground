@@ -548,7 +548,7 @@ template <typename Function> void printDuration(char *name, Function &&f) {
     if (grid.thread_rank() == 0) {
         double nanos = double(t_end) - double(t_start);
         float millis = nanos / 1e6;
-        printf("%s: %f ms\n", name, millis);
+        printf("%s: %8.3f ms\n", name, millis);
     }
 }
 
@@ -596,17 +596,21 @@ void handleInputs(Map *map, Entities *entities) {
 void updateGrid(Map *map, Entities *entities) {
     nanotime_start = nanotime();
 
-    printDuration("handleInputs", [&]() { handleInputs(map, entities); });
-    printDuration("fillCells", [&]() { fillCells(map, entities); });
-    printDuration("assignOneHouse", [&]() { assignOneHouse(map, entities); });
-    printDuration("assignOneCustomerToShop", [&]() { assignOneCustomerToShop(map, entities); });
-    printDuration("performPathFinding", [&]() { performPathFinding(map, entities, allocator); });
-    printDuration("moveEntities", [&]() {
+    if (uniforms.printTimings && cg::this_grid().thread_rank() == 0) {
+        printf("================================\n");
+    }
+
+    printDuration("handleInputs                ", [&]() { handleInputs(map, entities); });
+    printDuration("fillCells                   ", [&]() { fillCells(map, entities); });
+    printDuration("assignOneHouse              ", [&]() { assignOneHouse(map, entities); });
+    printDuration("assignOneCustomerToShop     ", [&]() { assignOneCustomerToShop(map, entities); });
+    printDuration("performPathFinding          ", [&]() { performPathFinding(map, entities, allocator); });
+    printDuration("moveEntities                ", [&]() {
         moveEntities(map, entities, allocator, GameState::instance->gameTime.getDt());
     });
-    printDuration("updateEntitiesState", [&]() { updateEntitiesState(map, entities); });
-    printDuration("entitiesInteractions", [&]() { entitiesInteractions(map, entities); });
-    printDuration("updateGameState", [&]() { updateGameState(entities); });
+    printDuration("updateEntitiesState         ", [&]() { updateEntitiesState(map, entities); });
+    printDuration("entitiesInteractions        ", [&]() { entitiesInteractions(map, entities); });
+    printDuration("updateGameState             ", [&]() { updateGameState(entities); });
 }
 
 extern "C" __global__ void update(const Uniforms _uniforms, GameState *_gameState,
