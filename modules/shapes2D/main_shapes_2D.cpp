@@ -20,6 +20,7 @@
 #include "unsuck.hpp"
 
 #include "HostDeviceInterface.h"
+#include "./Rendering/Particles.h"
 
 using std::shared_ptr;
 
@@ -31,6 +32,7 @@ CUdeviceptr cptr_entities;
 CUdeviceptr cptr_gameState;
 CUdeviceptr cptr_spriteSheet;
 CUdeviceptr cptr_ascii_32;
+CUdeviceptr cptr_particles_cash;
 uint32_t gridRows;
 uint32_t gridCols;
 
@@ -167,7 +169,9 @@ void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
     memcpy(&uniforms.invview, &invview, sizeof(invview));
 
     void *args[] = {&uniforms, &cptr_gameState, &cptr_buffer,  &gridRows,
-                    &gridCols, &cptr_grid,      &cptr_entities};
+                    &gridCols, &cptr_grid,      &cptr_entities,
+                    &cptr_particles_cash
+                    };
 
     auto res_launch = cuLaunchCooperativeKernel(cuda_update->kernels["update"], numGroups, 1, 1,
                                                 workgroupSize, 1, 1, 0, 0, args);
@@ -244,7 +248,9 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
     memcpy(&uniforms.invview, &invview, sizeof(invview));
 
     void *args[] = {&uniforms, &cptr_gameState, &cptr_buffer,   &output_surf,   &gridRows,
-                    &gridCols, &cptr_grid,      &cptr_entities, &cptr_ascii_32, &cptr_spriteSheet};
+                    &gridCols, &cptr_grid,      &cptr_entities, &cptr_ascii_32, &cptr_spriteSheet,
+                    &cptr_particles_cash
+                    };
 
     auto res_launch = cuLaunchCooperativeKernel(cuda_program->kernels["kernel"], numGroups, 1, 1,
                                                 workgroupSize, 1, 1, 0, 0, args);
@@ -318,6 +324,31 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
     cuMemAlloc(&cptr_spriteSheet, img_spritesheet.size());
     cuMemcpyHtoD(cptr_spriteSheet, img_spritesheet.data(), img_spritesheet.size());
 
+    { // Particles for Cash
+        int capacity = 1000;
+
+        Particles particles;
+        particles.initialized = false;
+        particles.capacity = capacity;
+        particles.particleCounter = 0;
+        particles.spawnsPerSecond = 100;
+        particles.accumulated_time = 0;
+        particles.max_age = 2.0f;
+        
+        cuMemAlloc((CUdeviceptr*)&particles.availableParticles, capacity * sizeof(*particles.availableParticles));
+        cuMemAlloc((CUdeviceptr*)&particles.position, capacity * sizeof(*particles.position));
+        cuMemAlloc((CUdeviceptr*)&particles.size, capacity * sizeof(*particles.size));
+        cuMemAlloc((CUdeviceptr*)&particles.velocity, capacity * sizeof(*particles.velocity));
+        cuMemAlloc((CUdeviceptr*)&particles.age, capacity * sizeof(*particles.age));
+
+        float negfloat = -1.0f;
+        uint32_t value = *((uint32_t*)&negfloat);
+        cuMemsetD32((CUdeviceptr)particles.age, value, capacity);
+
+        cuMemAlloc(&cptr_particles_cash, sizeof(Particles));
+        cuMemcpyHtoD(cptr_particles_cash, &particles, sizeof(Particles));
+    }
+
     cuda_program =
         new CudaModularProgram({.modules =
                                     {
@@ -326,6 +357,7 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
                                         "./modules/shapes2D/Rendering/gui.cu",
                                         "./modules/shapes2D/Rendering/sprite.cu",
                                         "./modules/shapes2D/World/time.cu",
+                                        "./modules/shapes2D/Rendering/Particles.cu",
                                     },
                                 .kernels = {"kernel"},
                                 .customIncludeDirs = {"./modules/shapes2D", " ./modules"}});
@@ -340,6 +372,7 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
                                         "./modules/shapes2D/World/time.cu",
                                         "./modules/shapes2D/World/Entities/entities.cu",
                                         "./modules/shapes2D/World/Entities/movement.cu",
+                                        "./modules/shapes2D/Rendering/Particles.cu",
                                     },
                                 .kernels = {"update"},
                                 .customIncludeDirs = {"./modules/shapes2D", " ./modules"}});

@@ -12,6 +12,7 @@
 #include "builtin_types.h"
 #include "common/helper_math.h"
 #include "common/matrix_math.h"
+#include "./Rendering/Particles.h"
 
 namespace cg = cooperative_groups;
 
@@ -617,7 +618,7 @@ void updateGrid(Map *map, Entities *entities) {
 
 extern "C" __global__ void update(const Uniforms _uniforms, GameState *_gameState,
                                   unsigned int *buffer, uint32_t numRows, uint32_t numCols,
-                                  char *cells, void *entitiesBuffer) {
+                                  char *cells, void *entitiesBuffer, Particles* particles_cash) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -641,5 +642,96 @@ extern "C" __global__ void update(const Uniforms _uniforms, GameState *_gameStat
         *entities = Entities(entitiesBuffer);
 
         updateGrid(map, entities);
+    }
+
+    grid.sync();
+
+    { // PARTICLES
+        float delta = GameState::instance->gameTime.getDt();
+        Particles* particles = particles_cash;
+
+        particles->init();
+
+        if(grid.thread_rank() == 0){
+            particles->accumulated_time += delta;
+
+
+            float spawnsEveryXSeconds = 1.0f / particles->spawnsPerSecond;
+            spawnsEveryXSeconds = 0.01;
+
+            while(particles->accumulated_time > spawnsEveryXSeconds){
+
+
+                int particleIndex = particles->spawn();
+
+                if(particleIndex == -1) break;
+
+                float random = float(curand(&thread_random_state) % 1000) / 1000.0f;
+
+                float2 v = {
+                    cos(3.1415 * random),
+                    sin(3.1415 * random)
+                };
+                v = normalize(v);
+                v = 10.0f * v;
+               
+                particles->age[particleIndex] = 0.0f;
+                particles->position[particleIndex] = {5.0f, 5.0f};
+                // particles->position[particleIndex] = {uniforms.width / 2.0f, uniforms.height / 2.0f};
+                particles->size[particleIndex] = {400.0f, 100.0f};
+                particles->velocity[particleIndex] = v;
+
+                particles->accumulated_time -= spawnsEveryXSeconds;
+            }
+        }
+
+        grid.sync();
+        // if(grid.thread_rank() == 0) printf("updating particles \n");
+        grid.sync();
+
+        // curandStateXORWOW_t thread_random_state;
+
+        processRange(particles->capacity, [&](int index){
+
+            curandStateXORWOW_t particle_random_state;
+            curand_init(index, 0, 0, &particle_random_state);
+            uint32_t randomMS = curand(&particle_random_state) % 1000;
+
+
+            float2 position = particles->position[index];
+            float2 velocity = particles->velocity[index];
+            float age = particles->age[index] + delta;
+
+
+            // printf("updating particle %i, age %.3f, pos %.3f, %.3f \n", index, age, position.x, position.y);
+
+            if(age < 0.0f) return;
+
+            // if(age > particles->max_age + float(randomMS) / 1000.0f){
+            if(age > particles->max_age){
+            // if(age > 2.0f){
+                particles->despawn(index);
+
+                // printf("despawning particle %i\n", index);
+                // printf("    particleCounter now at %i \n", particles->particleCounter);
+                // printf("    availableParticles[particleCounter] = %i \n", particles->availableParticles[particles->particleCounter]);
+                
+                return;
+            }
+
+            float2 newPosition = position + delta * velocity;
+
+            // GameState::instance
+            // printf("updating particle %i, age %.3f, pos %.3f, %.3f \n", index, age, position.x, position.y);
+
+
+
+
+            particles->position[index] = newPosition;
+            particles->age[index] = age;
+        });
+
+
+
     }
 }

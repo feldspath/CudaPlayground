@@ -12,6 +12,7 @@
 #include "gui.cuh"
 #include "sprite.cuh"
 #include "text.cuh"
+#include "./Rendering/Particles.h"
 
 namespace cg = cooperative_groups;
 
@@ -216,7 +217,7 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, GameState *_gameStat
                                   unsigned int *buffer, cudaSurfaceObject_t gl_colorbuffer,
                                   uint32_t numRows, uint32_t numCols, char *cells,
                                   void *entitiesBuffer, uint32_t *img_ascii_16,
-                                  uint32_t *img_spritesheet) {
+                                  uint32_t *img_spritesheet, Particles* particles_cash) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -257,6 +258,76 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, GameState *_gameStat
         grid.sync();
         GUI gui(framebuffer, textRenderer, sprites, uniforms.proj * uniforms.view);
         gui.render(map, entities);
+    }
+
+    grid.sync();
+
+    { // PARTICLES
+        auto particles = particles_cash;
+        // Sprite& moneyDisplay = sprites.moneyDisplay;
+
+        Sprite cash;
+        cash.x = 8;
+        cash.y = 9;
+        cash.width = 30;
+        cash.height = 15;
+        cash.data = sprites.data;
+        cash.textureSize = int2{512, 512};
+
+        mat4 viewProj = uniforms.proj * uniforms.view;
+
+        // Since cash sprites are fairly large, we use one thread block per sprite.
+        // NOTE: We iterate through the entire particle system's capacity,
+        //   even if a tiny amount of particles/sprites are alive. 
+        //   For larger particle systems, it may be necessary to first assemble a list of
+        //   active sprites using one thread per sprite, then rasterize them using one block per sprite
+        for_blockwise(particles->capacity, [&](int index){
+
+            float age = particles->age[index];
+
+            if(age < 0.0f) return;
+
+            int spriteWidth = 100;
+            int spriteHeight = 60;
+            int numPixels = spriteWidth * spriteHeight;
+
+            float2 position = particles->position[index];
+
+            
+            float2 screenPos = projectPosToScreenPos(make_float3(position, 0.0f), viewProj,
+                                                 uniforms.width, uniforms.height);
+
+            position = screenPos;    
+
+            for(
+                int spritePixelID = block.thread_rank(); 
+                spritePixelID < numPixels; 
+                spritePixelID += block.size())
+            {
+                int spriteX = spritePixelID % spriteWidth;
+                int spriteY = spritePixelID / spriteWidth;
+
+                int2 pixelCoords = make_int2(position.x + spriteX, position.y + spriteY);
+
+                if(pixelCoords.x < 0 || pixelCoords.x >= uniforms.width) continue;
+                if(pixelCoords.y < 0 || pixelCoords.y >= uniforms.height) continue;
+
+                int pixelID = pixelCoords.x + pixelCoords.y * uniforms.width;
+                pixelID = clamp(pixelID, 0, int(uniforms.width * uniforms.height) - 1);
+
+                float u = float(spriteX) / spriteWidth;
+                float v = float(spriteY) / spriteHeight;
+                
+                float depth = position.y * 0.001;
+                uint64_t udepth = *((uint32_t *)&depth);
+                // uint64_t color = 0x000000ff;
+                uint32_t color = cash.sample(u, v);
+                uint64_t pixel = (udepth << 32) | color;
+                
+                atomicMin(&framebuffer.data[pixelID], pixel);
+            }
+        });
+        
     }
 
     grid.sync();
