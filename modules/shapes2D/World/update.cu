@@ -213,10 +213,9 @@ void assignOneHouse(Map *map, Entities *entities) {
     grid.sync();
 
     __shared__ uint64_t targetWorkplace;
-    for (int gridOffset = 0; gridOffset < unassignedHouseCount; gridOffset += grid.num_blocks()) {
-        int hIdx = gridOffset + grid.block_rank();
-        if (hIdx >= unassignedHouseCount) {
-            break;
+    for_blockwise(unassignedHouseCount, [&](int hIdx) {
+        if (assigned) {
+            return;
         }
 
         int houseId = unassignedHouses[hIdx];
@@ -232,12 +231,7 @@ void assignOneHouse(Map *map, Entities *entities) {
         block.sync();
 
         // Check all tiles for factories
-        for (int blockOffset = 0; blockOffset < availableWorkplaceCount;
-             blockOffset += block.num_threads()) {
-            int fIdx = block.thread_rank() + blockOffset;
-            if (fIdx >= availableWorkplaceCount) {
-                break;
-            }
+        processRangeBlock(availableWorkplaceCount, [&](int fIdx) {
             int workplaceId = availableWorkplaces[fIdx];
 
             // Get the networks the factory is connected to
@@ -250,9 +244,8 @@ void assignOneHouse(Map *map, Entities *entities) {
                 uint64_t target = (uint64_t(distance) << 32ull) | uint64_t(workplaceId);
                 // keep the closest factory
                 atomicMin(&targetWorkplace, target);
-                break;
             }
-        }
+        });
 
         block.sync();
 
@@ -265,9 +258,7 @@ void assignOneHouse(Map *map, Entities *entities) {
                 *houseData = -1;
             }
         }
-
-        break;
-    }
+    });
 }
 
 void assignOneCustomerToShop(Map *map, Entities *entities) {
@@ -367,11 +358,7 @@ void updateEntitiesState(Map *map, Entities *entities) {
     auto gameTime = GameState::instance->gameTime;
 
     // Each thread handles an entity
-    for (int offset = 0; offset < entities->getCount(); offset += grid.num_threads()) {
-        int entityIndex = offset + grid.thread_rank();
-        if (entityIndex >= entities->getCount()) {
-            break;
-        }
+    processRange(entities->getCount(), [&](int entityIndex) {
         Entity &entity = entities->get(entityIndex);
 
         bool destinationReached = false;
@@ -457,7 +444,7 @@ void updateEntitiesState(Map *map, Entities *entities) {
         default:
             break;
         }
-    }
+    });
 }
 
 void entitiesInteractions(Map *map, Entities *entities) {
@@ -465,11 +452,7 @@ void entitiesInteractions(Map *map, Entities *entities) {
     auto block = cg::this_thread_block();
 
     // Update interactions
-    for (int offset = 0; offset < entities->getCount(); offset += grid.num_threads()) {
-        int entityIndex = offset + grid.thread_rank();
-        if (entityIndex >= entities->getCount()) {
-            break;
-        }
+    processRange(entities->getCount(), [&](int entityIndex) {
         Entity &entity = entities->get(entityIndex);
 
         switch (entity.state) {
@@ -504,7 +487,7 @@ void entitiesInteractions(Map *map, Entities *entities) {
         default:
             break;
         }
-    }
+    });
 }
 
 void updateGameState(Entities *entities) {

@@ -58,12 +58,7 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
-    for (int offset = 0; offset < uniforms.width * uniforms.height; offset += grid.num_threads()) {
-        int pixelId = offset + grid.thread_rank();
-        if (pixelId >= uniforms.width * uniforms.height) {
-            continue;
-        }
-
+    processRange(uniforms.width * uniforms.height, [&](int pixelId) {
         int pixelX = pixelId % int(uniforms.width);
         int pixelY = pixelId / int(uniforms.width);
 
@@ -73,7 +68,7 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
             unproject(pFrag, uniforms.invview * uniforms.invproj, uniforms.width, uniforms.height);
         int sh_cellIndex = map->cellAtPosition(float2{pos_W.x, pos_W.y});
         if (sh_cellIndex == -1) {
-            continue;
+            return;
         }
 
         float2 cellCenter = map->getCellPosition(sh_cellIndex);
@@ -84,7 +79,7 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
         float v = diffToCorner.y / (CELL_RADIUS * 2);
 
         if (abs(diff.x) > CELL_RADIUS || abs(diff.y) > CELL_RADIUS) {
-            continue;
+            return;
         }
 
         float3 color;
@@ -150,7 +145,7 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
         uint64_t pixel = (udepth << 32ull) | rgb8color(pixelColor);
 
         atomicMin(&framebuffer.data[pixelId], pixel);
-    }
+    });
 }
 
 void rasterizeEntities(Entities *entities, Framebuffer framebuffer) {
@@ -163,12 +158,7 @@ void rasterizeEntities(Entities *entities, Framebuffer framebuffer) {
         float3{ENTITY_RADIUS, 0.0f, 0.0f}, viewProj, uniforms.width, uniforms.height));
     // sphereRadius = 5.0f;
     //  Each thread grabs an entity
-    for (int offset = 0; offset < entities->getCount(); offset += grid.num_threads()) {
-        int entityIndex = offset + grid.thread_rank();
-        if (entityIndex >= entities->getCount()) {
-            break;
-        }
-
+    processRange(entities->getCount(), [&](int entityIndex) {
         float2 entityPos = entities->get(entityIndex).position;
         float2 screenPos = projectPosToScreenPos(make_float3(entityPos, 0.0f), viewProj,
                                                  uniforms.width, uniforms.height);
@@ -209,7 +199,7 @@ void rasterizeEntities(Entities *entities, Framebuffer framebuffer) {
 
             atomicMin(&framebuffer.data[pixelID], pixel);
         }
-    }
+    });
 }
 
 extern "C" __global__ void kernel(const Uniforms _uniforms, GameState *_gameState,

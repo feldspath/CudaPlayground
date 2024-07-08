@@ -67,23 +67,12 @@ void performPathFinding(Map *map, Entities *entities, Allocator *allocator) {
     PathfindingList pathfindingList = locateLostEntities(map, entities, allocator);
 
     // Each block handles a lost entity
-    for (int offset = 0; offset < pathfindingList.count; offset += grid.num_blocks()) {
-        int bufferIdx = offset + grid.block_rank();
-        if (bufferIdx >= pathfindingList.count) {
-            break;
-        }
-
+    for_blockwise(pathfindingList.count, [&](int bufferIdx) {
         Pathfinding info = pathfindingList.data[bufferIdx];
         FlowField &flowField = info.flowField;
 
         // Init buffer
-        for (int roadOffset = 0; roadOffset < info.flowField.length();
-             roadOffset += block.num_threads()) {
-            int idx = roadOffset + block.thread_rank();
-            if (idx < info.flowField.length()) {
-                flowField.resetCell(idx);
-            }
-        }
+        processRangeBlock(info.flowField.length(), [&](int idx) { flowField.resetCell(idx); });
 
         if (block.thread_rank() == 0) {
             // Init neighbor tiles of target
@@ -110,16 +99,11 @@ void performPathFinding(Map *map, Entities *entities, Allocator *allocator) {
         // Build flowfield
         while (!isOriginReached(info.origin, map, info)) {
             // The field is split accross the threads of the block
-            for (int roadOffset = 0; roadOffset < info.flowField.length();
-                 roadOffset += block.num_threads()) {
-                int currentFieldId = roadOffset + block.thread_rank();
-                if (currentFieldId > info.flowField.length()) {
-                    break;
-                }
+            processRangeBlock(info.flowField.length(), [&](int currentFieldId) {
                 FieldCell &fieldCell = info.flowField.getFieldCell(currentFieldId);
                 if (fieldCell.cellId == -1) {
                     // cell has not been explored yet
-                    continue;
+                    return;
                 }
 
                 map->neighborCells(fieldCell.cellId).forEach([&](int neighborId) {
@@ -139,7 +123,8 @@ void performPathFinding(Map *map, Entities *entities, Allocator *allocator) {
                             min(fieldCell.distance, neighborFieldCell.distance + 1);
                     }
                 });
-            }
+            });
+
             // not sure if this is needed or not
             block.sync();
         }
@@ -148,7 +133,7 @@ void performPathFinding(Map *map, Entities *entities, Allocator *allocator) {
         if (block.thread_rank() == 0) {
             entities->get(info.entityIdx).path = info.flowField.extractPath(info.origin);
         }
-    }
+    });
 }
 
 Path FlowField::extractPath(uint32_t originId) const {
