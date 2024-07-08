@@ -115,6 +115,9 @@ struct GameState {
     float fillCells_ms;
     float moveEntities_ms;
     float updateEntitiesState_ms;
+
+    bool isPlacingBuilding;
+    int buildingType;
 };
 
 // CELLS
@@ -207,3 +210,17 @@ struct Entity {
 };
 
 static int BYTES_PER_ENTITY = sizeof(Entity);
+
+
+struct GameData{
+    Uniforms uniforms;   // Args passed form host to device every frame
+    GameState *state;          // Managed only by device
+    unsigned int *buffer;      // Some buffer where we can allocate each frame
+    uint32_t numRows;
+    uint32_t numCols;
+    char *cells;
+    void *entitiesBuffer;
+    uint32_t *img_ascii_16;
+    uint32_t *img_spritesheet;
+    uint32_t *img_spritesheet_buildings;
+};

@@ -13,9 +13,11 @@
 #include "sprite.cuh"
 #include "text.cuh"
 
+#include "ObjectSelection.cuh"
+
 namespace cg = cooperative_groups;
 
-Uniforms uniforms;
+GameData gamedata;
 GameState *GameState::instance;
 Allocator *allocator;
 uint64_t nanotime_start;
@@ -57,6 +59,50 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
 
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
+    auto &uniforms = gamedata.uniforms;
+
+    uint32_t numObjects = 0;
+    auto cursorPos = uniforms.cursorPos;
+    ObjectSelectionSprite* objects = ObjectSelection::createPanel(allocator, numObjects, cursorPos.x, uniforms.height - cursorPos.y, gamedata);
+    ObjectSelectionSprite object = objects[gamedata.state->buildingType];
+
+    grid.sync();
+
+    auto doesTileIntersectHoveredObject = [&](int tx, int ty){
+
+        int cellIndex = map->cellAtPosition(float2{float(tx), float(ty)});
+
+        if(cellIndex < 0) return false;
+        if(!gamedata.state->isPlacingBuilding) return false;
+
+        int pixelX = cursorPos.x;
+        int pixelY = uniforms.height - cursorPos.y;
+
+        float2 frag = {
+            cursorPos.x,
+            (uniforms.height - cursorPos.y),
+        };
+
+        float3 pos_W = unproject(frag, uniforms.invview * uniforms.invproj, uniforms.width, uniforms.height);
+        int btx = pos_W.x - object.cellSize.x * 0.5;
+        int bty = pos_W.y  - object.cellSize.y * 0.5;
+
+        if(tx < btx) return false;
+        if(ty < bty) return false;
+        if(tx > btx + object.cellSize.x) return false;
+        if(ty > bty + object.cellSize.y) return false;
+
+        if(grid.thread_rank() == 0){
+            printf("%d, %d \n", btx, bty);
+        }
+
+        return true;
+    };
+
+    grid.sync();
+
+
+
 
     for (int offset = 0; offset < uniforms.width * uniforms.height; offset += grid.num_threads()) {
         int pixelId = offset + grid.thread_rank();
@@ -75,6 +121,9 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
         if (sh_cellIndex == -1) {
             continue;
         }
+
+        bool tileIsHovered = doesTileIntersectHoveredObject(pos_W.x, pos_W.y);
+
 
         float2 cellCenter = map->getCellPosition(sh_cellIndex);
         float2 diff = float2{pos_W.x - cellCenter.x, pos_W.y - cellCenter.y};
@@ -143,6 +192,12 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
             color = float3{0.0f, 1.0f, 0.0f} * a + float3{1.0f, 0.0f, 0.0f} * (1 - a);
         }
 
+        if(tileIsHovered){
+            color.x = 0.5 * color.x + 0.3;
+            color.y = 0.5 * color.y + 0.3;
+            color.z = 0.5 * color.z + 0.3;
+        }
+
         float3 pixelColor = color;
 
         float depth = 1.0f;
@@ -156,6 +211,7 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
 void rasterizeEntities(Entities *entities, Framebuffer framebuffer) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
+    auto& uniforms = gamedata.uniforms;
 
     mat4 viewProj = uniforms.proj * uniforms.view;
 
@@ -212,26 +268,23 @@ void rasterizeEntities(Entities *entities, Framebuffer framebuffer) {
     }
 }
 
-extern "C" __global__ void kernel(const Uniforms _uniforms, GameState *_gameState,
-                                  unsigned int *buffer, cudaSurfaceObject_t gl_colorbuffer,
-                                  uint32_t numRows, uint32_t numCols, char *cells,
-                                  void *entitiesBuffer, uint32_t *img_ascii_16,
-                                  uint32_t *img_spritesheet) {
+extern "C" __global__ void kernel(GameData _gamedata, cudaSurfaceObject_t gl_colorbuffer) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
+    
+    gamedata = _gamedata;
+    auto& uniforms = gamedata.uniforms;
 
     asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(nanotime_start));
 
-    uniforms = _uniforms;
-
-    Allocator _allocator(buffer, 0);
+    Allocator _allocator(gamedata.buffer, 0);
     allocator = &_allocator;
 
-    GameState::instance = _gameState;
+    GameState::instance = gamedata.state;
 
-    Font font(img_ascii_16);
+    Font font(gamedata.img_ascii_16);
     TextRenderer textRenderer(font);
-    SpriteSheet sprites(img_spritesheet);
+    SpriteSheet sprites(gamedata.img_spritesheet);
 
     // allocate framebuffer memory
     int framebufferSize = int(uniforms.width) * int(uniforms.height) * sizeof(uint64_t);
@@ -246,10 +299,10 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, GameState *_gameStat
 
     {
         Map *map = allocator->alloc<Map *>(sizeof(Map));
-        *map = Map(numRows, numCols, cells);
+        *map = Map(gamedata.numRows, gamedata.numCols, gamedata.cells);
 
         Entities *entities = allocator->alloc<Entities *>(sizeof(Entities));
-        *entities = Entities(entitiesBuffer);
+        *entities = Entities(gamedata.entitiesBuffer);
 
         rasterizeGrid(map, entities, sprites, framebuffer);
         grid.sync();
@@ -257,6 +310,105 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, GameState *_gameStat
         grid.sync();
         GUI gui(framebuffer, textRenderer, sprites, uniforms.proj * uniforms.view);
         gui.render(map, entities);
+    }
+
+    grid.sync();
+
+
+    { // DRAW OBJECT SELECTION PANEL
+        auto cursor = gamedata.uniforms.cursorPos;
+        uint32_t numObjects = 0;
+        int mouseX = cursor.x;
+        int mouseY = uniforms.height - cursor.y;
+        ObjectSelectionSprite* objects = ObjectSelection::createPanel(allocator, numObjects, mouseX, mouseY, gamedata);
+
+        grid.sync();
+
+        // draw building panel
+        for_blockwise(numObjects, [&](int index){
+            ObjectSelectionSprite& object = objects[index];
+
+            ObjectSelection::rasterize_blockwise(object, framebuffer);
+        });
+
+
+        grid.sync();
+
+        // Draw black background of hovered panel
+        if(grid.block_rank() == 0){
+
+            for(int i = 0; i < numObjects; i++){
+                ObjectSelectionSprite object = objects[i];
+                if(object.hovered){
+                    object.position.x = object.position.x + object.size.x * 0.03;
+                    object.position.y = object.position.y - object.size.y * 0.05;
+                    object.size = object.size * 1.05;
+                    object.depth = 0.07;
+
+                    ObjectSelection::rasterize_blockwise(object, framebuffer, true);
+                }
+            }
+        }
+
+        grid.sync();
+
+        // Draw label of currently hovered building
+        Font font(gamedata.img_ascii_16);
+        TextRenderer textRenderer(font);
+
+        for(int i = 0; i < numObjects; i++){
+            
+            ObjectSelectionSprite object = objects[i];
+
+            if(object.hovered){
+
+                
+                float x = object.position.x + 50.0f; // - particle.size.x / 2.0f;
+                float y = object.position.y;
+
+                Cursor cblack  = textRenderer.newCursor(20.0f, x + 2, y + 20 - 2);
+                Cursor cblack2 = textRenderer.newCursor(20.0f, x - 2, y + 20 - 2);
+                Cursor cblack3 = textRenderer.newCursor(20.0f, x + 0, y + 20 - 2);
+                Cursor cwhite  = textRenderer.newCursor(20.0f, x + 0, y + 20 + 0);
+                cwhite.textColor = {1.0f, 1.0f, 1.0f};
+
+                textRenderer.drawText(object.label, cblack, framebuffer);
+                textRenderer.drawText(object.label, cblack2, framebuffer);
+                textRenderer.drawText(object.label, cblack3, framebuffer);
+                textRenderer.drawText(object.label, cwhite, framebuffer);
+
+            }
+
+        }
+
+        grid.sync();
+
+        // Draw building that is currently being placed
+        if(gamedata.state->isPlacingBuilding && grid.block_rank() == 0){
+            ObjectSelectionSprite object = objects[gamedata.state->buildingType];
+
+            mat4 viewProj = uniforms.proj * uniforms.view;
+            float2 p0 = projectPosToScreenPos(float3{0.0, 0.0, 0.0}, viewProj, uniforms.width, uniforms.height);
+            float2 p1 = projectPosToScreenPos(float3{1.0, 1.0, 0.0}, viewProj, uniforms.width, uniforms.height);
+
+            float cellPixelSize = p1.x - p0.x;
+            float2 objectCellSize = object.cellSize;
+
+            float2 objectPixelSize = {
+                objectCellSize.x * cellPixelSize,
+                objectCellSize.y * cellPixelSize,
+            };
+
+            object.size = objectPixelSize;
+
+            object.position.x = float(mouseX) - object.size.x * 0.5f;
+            object.position.y = float(mouseY) - object.size.y * 0.5f;
+
+            ObjectSelection::rasterize_blockwise(object, framebuffer);
+        }
+
+
+
     }
 
     grid.sync();

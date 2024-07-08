@@ -151,11 +151,10 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::shared_ptr<ObjDa
     cuMemcpyHtoD(cptr_texture, texture.data(), 4 * 1024 * 1024);
 
     cuda_program = new CudaModularProgram({.modules =
-                                               {
-                                                   "./modules/rasterizeTriangles/rasterize.cu",
-                                                   "./modules/common/utils.cu",
-                                               },
-                                           .kernels = {"kernel"}});
+    {
+        "./modules/rasterizeTriangles/rasterize.cu",
+        "./modules/common/utils.cu",
+    }});
 
     cuEventCreate(&cevent_start, 0);
     cuEventCreate(&cevent_end, 0);

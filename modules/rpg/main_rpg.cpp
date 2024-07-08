@@ -159,12 +159,10 @@ void initCudaProgram(shared_ptr<GLRenderer> renderer, shared_ptr<ObjData> model,
     cuMemAlloc(&cptr_ascii_16, img_ascii_16.size());
     cuMemcpyHtoD(cptr_ascii_16, img_ascii_16.data(), img_ascii_16.size());
 
-    cuda_program = new CudaModularProgram({.modules =
-                                               {
-                                                   "./modules/rpg/rasterize.cu",
-                                                   "./modules/common/utils.cu",
-                                               },
-                                           .kernels = {"kernel"}});
+    cuda_program = new CudaModularProgram({.modules = {
+        "./modules/rpg/rasterize.cu",
+        "./modules/common/utils.cu",
+    }});
 
     cuEventCreate(&cevent_start, 0);
     cuEventCreate(&cevent_end, 0);

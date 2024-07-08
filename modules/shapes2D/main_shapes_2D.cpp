@@ -30,6 +30,7 @@ CUdeviceptr cptr_grid;
 CUdeviceptr cptr_entities;
 CUdeviceptr cptr_gameState;
 CUdeviceptr cptr_spriteSheet;
+CUdeviceptr cptr_spriteSheet_buildings;
 CUdeviceptr cptr_ascii_32;
 uint32_t gridRows;
 uint32_t gridCols;
@@ -124,14 +125,6 @@ void loadMap() {
 }
 
 void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
-    CUdevice device;
-    int numSMs;
-    cuCtxGetDevice(&device);
-    cuDeviceGetAttribute(&numSMs, CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT, device);
-
-    int workgroupSize = 64;
-
-    int numGroups = maxOccupancy(cuda_update, "update", workgroupSize, numSMs);
 
     cuEventRecord(cevent_start, 0);
 
@@ -166,17 +159,21 @@ void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
     memcpy(&uniforms.invproj, &invproj, sizeof(invproj));
     memcpy(&uniforms.invview, &invview, sizeof(invview));
 
-    void *args[] = {&uniforms, &cptr_gameState, &cptr_buffer,  &gridRows,
-                    &gridCols, &cptr_grid,      &cptr_entities};
+    GameData gamedata;
+    gamedata.uniforms        = uniforms;
+    gamedata.state           = (GameState*)cptr_gameState;
+    gamedata.buffer          = (unsigned int*)cptr_buffer;
+    gamedata.numRows         = gridRows;
+    gamedata.numCols         = gridCols;
+    gamedata.cells           = (char*)cptr_grid;
+    gamedata.entitiesBuffer  = (void*)cptr_entities;
+    gamedata.img_ascii_16    = (uint32_t*)cptr_ascii_32;
+    gamedata.img_spritesheet = (uint32_t*)cptr_spriteSheet;
+    gamedata.img_spritesheet_buildings = (uint32_t*)cptr_spriteSheet_buildings;
 
-    auto res_launch = cuLaunchCooperativeKernel(cuda_update->kernels["update"], numGroups, 1, 1,
-                                                workgroupSize, 1, 1, 0, 0, args);
+    void *args[] = {&gamedata};
 
-    if (res_launch != CUDA_SUCCESS) {
-        const char *str;
-        cuGetErrorString(res_launch, &str);
-        printf("error: %s \n", str);
-    }
+    cuda_update->launchCooperative("update", args, {.blocksize = 64});
 
     // cuEventRecord(cevent_end, 0);
     // cuEventSynchronize(cevent_end);
@@ -198,15 +195,6 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
 
     CUresult resultcode = CUDA_SUCCESS;
 
-    CUdevice device;
-    int numSMs;
-    cuCtxGetDevice(&device);
-    cuDeviceGetAttribute(&numSMs, CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT, device);
-
-    int workgroupSize = 64;
-
-    int numGroups = maxOccupancy(cuda_program, "kernel", workgroupSize, numSMs);
-
     std::vector<CUgraphicsResource> dynamic_resources = {cugl_colorbuffer};
     cuGraphicsMapResources(dynamic_resources.size(), dynamic_resources.data(),
                            ((CUstream)CU_STREAM_DEFAULT));
@@ -220,6 +208,8 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
 
     float time = now();
 
+    auto runtime = Runtime::getInstance();
+
     Uniforms uniforms;
     uniforms.width = renderer->width;
     uniforms.height = renderer->height;
@@ -228,6 +218,9 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
     uniforms.printTimings = printTimings;
     uniforms.creativeMode = creativeMode;
     uniforms.timeMultiplier = timeMultiplier;
+
+    memcpy(&uniforms.cursorPos, &runtime->mousePosition, sizeof(runtime->mousePosition));
+    uniforms.mouseButtons = Runtime::getInstance()->mouseButtons;
 
     glm::mat4 view = renderer->camera->viewMatrix();
     glm::mat4 proj = renderer->camera->projMatrix();
@@ -243,27 +236,21 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
     memcpy(&uniforms.invproj, &invproj, sizeof(invproj));
     memcpy(&uniforms.invview, &invview, sizeof(invview));
 
-    void *args[] = {&uniforms, &cptr_gameState, &cptr_buffer,   &output_surf,   &gridRows,
-                    &gridCols, &cptr_grid,      &cptr_entities, &cptr_ascii_32, &cptr_spriteSheet};
+    GameData gamedata;
+    gamedata.uniforms        = uniforms;
+    gamedata.state           = (GameState*)cptr_gameState;
+    gamedata.buffer          = (unsigned int*)cptr_buffer;
+    gamedata.numRows         = gridRows;
+    gamedata.numCols         = gridCols;
+    gamedata.cells           = (char*)cptr_grid;
+    gamedata.entitiesBuffer  = (void*)cptr_entities;
+    gamedata.img_ascii_16    = (uint32_t*)cptr_ascii_32;
+    gamedata.img_spritesheet = (uint32_t*)cptr_spriteSheet;
+    gamedata.img_spritesheet_buildings = (uint32_t*)cptr_spriteSheet_buildings;
 
-    auto res_launch = cuLaunchCooperativeKernel(cuda_program->kernels["kernel"], numGroups, 1, 1,
-                                                workgroupSize, 1, 1, 0, 0, args);
+    void *args[] = {&gamedata, &output_surf};
 
-    if (res_launch != CUDA_SUCCESS) {
-        const char *str;
-        cuGetErrorString(res_launch, &str);
-        printf("error: %s \n", str);
-    }
-
-    // cuEventRecord(cevent_end, 0);
-    // cuEventSynchronize(cevent_end);
-
-    //{
-    //    float total_ms;
-    //    cuEventElapsedTime(&total_ms, cevent_start, cevent_end);
-
-    //    std::cout << "Render duration: " << std::format("total:     {:6.1f} ms\n", total_ms);
-    //}
+    cuda_program->launchCooperative("kernel", args, {.blocksize = 64});
 
     cuCtxSynchronize();
 
@@ -279,12 +266,18 @@ void initGameState() {
     state.playerMoney = 2000;
     state.buildingDisplay = -1;
     state.gameTime = GameTime();
+    state.isPlacingBuilding = false;
+    state.buildingType = 0;
 
     cuMemcpyHtoD(cptr_gameState, &state, sizeof(GameState));
 }
 
-void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> &img_ascii_32,
-                     std::vector<uint8_t> &img_spritesheet) {
+void initCudaProgram(
+    std::shared_ptr<GLRenderer> renderer, 
+    std::vector<uint8_t> &img_ascii_32,
+    std::vector<uint8_t> &img_spritesheet,
+    std::vector<uint8_t> &img_spritesheet_buildings
+) {
     cuMemAlloc(&cptr_buffer, 100'000'000);
     cuMemAlloc(&cptr_gameState, sizeof(GameState));
 
@@ -318,6 +311,11 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
     cuMemAlloc(&cptr_spriteSheet, img_spritesheet.size());
     cuMemcpyHtoD(cptr_spriteSheet, img_spritesheet.data(), img_spritesheet.size());
 
+    // Sprites - Buildings
+    cuMemAlloc(&cptr_spriteSheet_buildings, img_spritesheet_buildings.size());
+    cuMemcpyHtoD(cptr_spriteSheet_buildings, img_spritesheet_buildings.data(), img_spritesheet_buildings.size());
+    
+
     cuda_program =
         new CudaModularProgram({.modules =
                                     {
@@ -327,7 +325,6 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
                                         "./modules/shapes2D/Rendering/sprite.cu",
                                         "./modules/shapes2D/World/time.cu",
                                     },
-                                .kernels = {"kernel"},
                                 .customIncludeDirs = {"./modules/shapes2D", " ./modules"}});
 
     cuda_update =
@@ -341,7 +338,6 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
                                         "./modules/shapes2D/World/Entities/entities.cu",
                                         "./modules/shapes2D/World/Entities/movement.cu",
                                     },
-                                .kernels = {"update"},
                                 .customIncludeDirs = {"./modules/shapes2D", " ./modules"}});
 
     cuEventCreate(&cevent_start, 0);
@@ -382,7 +378,17 @@ int main() {
                         size_t(data->size));
     }
 
-    initCudaProgram(renderer, img_ascii, img_spritesheet);
+    std::vector<uint8_t> img_spritesheet_buildings;
+    {
+        auto data = readBinaryFile("./resources/sprites/sprites_buildings.png");
+        uint32_t width;
+        uint32_t height;
+        lodepng::decode(img_spritesheet_buildings, width, height,
+                        (const unsigned char *)data->data_char,
+                        size_t(data->size));
+    }
+
+    initCudaProgram(renderer, img_ascii, img_spritesheet, img_spritesheet_buildings);
 
     auto update = [&]() { updateCUDA(renderer); };
 

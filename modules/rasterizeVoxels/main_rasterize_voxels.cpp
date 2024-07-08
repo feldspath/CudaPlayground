@@ -162,11 +162,10 @@ void initCudaProgram(shared_ptr<GLRenderer> renderer) {
     cuMemcpyHtoD(cptr_positions, voxel_positions.data(), voxel_positions.size() * sizeof(float3));
 
     cuda_program = new CudaModularProgram({.modules =
-                                               {
-                                                   "./modules/rasterizeVoxels/rasterize.cu",
-                                                   "./modules/common/utils.cu",
-                                               },
-                                           .kernels = {"kernel"}});
+    {
+        "./modules/rasterizeVoxels/rasterize.cu",
+        "./modules/common/utils.cu",
+    }});
 
     cuEventCreate(&cevent_start, 0);
     cuEventCreate(&cevent_end, 0);
