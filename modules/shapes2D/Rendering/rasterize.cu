@@ -192,10 +192,15 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
             color = float3{0.0f, 1.0f, 0.0f} * a + float3{1.0f, 0.0f, 0.0f} * (1 - a);
         }
 
-        if(tileIsHovered){
+        bool tileIsFree = map->cellsData[sh_cellIndex].buildingID == -1;
+        if(tileIsHovered && tileIsFree){
             color.x = 0.5 * color.x + 0.3;
             color.y = 0.5 * color.y + 0.3;
             color.z = 0.5 * color.z + 0.3;
+        }else if(tileIsHovered && !tileIsFree){
+            color.x = 0.5 * color.x + 0.3;
+            color.y = 0.5 * color.y + 0.1;
+            color.z = 0.5 * color.z + 0.1;
         }
 
         // if(map->cellsData[sh_cellIndex].buildingID >= 0){
@@ -342,7 +347,7 @@ extern "C" __global__ void kernel(GameData _gamedata, cudaSurfaceObject_t gl_col
             float cellPixelSize = p1.x - p0.x;    
 
             ObjectSelectionSprite& object = objects[construction.type];
-            object.depth = 0.0001;
+            object.depth = 0.2;
             object.position.x = screenPos.x;
             object.position.y = screenPos.y;
             object.size.x = object.cellSize.x * cellPixelSize;
