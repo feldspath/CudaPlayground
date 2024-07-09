@@ -600,6 +600,9 @@ void handleInputs(Map *map, Entities *entities) {
     ObjectSelectionSprite* objects = ObjectSelection::createPanel(allocator, numObjects, cursorPos.x, uniforms.height - cursorPos.y, gamedata);
 
     grid.sync();
+
+    bool wasPlacingBuilding = gamedata.state->isPlacingBuilding;
+    bool nothingHovered = true;
     
     { // Handle Clicking the Object Selection Panel
         bool mouseClicked =
@@ -612,6 +615,7 @@ void handleInputs(Map *map, Entities *entities) {
                 if(object.hovered){
                     gamedata.state->isPlacingBuilding = true;
                     gamedata.state->buildingType = i;
+                    nothingHovered = false;
                 }
             }
         }
@@ -656,7 +660,7 @@ void handleInputs(Map *map, Entities *entities) {
                 if(map->cellsData[cellID].buildingID >= 0) allCellsFree = false;
             }
 
-            if(allCellsFree){
+            if(allCellsFree && nothingHovered){
                 for(int ox = 0; ox < object.cellSize.x; ox++)
                 for(int oy = 0; oy < object.cellSize.y; oy++)
                 {
