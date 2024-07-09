@@ -23,41 +23,43 @@ curandStateXORWOW_t thread_random_state;
 
 struct UpdateInfo {
     bool update;
-    int tileToUpdate;
+    int cellToUpdate;
     TileId newTileId;
 };
 
-void updateCell(Map *map, UpdateInfo updateInfo) {
+void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
-    TileId new_tile = updateInfo.newTileId;
-    int id = updateInfo.tileToUpdate;
+    int cellId = updateInfo.cellToUpdate;
+
+    TileId newTile = updateInfo.newTileId;
+    TileId oldTile = map->getTileId(cellId);
 
     grid.sync();
     if (grid.thread_rank() == 0) {
         if (uniforms.creativeMode) {
-            map->setTileId(id, new_tile);
-        } else if (tileCost(new_tile) <= GameState::instance->playerMoney) {
-            GameState::instance->playerMoney -= tileCost(new_tile);
-            map->setTileId(id, new_tile);
+            map->setTileId(cellId, newTile);
+        } else if (tileCost(newTile) <= GameState::instance->playerMoney) {
+            GameState::instance->playerMoney -= tileCost(newTile);
+            map->setTileId(cellId, newTile);
         }
     }
     grid.sync();
 
-    if (map->getTileId(id) != new_tile) {
+    if (map->getTileId(cellId) == oldTile) {
         // tile was not updated
         return;
     }
 
-    switch (new_tile) {
+    switch (newTile) {
     case ROAD: {
         int *cumulNeighborNetworksSizes = allocator->alloc<int *>(sizeof(int) * 5);
         int *neighborNetworks = allocator->alloc<int *>(sizeof(int) * 4);
 
         if (grid.thread_rank() == 0) {
             // check nearby tiles.
-            auto neighbors = map->neighborCells(id);
+            auto neighbors = map->neighborCells(cellId);
             int neighborNetworksSizes[4];
 
             for (int i = 0; i < 4; i++) {
@@ -69,7 +71,7 @@ void updateCell(Map *map, UpdateInfo updateInfo) {
                     if (map->roadNetworkRepr(repr) == repr) {
                         neighborNetworksSizes[i] = map->roadNetworkId(repr);
                         neighborNetworks[i] = repr;
-                        map->roadNetworkRepr(repr) = id;
+                        map->roadNetworkRepr(repr) = cellId;
                         continue;
                     }
                 }
@@ -84,18 +86,18 @@ void updateCell(Map *map, UpdateInfo updateInfo) {
             }
 
             // Init the new road tile
-            map->roadNetworkRepr(id) = id;
-            map->roadNetworkId(id) = cumulNeighborNetworksSizes[4] + 1;
+            map->roadNetworkRepr(cellId) = cellId;
+            map->roadNetworkId(cellId) = cumulNeighborNetworksSizes[4] + 1;
         }
 
         grid.sync();
 
         // Flatten network
-        map->processEachCell(ROAD, [&](int cellId) {
+        map->processEachCell(ROAD, [&](int otherCellId) {
             int neighborId = -1;
             for (int i = 0; i < 4; ++i) {
                 int network = neighborNetworks[i];
-                if (map->roadNetworkRepr(cellId) == network || cellId == network) {
+                if (map->roadNetworkRepr(otherCellId) == network || otherCellId == network) {
                     neighborId = i;
                     break;
                 }
@@ -104,8 +106,8 @@ void updateCell(Map *map, UpdateInfo updateInfo) {
                 return;
             }
 
-            map->roadNetworkRepr(cellId) = id;
-            map->roadNetworkId(cellId) += cumulNeighborNetworksSizes[neighborId];
+            map->roadNetworkRepr(otherCellId) = cellId;
+            map->roadNetworkId(otherCellId) += cumulNeighborNetworksSizes[neighborId];
         });
         break;
     }
@@ -113,11 +115,11 @@ void updateCell(Map *map, UpdateInfo updateInfo) {
 
         if (grid.thread_rank() == 0) {
             // Set capacity
-            *map->factoryTileData(id) = FACTORY_CAPACITY;
+            *map->factoryTileData(cellId) = FACTORY_CAPACITY;
         }
 
         processRange(map->count, [&](int cellId) {
-            auto diff = map->cellCoords(cellId) - map->cellCoords(id);
+            auto diff = map->cellCoords(cellId) - map->cellCoords(cellId);
             int dist = length(make_float2(diff));
             if (dist < 20) {
                 map->cellsData[cellId].landValue =
@@ -130,16 +132,50 @@ void updateCell(Map *map, UpdateInfo updateInfo) {
     case HOUSE:
         if (grid.thread_rank() == 0) {
             // Set house to unassigned
-            *map->houseTileData(id) = -1;
+            *map->houseTileData(cellId) = -1;
         }
         break;
     case SHOP:
         if (grid.thread_rank() == 0) {
             // Set capacities
-            map->shopWorkCapacity(id) = SHOP_WORK_CAPACITY;
-            map->shopCurrentWorkerCount(id) = 0;
+            map->workplaceCapacity(cellId) = SHOP_WORK_CAPACITY;
+            map->shopCurrentWorkerCount(cellId) = 0;
         }
         break;
+    case GRASS: {
+        switch (oldTile) {
+        case HOUSE: {
+            // if it was a house, destroy the entity living there
+            if (grid.thread_rank() == 0) {
+                int entityId = *map->houseTileData(cellId);
+                if (entityId == -1) {
+                    break;
+                }
+                int workplaceId = entities->get(entityId).workplaceId;
+                map->workplaceCapacity(workplaceId)++;
+                entities->remove(entityId);
+            }
+            break;
+        }
+        case FACTORY:
+        case SHOP: {
+            // if the removed tile was a factory or shop, destroy the associated entities
+            entities->processAll([&](int entityId) {
+                auto &entity = entities->get(entityId);
+                if (entity.workplaceId == cellId) {
+                    map->workplaceCapacity(entity.workplaceId)++;
+                    entities->remove(entityId);
+                }
+            });
+        }
+        default:
+            break;
+        }
+
+        // if it was a road, refresh the networks data:
+        //
+        break;
+    }
     default:
         break;
     }
@@ -307,7 +343,7 @@ void assignOneCustomerToShop(Map *map, Entities *entities) {
 
     for (int entityIdx = 0; entityIdx < entities->getCount(); entityIdx++) {
         Entity &entity = entities->get(entityIdx);
-        if (entity.state != GoShopping || entity.destination != -1) {
+        if (!entity.active || entity.state != GoShopping || entity.destination != -1) {
             continue;
         }
 
@@ -358,7 +394,7 @@ void updateEntitiesState(Map *map, Entities *entities) {
     auto gameTime = GameState::instance->gameTime;
 
     // Each thread handles an entity
-    processRange(entities->getCount(), [&](int entityIndex) {
+    entities->processAll([&](int entityIndex) {
         Entity &entity = entities->get(entityIndex);
 
         bool destinationReached = false;
@@ -452,7 +488,7 @@ void entitiesInteractions(Map *map, Entities *entities) {
     auto block = cg::this_thread_block();
 
     // Update interactions
-    processRange(entities->getCount(), [&](int entityIndex) {
+    entities->processAll([&](int entityIndex) {
         Entity &entity = entities->get(entityIndex);
 
         switch (entity.state) {
@@ -497,7 +533,7 @@ void updateGameState(Entities *entities) {
         float dt = ((float)(nanotime_start - GameState::instance->previousFrameTime_ns)) / 1e9;
         GameState::instance->previousFrameTime_ns = nanotime_start;
         GameState::instance->currentTime_ms = currentTime_ms();
-        GameState::instance->population = *entities->count;
+        GameState::instance->population = entities->getCount();
         GameState::instance->previousMouseButtons = uniforms.mouseButtons;
 
         if (GameState::instance->firstFrame) {
@@ -553,7 +589,7 @@ void handleInputs(Map *map, Entities *entities) {
             unproject(px, uniforms.invview * uniforms.invproj, uniforms.width, uniforms.height);
         int id = map->cellAtPosition(float2{pos_W.x, pos_W.y});
 
-        if (mouseClicked) {
+        if (mouseClicked && (TileId)uniforms.modeId != GRASS) {
             if (grid.thread_rank() == 0) {
                 if (map->getTileId(id) & (HOUSE | FACTORY | SHOP)) {
                     if (GameState::instance->buildingDisplay == id) {
@@ -564,14 +600,14 @@ void handleInputs(Map *map, Entities *entities) {
                 }
             }
         } else if (mousePressed) {
-            if (id != -1 && map->getTileId(id) == GRASS) {
+            if (id != -1 && (map->getTileId(id) == GRASS || (TileId)uniforms.modeId == GRASS)) {
                 updateInfo.update = true;
-                updateInfo.tileToUpdate = id;
+                updateInfo.cellToUpdate = id;
                 updateInfo.newTileId = (TileId)uniforms.modeId;
             }
         }
         if (updateInfo.update) {
-            updateCell(map, updateInfo);
+            updateCell(map, entities, updateInfo);
         }
     }
 }
@@ -596,6 +632,11 @@ void updateGrid(Map *map, Entities *entities) {
     printDuration("updateEntitiesState         ", [&]() { updateEntitiesState(map, entities); });
     printDuration("entitiesInteractions        ", [&]() { entitiesInteractions(map, entities); });
     printDuration("updateGameState             ", [&]() { updateGameState(entities); });
+
+    auto grid = cg::this_grid();
+    if (grid.thread_rank() == 0) {
+        printf("%d, %d\n", entities->getCount(), entities->holes());
+    }
 }
 
 extern "C" __global__ void update(const Uniforms _uniforms, GameState *_gameState,

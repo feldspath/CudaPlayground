@@ -118,7 +118,7 @@ void GUI::renderInfoPanel(Map *map, Entities *entities) {
 
             // worker count
             textRenderer.drawText("Employees: ", cursor, framebuffer);
-            itos(FACTORY_CAPACITY - *map->factoryTileData(id), displayString);
+            itos(FACTORY_CAPACITY - map->workplaceCapacity(id), displayString);
             textRenderer.drawText(displayString, cursor, framebuffer);
             cursor.newline();
             break;
@@ -133,7 +133,7 @@ void GUI::renderInfoPanel(Map *map, Entities *entities) {
 
             // worker count
             textRenderer.drawText("Employees: ", cursor, framebuffer);
-            itos(SHOP_WORK_CAPACITY - map->shopWorkCapacity(id), displayString);
+            itos(SHOP_WORK_CAPACITY - map->workplaceCapacity(id), displayString);
             textRenderer.drawText(displayString, cursor, framebuffer);
             cursor.newline();
             break;

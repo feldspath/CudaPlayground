@@ -27,14 +27,16 @@ void GLRenderer::onKey(GLFWwindow *window, int key, int scancode, int action, in
     }
 
     // TODO: properly handle the events
-    if (key == GLFW_KEY_R && action == GLFW_PRESS) {
+    if (key == GLFW_KEY_1 && action == GLFW_PRESS) {
         Runtime::getInstance()->modeId = 2;
-    } else if (key == GLFW_KEY_G && action == GLFW_PRESS) {
+    } else if (key == GLFW_KEY_2 && action == GLFW_PRESS) {
         Runtime::getInstance()->modeId = 4;
-    } else if (key == GLFW_KEY_F && action == GLFW_PRESS) {
+    } else if (key == GLFW_KEY_3 && action == GLFW_PRESS) {
         Runtime::getInstance()->modeId = 8;
-    } else if (key == GLFW_KEY_T && action == GLFW_PRESS) {
+    } else if (key == GLFW_KEY_4 && action == GLFW_PRESS) {
         Runtime::getInstance()->modeId = 16;
+    } else if (key == GLFW_KEY_0 && action == GLFW_PRESS) {
+        Runtime::getInstance()->modeId = 1;
     }
 
     Runtime::keyStates[key] = action;

@@ -174,6 +174,8 @@ struct Uniforms {
 };
 
 struct Entity {
+    bool active;
+
     // movement
     float2 position;
     float2 velocity;
@@ -207,3 +209,6 @@ struct Entity {
 };
 
 static int BYTES_PER_ENTITY = sizeof(Entity);
+
+// Let's assume we can have as much entities as we have cells
+static constexpr int MAX_ENTITY_COUNT = MAPX * MAPY;

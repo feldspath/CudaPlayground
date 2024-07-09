@@ -1,5 +1,8 @@
 #pragma once
 
+static constexpr int MAPX = 512;
+static constexpr int MAPY = 512;
+
 static int FACTORY_CAPACITY = 4;
 static int SHOP_WORK_CAPACITY = 2;
 static int SHOP_CUSTOMERS_PER_WORKER = 4;

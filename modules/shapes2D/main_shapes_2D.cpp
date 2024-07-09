@@ -290,8 +290,8 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
 
     initGameState();
 
-    gridRows = 512;
-    gridCols = 512;
+    gridRows = MAPX;
+    gridCols = MAPY;
     int numCells = gridRows * gridCols;
     cuMemAlloc(&cptr_grid, numCells * BYTES_PER_CELL);
 
@@ -305,10 +305,9 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
     }
     cuMemcpyHtoD(cptr_grid, gridCells.data(), gridCells.size() * BYTES_PER_CELL);
 
-    // Let's assume we can have as much entities as we have cells
-    cuMemAlloc(&cptr_entities, sizeof(uint32_t) + numCells * (BYTES_PER_ENTITY));
-    uint32_t entitiesCount = 0;
-    cuMemcpyHtoD(cptr_entities, &entitiesCount, sizeof(uint32_t));
+    cuMemAlloc(&cptr_entities, 2 * sizeof(uint32_t) + MAX_ENTITY_COUNT * BYTES_PER_ENTITY);
+    uint32_t init[2] = {0, 0};
+    cuMemcpyHtoD(cptr_entities, init, 2 * sizeof(uint32_t));
 
     // Font rendering
     cuMemAlloc(&cptr_ascii_32, img_ascii_32.size());

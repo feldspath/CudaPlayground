@@ -2,8 +2,14 @@
 #include "entities.cuh"
 
 uint32_t Entities::newEntity(float2 position, uint32_t house, uint32_t workplace) {
-    int32_t id = getCount();
-    *count += 1;
+    int32_t id;
+    if (*holesCount == 0) {
+        id = getCount();
+        *count += 1;
+    } else {
+        id = *((uint32_t *)(&buffer[MAX_ENTITY_COUNT]) - *holesCount);
+        (*holesCount)--;
+    }
 
     Entity &entity = get(id);
     entity.position = position;
@@ -16,6 +22,7 @@ uint32_t Entities::newEntity(float2 position, uint32_t house, uint32_t workplace
     entity.destination = -1;
     entity.interaction = -1;
     entity.happiness = 255;
+    entity.active = true;
 
     return id;
 }

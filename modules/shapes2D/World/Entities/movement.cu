@@ -17,7 +17,7 @@ void fillCells(Map *map, Entities *entities) {
 
     grid.sync();
 
-    processRange(entities->getCount(), [&](int entityIdx) {
+    entities->processAll([&](int entityIdx) {
         Entity &entity = entities->get(entityIdx);
         EntityState state = entity.state;
         if (state == GoHome || state == GoToWork || state == GoShopping || state == Shop) {
@@ -53,7 +53,7 @@ void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) 
     grid.sync();
 
     // Count entities to move
-    processRange(entities->getCount(), [&](int entityIdx) {
+    entities->processAll([&](int entityIdx) {
         Entity &entity = entities->get(entityIdx);
         if (entity.path.isValid()) {
             atomicAdd(&entitiesToMoveCount, 1);
@@ -68,7 +68,7 @@ void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) 
 
     // Allocate buffer and store entities to move
     uint32_t *entitiesToMove = allocator->alloc<uint32_t *>(sizeof(uint32_t) * entitiesToMoveCount);
-    processRange(entities->getCount(), [&](int entityIdx) {
+    entities->processAll([&](int entityIdx) {
         Entity &entity = entities->get(entityIdx);
         if (entity.path.isValid()) {
             int idx = atomicAdd(&bufferIdx, 1);

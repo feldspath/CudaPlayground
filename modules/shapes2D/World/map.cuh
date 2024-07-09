@@ -92,8 +92,11 @@ struct Map {
     // SHOP DATA
     int32_t *shopTileData(int cellId) { return (int32_t *)(tileData(cellId)); }
 
-    int32_t &shopWorkCapacity(int cellId) { return shopTileData(cellId)[0]; }
     int32_t &shopCurrentWorkerCount(int cellId) { return shopTileData(cellId)[1]; }
+
+    // WORKPLACE DATA
+    bool isWorkplace(int cellId) const { return getTileId(cellId) & (SHOP | FACTORY); }
+    int32_t &workplaceCapacity(int cellId) { return *(int32_t *)(tileData(cellId)); }
 
     // Network logic
     NeighborNetworks neighborNetworks(int cellId) {

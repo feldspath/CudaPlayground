@@ -158,7 +158,7 @@ void rasterizeEntities(Entities *entities, Framebuffer framebuffer) {
         float3{ENTITY_RADIUS, 0.0f, 0.0f}, viewProj, uniforms.width, uniforms.height));
     // sphereRadius = 5.0f;
     //  Each thread grabs an entity
-    processRange(entities->getCount(), [&](int entityIndex) {
+    entities->processAll([&](int entityIndex) {
         float2 entityPos = entities->get(entityIndex).position;
         float2 screenPos = projectPosToScreenPos(make_float3(entityPos, 0.0f), viewProj,
                                                  uniforms.width, uniforms.height);
