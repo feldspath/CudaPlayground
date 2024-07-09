@@ -89,8 +89,8 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
 
         if(tx < btx) return false;
         if(ty < bty) return false;
-        if(tx > btx + object.cellSize.x) return false;
-        if(ty > bty + object.cellSize.y) return false;
+        if(tx >= btx + object.cellSize.x) return false;
+        if(ty >= bty + object.cellSize.y) return false;
 
         // if(grid.thread_rank() == 0){
         //     printf("%d, %d \n", btx, bty);
