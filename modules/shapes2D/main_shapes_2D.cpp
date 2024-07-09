@@ -28,6 +28,7 @@ namespace fs = std::filesystem;
 CUdeviceptr cptr_buffer;
 CUdeviceptr cptr_grid;
 CUdeviceptr cptr_entities;
+CUdeviceptr cptr_constructions;
 CUdeviceptr cptr_gameState;
 CUdeviceptr cptr_spriteSheet;
 CUdeviceptr cptr_spriteSheet_buildings;
@@ -170,6 +171,7 @@ void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
     gamedata.img_ascii_16    = (uint32_t*)cptr_ascii_32;
     gamedata.img_spritesheet = (uint32_t*)cptr_spriteSheet;
     gamedata.img_spritesheet_buildings = (uint32_t*)cptr_spriteSheet_buildings;
+    gamedata.constructions   = (ConstructionList*)cptr_constructions;
 
     void *args[] = {&gamedata};
 
@@ -247,6 +249,7 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
     gamedata.img_ascii_16    = (uint32_t*)cptr_ascii_32;
     gamedata.img_spritesheet = (uint32_t*)cptr_spriteSheet;
     gamedata.img_spritesheet_buildings = (uint32_t*)cptr_spriteSheet_buildings;
+    gamedata.constructions   = (ConstructionList*)cptr_constructions;
 
     void *args[] = {&gamedata, &output_surf};
 
@@ -294,6 +297,7 @@ void initCudaProgram(
             int cellId = y * gridCols + x;
             gridCells[cellId].tileId = GRASS;
             gridCells[cellId].landValue = 255;
+            gridCells[cellId].buildingID = -1;
         }
     }
     cuMemcpyHtoD(cptr_grid, gridCells.data(), gridCells.size() * BYTES_PER_CELL);
@@ -302,6 +306,9 @@ void initCudaProgram(
     cuMemAlloc(&cptr_entities, sizeof(uint32_t) + numCells * (BYTES_PER_ENTITY));
     uint32_t entitiesCount = 0;
     cuMemcpyHtoD(cptr_entities, &entitiesCount, sizeof(uint32_t));
+    
+    cuMemAlloc(&cptr_constructions, 16 + sizeof(ConstructionList));
+    cuMemsetD8(cptr_constructions, 0, 16 + sizeof(ConstructionList));
 
     // Font rendering
     cuMemAlloc(&cptr_ascii_32, img_ascii_32.size());

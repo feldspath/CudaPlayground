@@ -142,6 +142,7 @@ struct Cell {
     int32_t landValue;
     int32_t entities[ENTITIES_PER_CELL];
     char additionalData[8];
+    int32_t buildingID; // -1: empty
 };
 
 static int BYTES_PER_CELL = sizeof(Cell);
@@ -174,6 +175,17 @@ struct Uniforms {
     double2 cursorPos;
     int mouseButtons;
     int modeId;
+};
+
+struct Construction{
+    int32_t type;
+    int tile_x;
+    int tile_y;
+};
+
+struct ConstructionList{
+    uint32_t numConstructions;
+    Construction items[10'000];
 };
 
 struct Entity {
@@ -223,4 +235,5 @@ struct GameData{
     uint32_t *img_ascii_16;
     uint32_t *img_spritesheet;
     uint32_t *img_spritesheet_buildings;
+    ConstructionList* constructions;
 };

@@ -620,6 +620,7 @@ void handleInputs(Map *map, Entities *entities) {
     grid.sync();
 
     // Handle exiting placement mode
+    if(grid.thread_rank() == 0)
     if(uniforms.mouseButtons == 2){
         gamedata.state->isPlacingBuilding = false;
     }
@@ -627,7 +628,9 @@ void handleInputs(Map *map, Entities *entities) {
     grid.sync();
 
     // Handle placing an object
-    if(gamedata.state->isPlacingBuilding){
+    if(grid.thread_rank() == 0)
+    if(gamedata.state->isPlacingBuilding)
+    {
 
         ObjectSelectionSprite object = objects[gamedata.state->buildingType];
 
@@ -635,9 +638,50 @@ void handleInputs(Map *map, Entities *entities) {
         int pixelY = uniforms.height - cursorPos.y;
 
         float2 pFrag = make_float2(pixelX, pixelY);
-
         float3 pos_W = unproject(pFrag, uniforms.invview * uniforms.invproj, uniforms.width, uniforms.height);
+        int btx = pos_W.x - object.cellSize.x * 0.5;
+        int bty = pos_W.y  - object.cellSize.y * 0.5;
 
+
+        if(uniforms.mouseButtons == 1 && GameState::instance->previousMouseButtons == 0){
+
+            bool allCellsFree = true;
+            for(int ox = 0; ox < object.cellSize.x; ox++)
+            for(int oy = 0; oy < object.cellSize.y; oy++)
+            {
+                int tx = btx + ox;
+                int ty = bty + oy;
+                int cellID = map->cellAtPosition({tx, ty});
+
+                if(map->cellsData[cellID].buildingID >= 0) allCellsFree = false;
+            }
+
+            if(allCellsFree){
+                for(int ox = 0; ox < object.cellSize.x; ox++)
+                for(int oy = 0; oy < object.cellSize.y; oy++)
+                {
+                    int tx = btx + ox;
+                    int ty = bty + oy;
+                    int cellID = map->cellAtPosition({tx, ty});
+
+                    Construction construction;
+                    construction.type = gamedata.state->buildingType;
+                    construction.tile_x = tx;
+                    construction.tile_y = ty;
+
+                    map->cellsData[cellID].buildingID = gamedata.state->buildingType;
+
+                    if(ox == 0 && oy == 0){
+                        uint32_t constructionIndex = atomicAdd(&gamedata.constructions->numConstructions, 1);
+                        printf("constructionIndex %i \n", constructionIndex);
+                        gamedata.constructions->items[constructionIndex] = construction;
+                    }
+                    
+                }
+            }
+            
+
+        }
     }
 
 
@@ -658,7 +702,7 @@ void updateGrid(Map *map, Entities *entities) {
     // printDuration("moveEntities            ", [&]() { moveEntities(map, entities, allocator, GameState::instance->gameTime.getDt());});
     // printDuration("updateEntitiesState     ", [&]() { updateEntitiesState(map, entities); });
     // printDuration("entitiesInteractions    ", [&]() { entitiesInteractions(map, entities); });
-    // printDuration("updateGameState         ", [&]() { updateGameState(entities); });
+    printDuration("updateGameState         ", [&]() { updateGameState(entities); });
 }
 
 extern "C" __global__ void update(GameData _gamedata) {

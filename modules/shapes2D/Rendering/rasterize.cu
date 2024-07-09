@@ -92,9 +92,9 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
         if(tx > btx + object.cellSize.x) return false;
         if(ty > bty + object.cellSize.y) return false;
 
-        if(grid.thread_rank() == 0){
-            printf("%d, %d \n", btx, bty);
-        }
+        // if(grid.thread_rank() == 0){
+        //     printf("%d, %d \n", btx, bty);
+        // }
 
         return true;
     };
@@ -197,6 +197,10 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
             color.y = 0.5 * color.y + 0.3;
             color.z = 0.5 * color.z + 0.3;
         }
+
+        // if(map->cellsData[sh_cellIndex].buildingID >= 0){
+        //     color = {0.0, 1.0, 0.0};
+        // }
 
         float3 pixelColor = color;
 
@@ -310,6 +314,43 @@ extern "C" __global__ void kernel(GameData _gamedata, cudaSurfaceObject_t gl_col
         grid.sync();
         GUI gui(framebuffer, textRenderer, sprites, uniforms.proj * uniforms.view);
         gui.render(map, entities);
+    }
+
+    grid.sync();
+
+    { // DRAW CONSTRUCTIONS
+
+        auto cursor = gamedata.uniforms.cursorPos;
+        uint32_t numObjects = 0;
+        int mouseX = cursor.x;
+        int mouseY = uniforms.height - cursor.y;
+        ObjectSelectionSprite* objects = ObjectSelection::createPanel(allocator, numObjects, mouseX, mouseY, gamedata);
+
+        for_blockwise(gamedata.constructions->numConstructions, [&](int index){
+            Construction construction = gamedata.constructions->items[index];
+
+            mat4 viewProj = uniforms.proj * uniforms.view;
+            float3 cellPos = {
+                construction.tile_x, construction.tile_y, 0.0f
+            };
+            float2 screenPos = projectPosToScreenPos(cellPos, viewProj,
+                                                 uniforms.width, uniforms.height);
+
+            float2 p0 = projectPosToScreenPos(float3{0.0, 0.0, 0.0}, viewProj, uniforms.width, uniforms.height);
+            float2 p1 = projectPosToScreenPos(float3{1.0, 1.0, 0.0}, viewProj, uniforms.width, uniforms.height);
+
+            float cellPixelSize = p1.x - p0.x;    
+
+            ObjectSelectionSprite& object = objects[construction.type];
+            object.depth = 0.0001;
+            object.position.x = screenPos.x;
+            object.position.y = screenPos.y;
+            object.size.x = object.cellSize.x * cellPixelSize;
+            object.size.y = object.cellSize.y * cellPixelSize;
+
+            ObjectSelection::rasterize_blockwise(object, framebuffer);
+        });
+
     }
 
     grid.sync();
