@@ -11,7 +11,7 @@ struct FieldCell {
 
 struct FlowField {
     Map *map;
-    NeighborNetworks networkIds;
+    Neighbors networkIds;
 
     FieldCell *integrationField;
     uint32_t fieldSize;

@@ -1,7 +1,17 @@
 #pragma once
 #include "builtin_types.h"
 
-enum Direction { RIGHT = 0, LEFT = 1, UP = 2, DOWN = 3 };
+enum Direction {
+    RIGHT = 0,
+    LEFT = 1,
+    UP = 2,
+    DOWN = 3,
+    DIAG_UR = 4,
+    DIAG_DL = 5,
+    DIAG_UL = 6,
+    DIAG_DR = 7,
+    COUNT = 8,
+};
 
 static float2 directionFromEnum(Direction dir) {
     switch (dir) {
@@ -13,18 +23,45 @@ static float2 directionFromEnum(Direction dir) {
         return float2{0.0f, 1.0f};
     case DOWN:
         return float2{0.0f, -1.0f};
+    case DIAG_UR:
+        return float2{1.0f, 1.0f};
+    case DIAG_DL:
+        return float2{-1.0f, -1.0f};
+    case DIAG_UL:
+        return float2{-1.0f, 1.0f};
+    case DIAG_DR:
+        return float2{1.0f, -1.0f};
     default:
         break;
     }
 }
 
-template <typename T> struct NeighborInfo {
+static int2 coordFromEnum(Direction dir) {
+    switch (dir) {
+    case RIGHT:
+        return int2{1, 0};
+    case LEFT:
+        return int2{-1, 0};
+    case UP:
+        return int2{0, 1};
+    case DOWN:
+        return int2{0, -1};
+    case DIAG_UR:
+        return int2{1, 1};
+    case DIAG_DL:
+        return int2{-1, -1};
+    case DIAG_UL:
+        return int2{-1, 1};
+    case DIAG_DR:
+        return int2{1, -1};
+    default:
+        break;
+    }
+}
+
+template <typename T, size_t SIZE> struct NeighborInfo {
     // Indices follow the Direction enum values
-    // 0 -> right
-    // 1 -> left
-    // 2 -> up
-    // 3 -> down
-    T data[4];
+    T data[SIZE];
 
     bool contains(T other) const {
         return oneTrue([&](T val) { return val == other; });
@@ -32,17 +69,14 @@ template <typename T> struct NeighborInfo {
 
     T getDir(Direction dir) const { return data[static_cast<int32_t>(dir)]; }
 
-    NeighborInfo() {
-        data[0] = -1;
-        data[1] = -1;
-        data[2] = -1;
-        data[3] = -1;
-    }
+    NeighborInfo() { set(-1); }
+
+    static constexpr size_t size() { return SIZE; }
 
     // Apply f to every value in data that is not -1
-    template <typename Function> NeighborInfo<T> apply(Function &&f) const {
-        NeighborInfo<T> result;
-        for (int i = 0; i < 4; ++i) {
+    template <typename Function> NeighborInfo<T, SIZE> apply(Function &&f) const {
+        NeighborInfo<T, SIZE> result;
+        for (int i = 0; i < SIZE; ++i) {
             if (data[i] == -1) {
                 continue;
             }
@@ -51,9 +85,9 @@ template <typename T> struct NeighborInfo {
         return result;
     }
 
-    template <typename Function> void applyDir(Function &&f) const {
-        NeighborInfo<T> result;
-        for (int i = 0; i < 4; ++i) {
+    template <typename Function> NeighborInfo<T, SIZE> applyDir(Function &&f) const {
+        NeighborInfo<T, SIZE> result;
+        for (int i = 0; i < SIZE; ++i) {
             if (data[i] == -1) {
                 continue;
             }
@@ -64,7 +98,7 @@ template <typename T> struct NeighborInfo {
 
     // Run f to every value in data that is not -1
     template <typename Function> void forEach(Function &&f) const {
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 0; i < SIZE; ++i) {
             if (data[i] == -1) {
                 continue;
             }
@@ -73,7 +107,7 @@ template <typename T> struct NeighborInfo {
     }
 
     template <typename Function> void forEachDir(Function &&f) const {
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 0; i < SIZE; ++i) {
             if (data[i] == -1) {
                 continue;
             }
@@ -81,8 +115,20 @@ template <typename T> struct NeighborInfo {
         }
     }
 
+    template <typename Function> void setDir(Function &&f) {
+        for (int i = 0; i < SIZE; ++i) {
+            data[i] = f(Direction(i));
+        }
+    }
+
+    void set(T val) {
+        for (int i = 0; i < SIZE; ++i) {
+            data[i] = val;
+        }
+    }
+
     template <typename Function> bool oneTrue(Function &&f) const {
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 0; i < SIZE; ++i) {
             if (data[i] == -1) {
                 continue;
             }
@@ -93,3 +139,6 @@ template <typename T> struct NeighborInfo {
         return false;
     }
 };
+
+typedef NeighborInfo<int32_t, 4> Neighbors;
+typedef NeighborInfo<int32_t, 8> ExtendedNeighbors;

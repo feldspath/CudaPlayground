@@ -12,9 +12,9 @@ void Path::setLength(uint32_t newPathLength) {
         return;
     }
 
-    // Set path bits to 0
+    // Set path length bits to 0
     path = path & ~(uint64_t(0b11111ull) << 58ull);
-    // Set path
+    // Set path length
     path = path | (uint64_t(newPathLength) << 58ull);
 }
 
@@ -22,13 +22,13 @@ void Path::setDirId(Direction dir, uint32_t dirId) {
     if (dirId > MAX_LENGTH) {
         return;
     }
-    path = path & ~(0b11ull << uint64_t(2 * dirId));
-    path = path | (uint64_t(dir) << uint64_t(2 * dirId));
+    path = path & ~(DIR_MASK << uint64_t(BITS_PER_DIR * dirId));
+    path = path | (uint64_t(dir) << uint64_t(BITS_PER_DIR * dirId));
 }
 
 Direction Path::nextDir() {
     uint32_t pathLength = length();
-    return Direction(path >> uint64_t(2 * (pathLength - 1)) & 0b11ull);
+    return Direction(path >> uint64_t(BITS_PER_DIR * (pathLength - 1)) & DIR_MASK);
 }
 
 void Path::pop() {
@@ -43,7 +43,7 @@ void Path::pop() {
 void Path::append(Direction dir) {
     int currentLength = length();
     setLength(0);
-    path = path << 2ull;
+    path = path << BITS_PER_DIR;
     setDirId(dir, 0);
     setLength(currentLength + 1);
 }

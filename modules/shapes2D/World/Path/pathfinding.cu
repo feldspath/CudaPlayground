@@ -141,7 +141,7 @@ Path FlowField::extractPath(uint32_t originId) const {
     bool reached = false;
     Path path;
 
-    while (!reached && path.length() < 29) {
+    while (!reached && path.length() < Path::MAX_LENGTH) {
         // Retrieve path
         uint32_t min = uint32_t(Infinity);
         Direction dir;

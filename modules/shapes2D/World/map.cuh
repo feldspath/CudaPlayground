@@ -6,9 +6,6 @@
 #include "config.h"
 #include "direction.h"
 
-typedef NeighborInfo<int32_t> NeighborCells;
-typedef NeighborInfo<int32_t> NeighborNetworks;
-
 static unsigned int tileCost(TileId tile) {
     switch (tile) {
     case UNKNOWN:
@@ -99,7 +96,7 @@ struct Map {
     int32_t &workplaceCapacity(int cellId) { return *(int32_t *)(tileData(cellId)); }
 
     // Network logic
-    NeighborNetworks neighborNetworks(int cellId) {
+    Neighbors neighborNetworks(int cellId) {
         auto neighbors = neighborCells(cellId);
         return neighbors.apply([&](int neighborCellId) {
             if (getTileId(neighborCellId) == ROAD) {
@@ -110,8 +107,8 @@ struct Map {
         });
     }
 
-    NeighborNetworks sharedNetworks(NeighborNetworks nets1, NeighborNetworks nets2) {
-        NeighborNetworks result;
+    Neighbors sharedNetworks(Neighbors nets1, Neighbors nets2) {
+        Neighbors result;
         int count = 0;
         nets1.forEach([&](int network) {
             if (nets2.contains(network)) {
@@ -122,9 +119,9 @@ struct Map {
         return result;
     }
 
-    NeighborNetworks sharedNetworks(int cellId1, int cellId2) {
-        NeighborNetworks nets1 = neighborNetworks(cellId1);
-        NeighborNetworks nets2 = neighborNetworks(cellId2);
+    Neighbors sharedNetworks(int cellId1, int cellId2) {
+        Neighbors nets1 = neighborNetworks(cellId1);
+        Neighbors nets2 = neighborNetworks(cellId2);
         return sharedNetworks(nets1, nets2);
     }
 
@@ -137,13 +134,13 @@ struct Map {
         });
     }
 
-    NeighborCells neighborCells(int cellId) {
+    Neighbors neighborCells(int cellId) {
         int2 coords = cellCoords(cellId);
-        NeighborCells result;
-        result.data[0] = idFromCoords(coords.x + 1, coords.y);
-        result.data[1] = idFromCoords(coords.x - 1, coords.y);
-        result.data[2] = idFromCoords(coords.x, coords.y + 1);
-        result.data[3] = idFromCoords(coords.x, coords.y - 1);
+        Neighbors result;
+        result.setDir([&](Direction dir) {
+            int2 dirCoord = coordFromEnum(dir);
+            return idFromCoords(coords.x + dirCoord.x, coords.y + dirCoord.y);
+        });
         return result;
     }
 };

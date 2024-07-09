@@ -54,15 +54,16 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
 
     switch (newTile) {
     case ROAD: {
-        int *cumulNeighborNetworksSizes = allocator->alloc<int *>(sizeof(int) * 5);
-        int *neighborNetworks = allocator->alloc<int *>(sizeof(int) * 4);
+        int *cumulNeighborNetworksSizes =
+            allocator->alloc<int *>(sizeof(int) * (Neighbors::size() + 1));
+        int *neighborNetworks = allocator->alloc<int *>(sizeof(int) * Neighbors::size());
 
         if (grid.thread_rank() == 0) {
             // check nearby tiles.
             auto neighbors = map->neighborCells(cellId);
-            int neighborNetworksSizes[4];
+            int neighborNetworksSizes[Neighbors::size()];
 
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < Neighbors::size(); i++) {
                 int nId = neighbors.data[i];
                 // if one tile is not grass, update the connected components
                 if (nId != -1 && map->getTileId(nId) == ROAD) {
@@ -80,14 +81,14 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
             }
 
             cumulNeighborNetworksSizes[0] = 0;
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < Neighbors::size(); i++) {
                 cumulNeighborNetworksSizes[i + 1] =
                     cumulNeighborNetworksSizes[i] + neighborNetworksSizes[i];
             }
 
             // Init the new road tile
             map->roadNetworkRepr(cellId) = cellId;
-            map->roadNetworkId(cellId) = cumulNeighborNetworksSizes[4] + 1;
+            map->roadNetworkId(cellId) = cumulNeighborNetworksSizes[Neighbors::size()] + 1;
         }
 
         grid.sync();
@@ -95,7 +96,7 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
         // Flatten network
         map->processEachCell(ROAD, [&](int otherCellId) {
             int neighborId = -1;
-            for (int i = 0; i < 4; ++i) {
+            for (int i = 0; i < Neighbors::size(); ++i) {
                 int network = neighborNetworks[i];
                 if (map->roadNetworkRepr(otherCellId) == network || otherCellId == network) {
                     neighborId = i;
@@ -632,11 +633,6 @@ void updateGrid(Map *map, Entities *entities) {
     printDuration("updateEntitiesState         ", [&]() { updateEntitiesState(map, entities); });
     printDuration("entitiesInteractions        ", [&]() { entitiesInteractions(map, entities); });
     printDuration("updateGameState             ", [&]() { updateGameState(entities); });
-
-    auto grid = cg::this_grid();
-    if (grid.thread_rank() == 0) {
-        printf("%d, %d\n", entities->getCount(), entities->holes());
-    }
 }
 
 extern "C" __global__ void update(const Uniforms _uniforms, GameState *_gameState,
