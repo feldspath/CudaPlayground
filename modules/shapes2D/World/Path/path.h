@@ -18,6 +18,8 @@ struct Path {
     void setLength(uint32_t newPathLength);
     void setDirId(Direction dir, uint32_t dirId);
     Direction nextDir();
+    Direction getDir(int dirId);
+    Direction nextExtendedDir();
     void pop();
     void append(Direction dir);
 

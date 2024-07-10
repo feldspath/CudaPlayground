@@ -42,6 +42,7 @@ CUevent cevent_start, cevent_end;
 int renderMode = RENDERMODE_DEFAULT;
 bool printTimings = false;
 bool creativeMode = false;
+bool displayFlowfield = false;
 float timeMultiplier = 1.0f;
 
 void initCuda() {
@@ -148,6 +149,7 @@ void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
     uniforms.printTimings = printTimings;
     uniforms.creativeMode = creativeMode;
     uniforms.timeMultiplier = timeMultiplier;
+    uniforms.displayFlowfield = displayFlowfield;
 
     memcpy(&uniforms.cursorPos, &runtime->mousePosition, sizeof(runtime->mousePosition));
     uniforms.mouseButtons = Runtime::getInstance()->mouseButtons;
@@ -228,6 +230,7 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
     uniforms.printTimings = printTimings;
     uniforms.creativeMode = creativeMode;
     uniforms.timeMultiplier = timeMultiplier;
+    uniforms.displayFlowfield = displayFlowfield;
 
     glm::mat4 view = renderer->camera->viewMatrix();
     glm::mat4 proj = renderer->camera->projMatrix();
@@ -325,6 +328,7 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
                                         "./modules/shapes2D/Rendering/gui.cu",
                                         "./modules/shapes2D/Rendering/sprite.cu",
                                         "./modules/shapes2D/World/time.cu",
+                                        "./modules/shapes2D/World/Path/path.cu",
                                     },
                                 .kernels = {"kernel"},
                                 .customIncludeDirs = {"./modules/shapes2D", " ./modules"}});
@@ -420,6 +424,7 @@ int main() {
             ImGui::Text("Options");
             ImGui::Checkbox("Pring Timings", &printTimings);
             ImGui::Checkbox("Creative Mode", &creativeMode);
+            ImGui::Checkbox("Display Flowfield", &displayFlowfield);
             ImGui::SliderFloat("Time multiplier", &timeMultiplier, 0.1f, 10.0f);
 
             if (ImGui::Button("Save Map")) {

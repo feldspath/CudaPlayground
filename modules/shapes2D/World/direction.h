@@ -36,6 +36,17 @@ static float2 directionFromEnum(Direction dir) {
     }
 }
 
+static Direction enumFromCoord(int2 coord) {
+    int x = coord.x;
+    int y = coord.y;
+    int sum = x + y;
+    int lsb = y < 0 || sum < 0;
+    int osb = x == 0 || sum == 0;
+    int msb = x != 0 && y != 0;
+
+    return Direction(msb << 2 | osb << 1 | lsb);
+}
+
 static int2 coordFromEnum(Direction dir) {
     switch (dir) {
     case RIGHT:

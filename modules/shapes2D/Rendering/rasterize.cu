@@ -202,6 +202,44 @@ void rasterizeEntities(Entities *entities, Framebuffer framebuffer) {
     });
 }
 
+void rasterizeFlowfield(Entities *entities, Framebuffer framebuffer) {
+    auto grid = cg::this_grid();
+    auto block = cg::this_thread_block();
+
+    mat4 viewProj = uniforms.proj * uniforms.view;
+
+    float sphereRadius = length(projectVectorToScreenPos(
+        float3{ENTITY_RADIUS, 0.0f, 0.0f}, viewProj, uniforms.width, uniforms.height));
+    // sphereRadius = 5.0f;
+    //  Each thread grabs an entity
+    entities->processAll([&](int entityIndex) {
+        auto &entity = entities->get(entityIndex);
+        if (!entity.path.isValid()) {
+            return;
+        }
+
+        float2 screenPos = projectPosToScreenPos(make_float3(entity.position, 0.0f), viewProj,
+                                                 uniforms.width, uniforms.height);
+
+        for (int i = 0; i < 30; ++i) {
+            float depth = 0.8f;
+            uint64_t udepth = *((uint32_t *)&depth);
+            uint64_t pixel = (udepth << 32ull) | rgb8color(make_float3(0.0f, 1.0f, 0.0f));
+
+            int2 pixelCoords = make_int2(
+                screenPos + normalize(directionFromEnum(entity.path.nextExtendedDir())) * i);
+
+            if (pixelCoords.x < 0 || pixelCoords.x >= framebuffer.width || pixelCoords.y < 0 ||
+                pixelCoords.y >= framebuffer.height) {
+                continue;
+            }
+
+            int pixelID = pixelCoords.x + pixelCoords.y * uniforms.width;
+            atomicMin(&framebuffer.data[pixelID], pixel);
+        }
+    });
+}
+
 extern "C" __global__ void kernel(const Uniforms _uniforms, GameState *_gameState,
                                   unsigned int *buffer, cudaSurfaceObject_t gl_colorbuffer,
                                   uint32_t numRows, uint32_t numCols, char *cells,
@@ -245,6 +283,12 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, GameState *_gameStat
         grid.sync();
         rasterizeEntities(entities, framebuffer);
         grid.sync();
+
+        if (uniforms.displayFlowfield) {
+            rasterizeFlowfield(entities, framebuffer);
+            grid.sync();
+        }
+
         GUI gui(framebuffer, textRenderer, sprites, uniforms.proj * uniforms.view);
         gui.render(map, entities);
     }

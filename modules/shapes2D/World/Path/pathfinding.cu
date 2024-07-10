@@ -1,4 +1,6 @@
-#include "../common/utils.cuh"
+#include "common/helper_math.h"
+#include "common/utils.cuh"
+
 #include "pathfinding.cuh"
 
 struct PathfindingList {
@@ -106,13 +108,14 @@ void performPathFinding(Map *map, Entities *entities, Allocator *allocator) {
                     return;
                 }
 
-                map->neighborCells(fieldCell.cellId).forEach([&](int neighborId) {
+                map->neighborCells(fieldCell.cellId).forEachDir([&](Direction dir, int neighborId) {
                     int neighborFieldId = flowField.fieldId(neighborId);
                     if (neighborFieldId == -1) {
                         return;
                     }
 
                     auto &neighborFieldCell = flowField.getFieldCell(neighborFieldId);
+                    int32_t neighborDistance = 2 * length(directionFromEnum(dir));
 
                     // Atomically update neighbor tiles id if not set
                     int oldNeighborId = atomicCAS(&neighborFieldCell.cellId, -1, neighborId);
@@ -120,7 +123,7 @@ void performPathFinding(Map *map, Entities *entities, Allocator *allocator) {
                     if (oldNeighborId != -1) {
                         // Set distance value
                         fieldCell.distance =
-                            min(fieldCell.distance, neighborFieldCell.distance + 1);
+                            min(fieldCell.distance, neighborFieldCell.distance + neighborDistance);
                     }
                 });
             });

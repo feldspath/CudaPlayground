@@ -165,6 +165,7 @@ struct Uniforms {
     int renderMode;
     bool printTimings;
     bool creativeMode;
+    bool displayFlowfield;
     float timeMultiplier;
 
     // Inputs

@@ -1,6 +1,7 @@
 #pragma once
 
-#include "./../common/utils.cuh"
+#include "common/utils.cuh"
+
 #include "HostDeviceInterface.h"
 #include "builtin_types.h"
 #include "config.h"
@@ -137,6 +138,16 @@ struct Map {
     Neighbors neighborCells(int cellId) {
         int2 coords = cellCoords(cellId);
         Neighbors result;
+        result.setDir([&](Direction dir) {
+            int2 dirCoord = coordFromEnum(dir);
+            return idFromCoords(coords.x + dirCoord.x, coords.y + dirCoord.y);
+        });
+        return result;
+    }
+
+    ExtendedNeighbors extendedNeighborCells(int cellId) {
+        int2 coords = cellCoords(cellId);
+        ExtendedNeighbors result;
         result.setDir([&](Direction dir) {
             int2 dirCoord = coordFromEnum(dir);
             return idFromCoords(coords.x + dirCoord.x, coords.y + dirCoord.y);

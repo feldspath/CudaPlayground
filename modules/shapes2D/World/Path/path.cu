@@ -1,4 +1,6 @@
-#include "./../common/utils.cuh"
+#include "common/helper_math.h"
+#include "common/utils.cuh"
+
 #include "path.h"
 
 void Path::reset() { path = 0; }
@@ -26,9 +28,30 @@ void Path::setDirId(Direction dir, uint32_t dirId) {
     path = path | (uint64_t(dir) << uint64_t(BITS_PER_DIR * dirId));
 }
 
-Direction Path::nextDir() {
-    uint32_t pathLength = length();
-    return Direction(path >> uint64_t(BITS_PER_DIR * (pathLength - 1)) & DIR_MASK);
+Direction Path::nextDir() { return getDir(0); }
+
+Direction Path::getDir(int dirId) {
+    uint32_t pathLength = this->length();
+    return Direction(path >> uint64_t(BITS_PER_DIR * (pathLength - 1 - dirId)) & DIR_MASK);
+}
+
+Direction Path::nextExtendedDir() {
+    Direction first = getDir(0);
+
+    if (this->length() == 1) {
+        return first;
+    }
+
+    Direction second = getDir(1);
+
+    int2 coord1 = coordFromEnum(first);
+    int2 coord2 = coordFromEnum(second);
+
+    if (dot(coord1, coord2) == 0) {
+        return enumFromCoord(coord1 + coord2);
+    } else {
+        return first;
+    }
 }
 
 void Path::pop() {

@@ -122,35 +122,10 @@ void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) 
         }
 
         // Stirring force
-        // TODO: improve by choosing a continuous location, not discrete
-        float2 dirVector = directionFromEnum(entity.path.nextDir());
-        float2 parVector = {dirVector.y, dirVector.x};
-        float2 targetCenter =
-            map->getCellPosition(map->cellAtPosition(entity.position)) + dirVector * CELL_RADIUS;
-
-        float2 targetSide1 = targetCenter + parVector * CELL_RADIUS * 0.25;
-        float2 targetSide2 = targetCenter - parVector * CELL_RADIUS * 0.25;
-
-        float2 target = targetCenter;
-        float targetDistance = targetDistance;
-
-        float dist1 = length(targetSide1 - entity.position);
-        if (dist1 < targetDistance) {
-            target = targetSide1;
-            targetDistance = dist1;
-        }
-        float dist2 = length(targetSide2 - entity.position);
-        if (dist2 < targetDistance) {
-            target = targetSide2;
-            targetDistance = dist2;
-        }
-
-        forces += normalize(target - entity.position) * STIR_STRENGTH;
-
-        forces -= 10.0 * entity.velocity;
-
-        // float angle = generateRandomNumber() * 2.0 * 3.141592;
-        // forces += length(forces) * 0.5 * float2{cos(angle), sin(angle)};
+        Direction nextDir = entity.path.nextExtendedDir();
+        float2 dirVector = directionFromEnum(nextDir);
+        forces += normalize(dirVector) * STIR_STRENGTH;
+        forces -= DAMPING_STRENGTH * entity.velocity;
 
         entity.velocity += forces * dt;
 
