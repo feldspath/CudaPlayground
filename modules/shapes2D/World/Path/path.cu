@@ -35,25 +35,6 @@ Direction Path::getDir(int dirId) {
     return Direction(path >> uint64_t(BITS_PER_DIR * (pathLength - 1 - dirId)) & DIR_MASK);
 }
 
-Direction Path::nextExtendedDir() {
-    Direction first = getDir(0);
-
-    if (this->length() == 1) {
-        return first;
-    }
-
-    Direction second = getDir(1);
-
-    int2 coord1 = coordFromEnum(first);
-    int2 coord2 = coordFromEnum(second);
-
-    if (dot(coord1, coord2) == 0) {
-        return enumFromCoord(coord1 + coord2);
-    } else {
-        return first;
-    }
-}
-
 void Path::pop() {
     int newPathLength = length() - 1;
     if (newPathLength == 0) {

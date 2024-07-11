@@ -8,9 +8,9 @@ struct Path {
     // 3x19 bits for the directions. LSBs correspond to the last directions.
     uint64_t path;
 
-    static const uint32_t MAX_LENGTH = 29;
-    static constexpr unsigned long long BITS_PER_DIR = 2ull;
-    static constexpr unsigned long long DIR_MASK = 0b11ull;
+    static const uint32_t MAX_LENGTH = 19;
+    static constexpr unsigned long long BITS_PER_DIR = 3ull;
+    static constexpr unsigned long long DIR_MASK = 0b111ull;
 
     void reset();
     bool isValid();
@@ -19,7 +19,6 @@ struct Path {
     void setDirId(Direction dir, uint32_t dirId);
     Direction nextDir();
     Direction getDir(int dirId);
-    Direction nextExtendedDir();
     void pop();
     void append(Direction dir);
 

@@ -122,7 +122,7 @@ void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) 
         }
 
         // Stirring force
-        Direction nextDir = entity.path.nextExtendedDir();
+        Direction nextDir = entity.path.nextDir();
         float2 dirVector = directionFromEnum(nextDir);
         forces += normalize(dirVector) * STIR_STRENGTH;
         forces -= DAMPING_STRENGTH * entity.velocity;

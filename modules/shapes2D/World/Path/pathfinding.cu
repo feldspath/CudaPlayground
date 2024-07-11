@@ -90,16 +90,25 @@ void performPathFinding(Map *map, Entities *entities, Allocator *allocator) {
 
         block.sync();
 
-        auto isOriginReached = [](int origin, Map *map, Pathfinding &info) {
-            return map->neighborCells(origin).oneTrue([&](int cellId) {
-                int fieldId = info.flowField.fieldId(cellId);
-                return fieldId != -1 &&
-                       info.flowField.getFieldCell(fieldId).distance < uint32_t(Infinity);
-            });
+        auto shortestPathLength = [](int cellId, Map *map, Pathfinding &info) {
+            return map->neighborCells(cellId)
+                .apply([&](int cellId) {
+                    int fieldId = info.flowField.fieldId(cellId);
+                    if (fieldId == -1) {
+                        return uint32_t(Infinity);
+                    }
+                    return info.flowField.getFieldCell(fieldId).distance;
+                })
+                .min();
         };
 
         // Build flowfield
-        while (!isOriginReached(info.origin, map, info)) {
+        int iterations = 0;
+        // The first path found is the smallest in size but not necessarily the shortest, because
+        // there are different distance values. This condition ensures that it continues enough
+        // to ensure path optimality.
+        while (2 * iterations <= shortestPathLength(info.origin, map, info)) {
+            iterations++;
             // The field is split accross the threads of the block
             processRangeBlock(info.flowField.length(), [&](int currentFieldId) {
                 FieldCell &fieldCell = info.flowField.getFieldCell(currentFieldId);
@@ -108,27 +117,32 @@ void performPathFinding(Map *map, Entities *entities, Allocator *allocator) {
                     return;
                 }
 
-                map->neighborCells(fieldCell.cellId).forEachDir([&](Direction dir, int neighborId) {
-                    int neighborFieldId = flowField.fieldId(neighborId);
-                    if (neighborFieldId == -1) {
-                        return;
-                    }
+                map->extendedNeighborCells(fieldCell.cellId)
+                    .forEachDir([&](Direction dir, int neighborId) {
+                        if (!flowField.isNeighborValid(fieldCell.cellId, dir)) {
+                            return;
+                        }
 
-                    auto &neighborFieldCell = flowField.getFieldCell(neighborFieldId);
-                    int32_t neighborDistance = 2 * length(directionFromEnum(dir));
+                        int neighborFieldId = flowField.fieldId(neighborId);
+                        if (neighborFieldId == -1) {
+                            return;
+                        }
 
-                    // Atomically update neighbor tiles id if not set
-                    int oldNeighborId = atomicCAS(&neighborFieldCell.cellId, -1, neighborId);
+                        auto &neighborFieldCell = flowField.getFieldCell(neighborFieldId);
+                        int32_t neighborDistance = 10 * length(directionFromEnum(dir));
 
-                    if (oldNeighborId != -1) {
-                        // Set distance value
-                        fieldCell.distance =
-                            min(fieldCell.distance, neighborFieldCell.distance + neighborDistance);
-                    }
-                });
+                        // Atomically update neighbor tiles id if not set
+                        int oldNeighborId = atomicCAS(&neighborFieldCell.cellId, -1, neighborId);
+
+                        if (oldNeighborId != -1) {
+                            // Set distance value
+                            fieldCell.distance = min(fieldCell.distance,
+                                                     neighborFieldCell.distance + neighborDistance);
+                        }
+                    });
             });
 
-            // not sure if this is needed or not
+            // Ensure that the iteration is completed by all threads before the next one
             block.sync();
         }
 
@@ -151,23 +165,35 @@ Path FlowField::extractPath(uint32_t originId) const {
         int nextCell;
 
         // We assume that there is always a possible path to the target
-        map->neighborCells(current).forEachDir([&](Direction neighbordDir, int neighborId) {
-            if (reached) {
+        map->extendedNeighborCells(current).forEachDir([&](Direction neighborDir, int neighborId) {
+            if (!isNeighborValid(current, neighborDir) || reached) {
                 return;
             }
-            int fId = fieldId(neighborId);
+
             if (neighborId == target) {
                 reached = true;
-                dir = neighbordDir;
-            } else if (fId != -1) {
-                uint32_t distance = getFieldCell(fId).distance;
-                if (distance < min) {
-                    min = distance;
-                    dir = neighbordDir;
-                    nextCell = neighborId;
-                }
+                dir = neighborDir;
+                min = 0;
+                return;
+            }
+
+            int neighborFieldId = fieldId(neighborId);
+            if (neighborFieldId == -1) {
+                return;
+            }
+
+            uint32_t distance = getFieldCell(neighborFieldId).distance;
+            if (distance < min) {
+                min = distance;
+                dir = neighborDir;
+                nextCell = neighborId;
             }
         });
+
+        if (min == uint32_t(Infinity)) {
+            printf("Pathfinding error\n");
+            return Path();
+        }
 
         path.append(dir);
         current = nextCell;
@@ -195,4 +221,17 @@ void FlowField::resetCell(uint32_t fieldId) {
     auto &fieldCell = getFieldCell(fieldId);
     fieldCell.cellId = -1;
     fieldCell.distance = uint32_t(Infinity);
+}
+
+bool FlowField::isNeighborValid(uint32_t cellId, Direction neighborDir) const {
+    if (int(neighborDir) < 4) {
+        return true;
+    }
+
+    int2 currentCellCoord = map->cellCoords(cellId);
+    int2 dirCoords = coordFromEnum(neighborDir);
+    int id1 = map->idFromCoords(currentCellCoord + int2{dirCoords.x, 0});
+    int id2 = map->idFromCoords(currentCellCoord + int2{0, dirCoords.y});
+    return !((id1 == -1 || map->getTileId(id1) != ROAD) &&
+             (id2 == -1 || map->getTileId(id2) != ROAD));
 }

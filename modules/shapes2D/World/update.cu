@@ -403,6 +403,7 @@ void updateEntitiesState(Map *map, Entities *entities) {
             map->cellAtPosition(entity.position) == entity.destination) {
             destinationReached = true;
             entity.position = map->getCellPosition(entity.destination);
+            entity.velocity = float2{0.0f, 0.0f};
             entity.happiness = max(
                 int(entity.happiness) - (gameTime.minutesElapsedSince(entity.stateStart)) / 10, 0);
         }

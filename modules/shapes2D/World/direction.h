@@ -138,6 +138,19 @@ template <typename T, size_t SIZE> struct NeighborInfo {
         }
     }
 
+    T min() {
+        T minValue = T(Infinity);
+        for (int i = 0; i < SIZE; ++i) {
+            if (data[i] == -1) {
+                continue;
+            }
+            if (data[i] < minValue) {
+                minValue = data[i];
+            }
+        }
+        return minValue;
+    }
+
     template <typename Function> bool oneTrue(Function &&f) const {
         for (int i = 0; i < SIZE; ++i) {
             if (data[i] == -1) {

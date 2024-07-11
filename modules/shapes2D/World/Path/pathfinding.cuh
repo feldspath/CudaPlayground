@@ -51,6 +51,8 @@ struct FlowField {
     }
 
     Path extractPath(uint32_t originId) const;
+
+    bool isNeighborValid(uint32_t fieldId, Direction neighborDir) const;
 };
 
 struct Pathfinding {

@@ -226,8 +226,8 @@ void rasterizeFlowfield(Entities *entities, Framebuffer framebuffer) {
             uint64_t udepth = *((uint32_t *)&depth);
             uint64_t pixel = (udepth << 32ull) | rgb8color(make_float3(0.0f, 1.0f, 0.0f));
 
-            int2 pixelCoords = make_int2(
-                screenPos + normalize(directionFromEnum(entity.path.nextExtendedDir())) * i);
+            int2 pixelCoords =
+                make_int2(screenPos + normalize(directionFromEnum(entity.path.nextDir())) * i);
 
             if (pixelCoords.x < 0 || pixelCoords.x >= framebuffer.width || pixelCoords.y < 0 ||
                 pixelCoords.y >= framebuffer.height) {
