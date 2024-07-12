@@ -169,12 +169,119 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
                 }
             });
         }
+        case ROAD: {
+            // if it was a road, refresh the networks data
+            int32_t network = map->roadNetworkRepr(cellId);
+
+            bool *validCells = allocator->alloc<bool *>(sizeof(bool) * map->count);
+
+            map->processEachCell(ROAD, [&](int cellId) { validCells[cellId] = true; });
+
+            // reset relevant network
+            map->processEachCell(ROAD, [&](int cellId) {
+                if (map->roadNetworkRepr(cellId) == network) {
+                    map->roadNetworkRepr(cellId) = cellId;
+                    validCells[cellId] = false;
+                }
+            });
+            grid.sync();
+
+            entities->processAll([&](int entityId) {
+                auto &entity = entities->get(entityId);
+                if (!validCells[map->cellAtPosition(entity.position)]) {
+                    entity.path.reset();
+                }
+            });
+
+            // recompute connected components
+            // https://largo.lip6.fr/~lacas/Publications/IPTA17.pdf
+            bool &changed = *allocator->alloc<bool *>(sizeof(bool));
+            for (int i = 0; i < 10; ++i) {
+                if (grid.thread_rank() == 0) {
+                    changed = false;
+                }
+                grid.sync();
+                map->processEachCell(ROAD, [&](int cellId) {
+                    if (validCells[cellId]) {
+                        return;
+                    }
+                    int m = map->neighborNetworks(cellId).min();
+                    int old = atomicMin(&map->roadNetworkRepr(map->roadNetworkRepr(cellId)), m);
+                    if (m < old) {
+                        changed = true;
+                    }
+                });
+                grid.sync();
+                if (!changed) {
+                    // if (grid.thread_rank() == 0) {
+                    //     printf("ended in %d iterations\n", i);
+                    // }
+                    break;
+                }
+                map->processEachCell(ROAD, [&](int cellId) {
+                    if (validCells[cellId]) {
+                        return;
+                    }
+                    int network = map->roadNetworkRepr(cellId);
+                    while (network != map->roadNetworkRepr(network)) {
+                        network = map->roadNetworkRepr(network);
+                    }
+                    map->roadNetworkRepr(cellId) = network;
+                });
+            }
+
+            // recompute network ids
+            // count the different unique networks
+            int &uniqueNetworksCount = *allocator->alloc<int32_t *>(sizeof(int32_t));
+            if (grid.thread_rank() == 0) {
+                uniqueNetworksCount = 0;
+            }
+            grid.sync();
+            map->processEachCell(ROAD, [&](int cellId) {
+                if (validCells[cellId]) {
+                    return;
+                }
+                int net = map->roadNetworkRepr(cellId);
+                if (cellId == net) {
+                    map->roadNetworkId(cellId) = atomicAdd(&uniqueNetworksCount, 1);
+                }
+            });
+            grid.sync();
+
+            // variable for each unique network
+            int *networkIds = allocator->alloc<int *>(sizeof(int) * uniqueNetworksCount);
+            if (grid.thread_rank() == 0) {
+                for (int i = 0; i < uniqueNetworksCount; ++i) {
+                    networkIds[i] = 1;
+                }
+            }
+            grid.sync();
+
+            // assign the ids
+            map->processEachCell(ROAD, [&](int cellId) {
+                if (validCells[cellId]) {
+                    return;
+                }
+                int net = map->roadNetworkRepr(cellId);
+                if (cellId != net) {
+                    map->roadNetworkId(cellId) = atomicAdd(&networkIds[map->roadNetworkId(net)], 1);
+                }
+            });
+            grid.sync();
+
+            map->processEachCell(ROAD, [&](int cellId) {
+                if (validCells[cellId]) {
+                    return;
+                }
+                int net = map->roadNetworkRepr(cellId);
+                if (cellId == net) {
+                    map->roadNetworkId(cellId) = networkIds[map->roadNetworkId(net)];
+                }
+            });
+        }
         default:
             break;
         }
-
-        // if it was a road, refresh the networks data:
-        //
         break;
     }
     default:

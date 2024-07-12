@@ -28,10 +28,7 @@ struct FlowField {
         networkIds.forEach([&](int network) { fieldSize += map->roadNetworkId(network); });
     }
 
-    void setBuffer(FieldCell *integrationField) {
-        this->integrationField = integrationField;
-        this->fieldSize = fieldSize;
-    }
+    void setBuffer(FieldCell *integrationField) { this->integrationField = integrationField; }
 
     inline uint32_t length() const { return fieldSize; }
     inline uint32_t size() const { return fieldSize * sizeof(FieldCell); }
