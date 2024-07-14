@@ -1,0 +1,78 @@
+<meta http-equiv="refresh" content="0.1">
+<body>
+
+
+<svg  width="800" height="800" style="border: 2px solid black">
+	<g id="svg" transform="translate(0,800) scale(1,-1)">
+	
+		<circle cx="50" cy="50" r="40" stroke="green" stroke-width="4" fill="yellow" />
+	</g>
+</svg>
+
+
+<script type="module">
+
+import {Map} from "./map.js";
+
+let svg = document.getElementById("svg");
+
+
+let map = new Map();
+
+{ // build obstacles
+
+	// it's upside down
+	map.cells = [
+		0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 
+		0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 
+		0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 
+		0, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 
+		0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 
+		0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 
+		0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 
+		0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 
+		0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 
+		0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 
+		0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 
+		0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 
+		0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 
+		0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 
+		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+	]
+}
+
+
+let svgmap = map.createSvg();
+
+svgmap.setAttribute("transform", "translate(50,50) rotate(0)");
+svg.appendChild(svgmap);
+
+let start = [1, 1];
+let end = [3, 1];
+
+// map.
+
+</script>
+
+
+</body>
+
+
+
+<script>
+// let circle = document.createElementNS('http://www.w3.org/2000/svg','circle');
+// circle.setAttribute('cx', '5');
+// circle.setAttribute('cy', '20');
+// circle.setAttribute('r', '30');
+// circle.setAttribute('fill', 'blue');
+// svg.appendChild(circle);
+
+// let rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+// rect.setAttribute('x', '100');
+// rect.setAttribute('y', '200');
+// rect.setAttribute('width', '100');
+// rect.setAttribute('height', '30');
+// rect.setAttribute('fill', 'blue');
+// svg.appendChild(rect);
+</script>
