@@ -111,7 +111,11 @@ export class Map{
 		};
 	}
 
-	findPath(start, end){
+	// findPathAStar(start, end){
+
+	// }
+
+	findPathDijkstra(start, end, enableTrace){
 
 		let t_start = Date.now();
 
@@ -128,8 +132,10 @@ export class Map{
 		this.distances[currentCellID] = 0;
 
 		let path = [];
+		let numNeighborChecks = 0;
 		
 		let abc = 0;
+		outerLoop:
 		while(abc < 10_000){
 			abc++;
 
@@ -139,7 +145,7 @@ export class Map{
 			path.push(currentCell);
 
 			// CHECK/UPDATE NEIGHBORS
-			outerLoop:
+			neigborLoop:
 			for(let dx = -1; dx <= 1; dx++)
 			for(let dy = -1; dy <= 1; dy++)
 			{
@@ -148,6 +154,8 @@ export class Map{
 				let neighbor_id = this.toCellID(neighbor_x, neighbor_y);
 
 				if(neighbor_id == currentCellID) continue;
+
+				numNeighborChecks++;
 				
 				// skip if 
 				if(neighbor_x < 0 || neighbor_x >= this.width) continue;   // outside map
@@ -189,7 +197,7 @@ export class Map{
 
 				if(currentCellID == targetCellID){
 
-					let path = [{x: end[0], y: end[1]}];
+					path = [{x: end[0], y: end[1]}];
 					for(let i = 0; i < 10_000; i++){
 
 						let previousID = this.previous[currentCellID];
@@ -210,14 +218,16 @@ export class Map{
 					let t_end = Date.now();
 					let millies = t_end - t_start;
 					// console.log(`milliseconds: ${millies} ms`);
-
-					return path;
+					break outerLoop;
+					// return path;
 				}
 			}
 
 		}
 
-		return path;
+		
+
+		return {path, numNeighborChecks};
 
 	}
 

@@ -125,6 +125,68 @@ void loadMap() {
     cuMemcpyHtoD(cptr_gameState, &state, sizeof(GameState));
 }
 
+void loadScene(){
+
+    { // LOAD MAP
+        auto asciidata = readBinaryFile("./resources/testscenes/map_64x64.png");
+        uint32_t width;
+        uint32_t height;
+        std::vector<uint8_t> img;
+        lodepng::decode(img, width, height, (const unsigned char *)asciidata->data_char, size_t(asciidata->size));
+
+        uint32_t* img_u32 = (uint32_t*)img.data();
+
+        std::vector<Cell> gridCells(width * height);
+        for (int x = 0; x < width; x++) 
+        for (int y = 0; y < height; y++) 
+        {
+
+            int pixelID = x + (height - y - 1) * width;
+            uint32_t pixelValue = img_u32[pixelID];
+
+            TileId type = TileId::GRASS;
+            if(pixelValue == 0xff00ff00){
+                type = TileId::GRASS;
+            }else if(pixelValue == 0xff000000){
+                type = TileId::STONE;
+            }else if(pixelValue == 0xffff0000){
+                type = TileId::WATER;
+            }
+
+            int cellId = y * gridCols + x;
+            gridCells[cellId].tileId = type;
+            gridCells[cellId].landValue = 255;
+            gridCells[cellId].buildingID = -1;
+        }
+    
+        cuMemcpyHtoD(cptr_grid, gridCells.data(), gridCells.size() * BYTES_PER_CELL);
+
+        gridRows = width;
+        gridCols = height;
+    }
+
+    { // CREATE ENTITIES
+
+        Entity entity = {
+            .position          = {26.0f, 59.0f},
+            .velocity          = {0.0f, 0.0f},
+            .destination       = 0,
+        };
+
+        vector<Entity> entities = {entity};
+
+        cuMemcpyHtoD(cptr_entities, entities.data(), entities.size() * sizeof(Entity));
+
+        GameState state;
+        cuMemcpyDtoH(&state, cptr_gameState, sizeof(GameState));
+        state.numEntities = entities.size();
+        cuMemcpyHtoD(cptr_gameState, &state, sizeof(GameState));
+
+        
+    }
+
+}
+
 void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
 
     cuEventRecord(cevent_start, 0);
@@ -167,7 +229,7 @@ void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
     gamedata.numRows         = gridRows;
     gamedata.numCols         = gridCols;
     gamedata.cells           = (char*)cptr_grid;
-    gamedata.entitiesBuffer  = (void*)cptr_entities;
+    gamedata.entities        = (Entity*)cptr_entities;
     gamedata.img_ascii_16    = (uint32_t*)cptr_ascii_32;
     gamedata.img_spritesheet = (uint32_t*)cptr_spriteSheet;
     gamedata.img_spritesheet_buildings = (uint32_t*)cptr_spriteSheet_buildings;
@@ -245,7 +307,7 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
     gamedata.numRows         = gridRows;
     gamedata.numCols         = gridCols;
     gamedata.cells           = (char*)cptr_grid;
-    gamedata.entitiesBuffer  = (void*)cptr_entities;
+    gamedata.entities        = (Entity*)cptr_entities;
     gamedata.img_ascii_16    = (uint32_t*)cptr_ascii_32;
     gamedata.img_spritesheet = (uint32_t*)cptr_spriteSheet;
     gamedata.img_spritesheet_buildings = (uint32_t*)cptr_spriteSheet_buildings;
@@ -286,10 +348,12 @@ void initCudaProgram(
 
     initGameState();
 
-    gridRows = 512;
-    gridCols = 512;
+    gridRows = 64;
+    gridCols = 64;
     int numCells = gridRows * gridCols;
-    cuMemAlloc(&cptr_grid, numCells * BYTES_PER_CELL);
+
+    int mapCapacity = 1024 * 1024;
+    cuMemAlloc(&cptr_grid, mapCapacity * BYTES_PER_CELL);
 
     std::vector<Cell> gridCells(numCells);
     for (int y = 0; y < gridRows; ++y) {
@@ -300,10 +364,17 @@ void initCudaProgram(
             gridCells[cellId].buildingID = -1;
         }
     }
+
+
+
+
     cuMemcpyHtoD(cptr_grid, gridCells.data(), gridCells.size() * BYTES_PER_CELL);
 
     // Let's assume we can have as much entities as we have cells
-    cuMemAlloc(&cptr_entities, sizeof(uint32_t) + numCells * (BYTES_PER_ENTITY));
+    // cuMemAlloc(&cptr_entities, sizeof(uint32_t) + numCells * (BYTES_PER_ENTITY));
+    
+    // 100k entitites
+    cuMemAlloc(&cptr_entities, sizeof(uint32_t) + 100'000 * (BYTES_PER_ENTITY));
     uint32_t entitiesCount = 0;
     cuMemcpyHtoD(cptr_entities, &entitiesCount, sizeof(uint32_t));
     
@@ -339,11 +410,7 @@ void initCudaProgram(
                                     {
                                         "./modules/common/utils.cu",
                                         "./modules/shapes2D/World/update.cu",
-                                        "./modules/shapes2D/World/Path/path.cu",
-                                        "./modules/shapes2D/World/Path/pathfinding.cu",
                                         "./modules/shapes2D/World/time.cu",
-                                        "./modules/shapes2D/World/Entities/entities.cu",
-                                        "./modules/shapes2D/World/Entities/movement.cu",
                                     },
                                 .customIncludeDirs = {"./modules/shapes2D", " ./modules"}});
 
@@ -396,6 +463,8 @@ int main() {
     }
 
     initCudaProgram(renderer, img_ascii, img_spritesheet, img_spritesheet_buildings);
+
+    loadScene();
 
     auto update = [&]() { updateCUDA(renderer); };
 

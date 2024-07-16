@@ -13,9 +13,9 @@
 #include "Controls.h"
 
 struct Controls2D : public Controls {
-    double zoom = 20.0;
+    double zoom = 150.0;
 
-    glm::dvec2 pos = {0.0, 0.0};
+    glm::dvec2 pos = {32.0, 32.0};
     glm::dvec2 left = {1.0, 0.0};
     glm::dvec2 up = {0.0, 1.0};
 

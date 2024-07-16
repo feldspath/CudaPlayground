@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/utils.cuh"
+#include "HostDeviceInterface.h"
 
 #include "World/map.cuh"
 #include "framebuffer.cuh"
@@ -27,9 +28,9 @@ class GUI {
 
 public:
     GUI(Framebuffer &framebuffer, TextRenderer &textRenderer, SpriteSheet &sprites, mat4 viewProj);
-    void render(Map *map, Entities *entities);
+    void render(Map map, Entity* entities, uint32_t numEntities);
 
 private:
     void renderDisplay(GUIBox box, char *displayString);
-    void renderInfoPanel(Map *map, Entities *entities);
+    void renderInfoPanel(Map map, Entity* entities, uint32_t numEntities);
 };

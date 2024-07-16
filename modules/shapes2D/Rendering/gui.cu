@@ -2,7 +2,6 @@
 #include "common/utils.cuh"
 
 #include "HostDeviceInterface.h"
-#include "World/Entities/entities.cuh"
 #include "common/matrix_math.h"
 #include "gui.cuh"
 
@@ -15,12 +14,12 @@ GUI::GUI(Framebuffer &framebuffer, TextRenderer &textRenderer, SpriteSheet &spri
       timeDisplay(framebuffer.width - 400, framebuffer.height - 300, 100, 30, sprites.timeDisplay) {
 }
 
-void GUI::render(Map *map, Entities *entities) {
+void GUI::render(Map map, Entity *entities, uint32_t numEntities) {
 
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
-    renderInfoPanel(map, entities);
+    renderInfoPanel(map, entities, numEntities);
 
     GameState &gameState = *GameState::instance;
     char displayString[MAX_STRING_LENGTH + 1];
@@ -37,13 +36,13 @@ void GUI::render(Map *map, Entities *entities) {
     renderDisplay(timeDisplay, displayString);
 }
 
-void GUI::renderInfoPanel(Map *map, Entities *entities) {
+void GUI::renderInfoPanel(Map map, Entity *entities, uint32_t numEntities) {
     auto grid = cg::this_grid();
     GameState &gameState = *GameState::instance;
 
     int id = gameState.buildingDisplay;
     if (id != -1) {
-        float2 worldPos = map->getCellPosition(id);
+        float2 worldPos = map.getCellPosition(id);
         float2 screenPos = projectPosToScreenPos(make_float3(worldPos, 0.0f), viewProj,
                                                  framebuffer.width, framebuffer.height);
         GUIBox infoPanel(int(screenPos.x), int(screenPos.y), sprites.infoPanel.width,
@@ -56,17 +55,17 @@ void GUI::renderInfoPanel(Map *map, Entities *entities) {
             textRenderer.newCursor(20.0f, infoPanel.x + 40.0f, infoPanel.y + 200.0f - 60.0f);
         char displayString[30];
 
-        switch (map->getTileId(id)) {
+        switch (map.getTileId(id)) {
         case HOUSE: {
             textRenderer.drawText("House", cursor, framebuffer);
             cursor.newline();
 
-            int entityId = *map->houseTileData(id);
+            int entityId = *map.houseTileData(id);
             if (entityId == -1) {
                 textRenderer.drawText("No resident", cursor, framebuffer);
                 cursor.newline();
             } else {
-                auto &entity = entities->get(entityId);
+                Entity& entity = entities[entityId];
                 cursor.fontsize = 16.0;
 
                 // resident money
@@ -76,7 +75,7 @@ void GUI::renderInfoPanel(Map *map, Entities *entities) {
                 cursor.newline();
 
                 // resident job
-                switch (map->getTileId(entity.workplaceId)) {
+                switch (map.getTileId(entity.workplaceId)) {
                 case SHOP: {
                     textRenderer.drawText("Job: shop worker", cursor, framebuffer);
                     break;
@@ -102,7 +101,7 @@ void GUI::renderInfoPanel(Map *map, Entities *entities) {
 
                 // rent cost
                 textRenderer.drawText("Rent: ", cursor, framebuffer);
-                itos(map->rentCost(entity.houseId), displayString);
+                itos(map.rentCost(entity.houseId), displayString);
                 textRenderer.drawText(displayString, cursor, framebuffer);
                 cursor.newline();
             }
@@ -118,7 +117,7 @@ void GUI::renderInfoPanel(Map *map, Entities *entities) {
 
             // worker count
             textRenderer.drawText("Employees: ", cursor, framebuffer);
-            itos(FACTORY_CAPACITY - *map->factoryTileData(id), displayString);
+            itos(FACTORY_CAPACITY - *map.factoryTileData(id), displayString);
             textRenderer.drawText(displayString, cursor, framebuffer);
             cursor.newline();
             break;
@@ -133,7 +132,7 @@ void GUI::renderInfoPanel(Map *map, Entities *entities) {
 
             // worker count
             textRenderer.drawText("Employees: ", cursor, framebuffer);
-            itos(SHOP_WORK_CAPACITY - map->shopWorkCapacity(id), displayString);
+            itos(SHOP_WORK_CAPACITY - map.shopWorkCapacity(id), displayString);
             textRenderer.drawText(displayString, cursor, framebuffer);
             cursor.newline();
             break;

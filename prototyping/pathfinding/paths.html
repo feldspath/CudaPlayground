@@ -1,4 +1,4 @@
-<meta http-equiv="refresh" content="1">
+<!-- <meta http-equiv="refresh" content="1"> -->
 <body>
 
 
@@ -128,7 +128,7 @@ for(let i = 0; i < 100; i++){
 
 	let t_start = Date.now();
 
-	let result = map.findPath(start, end);
+	let result = map.findPathDijkstra(start, end);
 
 	let t_end = Date.now();
 	let millies = t_end - t_start;
@@ -138,7 +138,8 @@ for(let i = 0; i < 100; i++){
 	count++;
 
 	if(i === v){
-		path = result;
+		path = result.path;
+		console.log(result);
 	}
 }
 
@@ -148,7 +149,14 @@ console.log(`${count} runs, avg duration: ${avg} ms`)
 let svgPath = map.pathToSvg(path);
 svgmap.appendChild(svgPath);
 
-console.log(path);
+
+
+
+
+
+
+
+
 
 
 </script>

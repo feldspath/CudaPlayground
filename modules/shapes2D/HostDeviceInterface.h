@@ -1,7 +1,6 @@
 
 #pragma once
 
-#include "World/Path/path.h"
 #include "World/time.h"
 #include "builtin_types.h"
 
@@ -118,6 +117,8 @@ struct GameState {
 
     bool isPlacingBuilding;
     int buildingType;
+
+    int numEntities;
 };
 
 // CELLS
@@ -129,6 +130,8 @@ enum TileId {
     HOUSE = 4,
     FACTORY = 8,
     SHOP = 16,
+    STONE = 32,
+    WATER = 64,
 };
 
 inline TileId operator|(TileId a, TileId b) {
@@ -205,20 +208,9 @@ struct Entity {
     uint32_t interaction;
 
     // Path is a uint64_t
-    Path path;
+    // Path path;
     int32_t destination;
 
-    inline bool isLost() { return destination != -1 && !path.isValid(); }
-
-    void resetStateStart() { stateStart = GameState::instance->gameTime; }
-
-    void changeState(EntityState newState) {
-        path.reset();
-        resetStateStart();
-        destination = -1;
-        interaction = -1;
-        state = newState;
-    }
 };
 
 static int BYTES_PER_ENTITY = sizeof(Entity);
@@ -231,7 +223,7 @@ struct GameData{
     uint32_t numRows;
     uint32_t numCols;
     char *cells;
-    void *entitiesBuffer;
+    Entity *entities;
     uint32_t *img_ascii_16;
     uint32_t *img_spritesheet;
     uint32_t *img_spritesheet_buildings;

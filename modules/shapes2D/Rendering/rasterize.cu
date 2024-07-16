@@ -2,7 +2,6 @@
 #include <curand_kernel.h>
 
 #include "HostDeviceInterface.h"
-#include "World/Entities/entities.cuh"
 #include "World/map.cuh"
 #include "builtin_types.h"
 #include "common/helper_math.h"
@@ -32,6 +31,8 @@ float3 RED = float3{188.0 / 255, 75.0 / 255, 81.0 / 255};
 float3 YELLOW = float3{244.0 / 255, 226.0 / 255, 133.0 / 255};
 float3 GRAY = float3{0.5f, 0.5f, 0.5f};
 float3 PURPLE = float3{1.0, 0.0, 1.0};
+float3 DARK_GRAY = float3{0.15, 0.15, 0.15};
+float3 BLUE = float3{0.0f, 0.0f, 1.0f};
 
 float3 colorFromId(uint32_t id) {
     switch (id) {
@@ -45,6 +46,10 @@ float3 colorFromId(uint32_t id) {
         return YELLOW;
     case SHOP:
         return LIGHT_BLUE;
+    case STONE:
+        return DARK_GRAY;
+    case WATER:
+        return BLUE;
     default:
         return PURPLE;
     }
@@ -55,7 +60,7 @@ float3 colorFromId(uint32_t id) {
 // - <framebuffer> stores interleaved 32bit depth and color values
 // - The closest fragments are rendered via atomicMin on a combined 64bit depth&color integer
 //   atomicMin(&framebuffer[pixelIndex], (depth << 32 | color));
-void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffer framebuffer) {
+void rasterizeGrid(Map map, Entity* entities, uint32_t numEntities, SpriteSheet sprites, Framebuffer framebuffer) {
 
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
@@ -70,7 +75,7 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
 
     auto doesTileIntersectHoveredObject = [&](int tx, int ty){
 
-        int cellIndex = map->cellAtPosition(float2{float(tx), float(ty)});
+        int cellIndex = map.cellAtPosition(float2{float(tx), float(ty)});
 
         if(cellIndex < 0) return false;
         if(!gamedata.state->isPlacingBuilding) return false;
@@ -99,6 +104,36 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
         return true;
     };
 
+    auto doesMouseIntersectTile = [&](int tx, int ty){
+
+        int cellIndex = map.cellAtPosition(float2{float(tx), float(ty)});
+
+        if(cellIndex < 0) return false;
+
+        int pixelX = cursorPos.x;
+        int pixelY = uniforms.height - cursorPos.y;
+
+        float2 frag = {
+            cursorPos.x,
+            (uniforms.height - cursorPos.y),
+        };
+
+        float3 pos_W = unproject(frag, uniforms.invview * uniforms.invproj, uniforms.width, uniforms.height);
+        int btx = pos_W.x;
+        int bty = pos_W.y;
+
+        if(tx < btx) return false;
+        if(ty < bty) return false;
+        if(tx > btx) return false;
+        if(ty > bty) return false;
+
+        // if(grid.thread_rank() == 0){
+        //     printf("%d, %d \n", btx, bty);
+        // }
+
+        return true;
+    };
+
     grid.sync();
 
 
@@ -117,7 +152,7 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
 
         float3 pos_W =
             unproject(pFrag, uniforms.invview * uniforms.invproj, uniforms.width, uniforms.height);
-        int sh_cellIndex = map->cellAtPosition(float2{pos_W.x, pos_W.y});
+        int sh_cellIndex = map.cellAtPosition(float2{pos_W.x, pos_W.y});
         if (sh_cellIndex == -1) {
             continue;
         }
@@ -125,7 +160,7 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
         bool tileIsHovered = doesTileIntersectHoveredObject(pos_W.x, pos_W.y);
 
 
-        float2 cellCenter = map->getCellPosition(sh_cellIndex);
+        float2 cellCenter = map.getCellPosition(sh_cellIndex);
         float2 diff = float2{pos_W.x - cellCenter.x, pos_W.y - cellCenter.y};
 
         float2 diffToCorner = diff + float2{CELL_RADIUS, CELL_RADIUS};
@@ -138,36 +173,36 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
 
         float3 color;
         if (uniforms.renderMode == RENDERMODE_DEFAULT) {
-            switch (map->getTileId(sh_cellIndex)) {
+            switch (map.getTileId(sh_cellIndex)) {
             case GRASS:
                 color = sprites.grass.sampleFloat(u, v);
                 break;
             case HOUSE:
-                if (*map->houseTileData(sh_cellIndex) != -1) {
+                if (*map.houseTileData(sh_cellIndex) != -1) {
                     color = sprites.house.sampleFloat(u, v);
                     break;
                 }
             default:
-                color = colorFromId(map->getTileId(sh_cellIndex));
+                color = colorFromId(map.getTileId(sh_cellIndex));
                 break;
             }
             color *= GameState::instance->gameTime.timeOfDay().toFloat() * 0.5 + 0.5;
 
         } else if (uniforms.renderMode == RENDERMODE_NETWORK) {
-            TileId tileId = map->getTileId(sh_cellIndex);
+            TileId tileId = map.getTileId(sh_cellIndex);
             if (tileId == GRASS || tileId == UNKNOWN) {
                 color = {0.0f, 0.0f, 0.0f};
             } else {
                 int colorId;
                 if (tileId == HOUSE) {
-                    int entityId = *(map->houseTileData(sh_cellIndex));
+                    int entityId = *(map.houseTileData(sh_cellIndex));
                     if (entityId == -1) {
                         colorId = -1;
                     } else {
-                        colorId = entities->get(entityId).workplaceId;
+                        colorId = entities[entityId].workplaceId;
                     }
                 } else if (tileId == ROAD) {
-                    colorId = map->roadNetworkRepr(sh_cellIndex);
+                    colorId = map.roadNetworkRepr(sh_cellIndex);
                 } else {
                     colorId = sh_cellIndex;
                 }
@@ -178,8 +213,8 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
                 color = float3{r, g, b};
 
                 if (tileId == ROAD) {
-                    color *= (float)(map->roadNetworkId(sh_cellIndex)) /
-                             map->roadNetworkId(map->roadNetworkRepr(sh_cellIndex));
+                    color *= (float)(map.roadNetworkId(sh_cellIndex)) /
+                             map.roadNetworkId(map.roadNetworkRepr(sh_cellIndex));
                 }
 
                 if (colorId == -1) {
@@ -187,12 +222,12 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
                 }
             }
         } else if (uniforms.renderMode == RENDERMODE_LANDVALUE) {
-            int value = map->cellsData[sh_cellIndex].landValue;
+            int value = map.cellsData[sh_cellIndex].landValue;
             float a = float(value) / 255.0f;
             color = float3{0.0f, 1.0f, 0.0f} * a + float3{1.0f, 0.0f, 0.0f} * (1 - a);
         }
 
-        bool tileIsFree = map->cellsData[sh_cellIndex].buildingID == -1;
+        bool tileIsFree = map.cellsData[sh_cellIndex].buildingID == -1;
         if(tileIsHovered && tileIsFree){
             color.x = 0.5 * color.x + 0.3;
             color.y = 0.5 * color.y + 0.3;
@@ -201,9 +236,13 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
             color.x = 0.5 * color.x + 0.3;
             color.y = 0.5 * color.y + 0.1;
             color.z = 0.5 * color.z + 0.1;
+        }else if(doesMouseIntersectTile(pos_W.x, pos_W.y)){
+            color.x = 0.5 * color.x + 0.3;
+            color.y = 0.5 * color.y + 0.3;
+            color.z = 0.5 * color.z + 0.3;
         }
 
-        // if(map->cellsData[sh_cellIndex].buildingID >= 0){
+        // if(map.cellsData[sh_cellIndex].buildingID >= 0){
         //     color = {0.0, 1.0, 0.0};
         // }
 
@@ -217,7 +256,7 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
     }
 }
 
-void rasterizeEntities(Entities *entities, Framebuffer framebuffer) {
+void rasterizeEntities(Entity *entities, uint32_t numEntities, Framebuffer framebuffer) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
     auto& uniforms = gamedata.uniforms;
@@ -228,13 +267,13 @@ void rasterizeEntities(Entities *entities, Framebuffer framebuffer) {
         float3{ENTITY_RADIUS, 0.0f, 0.0f}, viewProj, uniforms.width, uniforms.height));
     // sphereRadius = 5.0f;
     //  Each thread grabs an entity
-    for (int offset = 0; offset < entities->getCount(); offset += grid.num_threads()) {
+    for (int offset = 0; offset < numEntities; offset += grid.num_threads()) {
         int entityIndex = offset + grid.thread_rank();
-        if (entityIndex >= entities->getCount()) {
+        if (entityIndex >= numEntities) {
             break;
         }
 
-        float2 entityPos = entities->get(entityIndex).position;
+        float2 entityPos = entities[entityIndex].position;
         float2 screenPos = projectPosToScreenPos(make_float3(entityPos, 0.0f), viewProj,
                                                  uniforms.width, uniforms.height);
 
@@ -280,6 +319,8 @@ void rasterizeEntities(Entities *entities, Framebuffer framebuffer) {
 extern "C" __global__ void kernel(GameData _gamedata, cudaSurfaceObject_t gl_colorbuffer) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
+
+    // return;
     
     gamedata = _gamedata;
     auto& uniforms = gamedata.uniforms;
@@ -307,18 +348,17 @@ extern "C" __global__ void kernel(GameData _gamedata, cudaSurfaceObject_t gl_col
     grid.sync();
 
     {
-        Map *map = allocator->alloc<Map *>(sizeof(Map));
-        *map = Map(gamedata.numRows, gamedata.numCols, gamedata.cells);
+        Map map = Map(gamedata.numRows, gamedata.numCols, gamedata.cells);
 
-        Entities *entities = allocator->alloc<Entities *>(sizeof(Entities));
-        *entities = Entities(gamedata.entitiesBuffer);
+        // Entities *entities = allocator->alloc<Entities *>(sizeof(Entities));
+        // *entities = Entities(gamedata.entitiesBuffer);
 
-        rasterizeGrid(map, entities, sprites, framebuffer);
+        rasterizeGrid(map, gamedata.entities, gamedata.state->numEntities, sprites, framebuffer);
         grid.sync();
-        rasterizeEntities(entities, framebuffer);
+        rasterizeEntities(gamedata.entities, gamedata.state->numEntities, framebuffer);
         grid.sync();
         GUI gui(framebuffer, textRenderer, sprites, uniforms.proj * uniforms.view);
-        gui.render(map, entities);
+        gui.render(map, gamedata.entities, gamedata.state->numEntities);
     }
 
     grid.sync();
