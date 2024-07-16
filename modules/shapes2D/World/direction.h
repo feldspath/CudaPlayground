@@ -13,61 +13,22 @@ enum Direction {
     COUNT = 8,
 };
 
-static float2 directionFromEnum(Direction dir) {
-    switch (dir) {
-    case RIGHT:
-        return float2{1.0f, 0.0f};
-    case LEFT:
-        return float2{-1.0f, 0.0f};
-    case UP:
-        return float2{0.0f, 1.0f};
-    case DOWN:
-        return float2{0.0f, -1.0f};
-    case DIAG_UR:
-        return float2{1.0f, 1.0f};
-    case DIAG_DL:
-        return float2{-1.0f, -1.0f};
-    case DIAG_UL:
-        return float2{-1.0f, 1.0f};
-    case DIAG_DR:
-        return float2{1.0f, -1.0f};
-    default:
-        break;
-    }
+inline float2 directionFromEnum(Direction dir) {
+    static float2 dirs[] = {
+        float2{1.0f, 0.0f}, float2{-1.0f, 0.0f},  float2{0.0f, 1.0f},  float2{0.0f, -1.0f},
+        float2{1.0f, 1.0f}, float2{-1.0f, -1.0f}, float2{-1.0f, 1.0f}, float2{1.0f, -1.0f},
+    };
+    return dirs[int(dir)];
 }
 
-static Direction enumFromCoord(int2 coord) {
-    int x = coord.x;
-    int y = coord.y;
-    int sum = x + y;
-    int lsb = y < 0 || sum < 0;
-    int osb = x == 0 || sum == 0;
-    int msb = x != 0 && y != 0;
+Direction enumFromCoord(int2 coord);
 
-    return Direction(msb << 2 | osb << 1 | lsb);
-}
-
-static int2 coordFromEnum(Direction dir) {
-    switch (dir) {
-    case RIGHT:
-        return int2{1, 0};
-    case LEFT:
-        return int2{-1, 0};
-    case UP:
-        return int2{0, 1};
-    case DOWN:
-        return int2{0, -1};
-    case DIAG_UR:
-        return int2{1, 1};
-    case DIAG_DL:
-        return int2{-1, -1};
-    case DIAG_UL:
-        return int2{-1, 1};
-    case DIAG_DR:
-        return int2{1, -1};
-    default:
-        break;
-    }
+inline int2 coordFromEnum(Direction dir) {
+    static int2 dirs[] = {
+        int2{1, 0}, int2{-1, 0},  int2{0, 1},  int2{0, -1},
+        int2{1, 1}, int2{-1, -1}, int2{-1, 1}, int2{1, -1},
+    };
+    return dirs[int(dir)];
 }
 
 template <typename T, size_t SIZE> struct NeighborInfo {
