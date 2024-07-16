@@ -33,6 +33,7 @@ CUdeviceptr cptr_gameState;
 CUdeviceptr cptr_spriteSheet;
 CUdeviceptr cptr_spriteSheet_buildings;
 CUdeviceptr cptr_ascii_32;
+CUdeviceptr cptr_dbglabels, cptr_dbgnumlabels;
 uint32_t gridRows;
 uint32_t gridCols;
 
@@ -234,6 +235,8 @@ void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
     gamedata.img_spritesheet = (uint32_t*)cptr_spriteSheet;
     gamedata.img_spritesheet_buildings = (uint32_t*)cptr_spriteSheet_buildings;
     gamedata.constructions   = (ConstructionList*)cptr_constructions;
+    gamedata.dbg_numLabels   = (uint32_t*)cptr_dbgnumlabels;
+    gamedata.dbg_labels      = (DbgLabel*)cptr_dbglabels;
 
     void *args[] = {&gamedata};
 
@@ -312,6 +315,8 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
     gamedata.img_spritesheet = (uint32_t*)cptr_spriteSheet;
     gamedata.img_spritesheet_buildings = (uint32_t*)cptr_spriteSheet_buildings;
     gamedata.constructions   = (ConstructionList*)cptr_constructions;
+    gamedata.dbg_numLabels   = (uint32_t*)cptr_dbgnumlabels;
+    gamedata.dbg_labels      = (DbgLabel*)cptr_dbglabels;
 
     void *args[] = {&gamedata, &output_surf};
 
@@ -392,6 +397,9 @@ void initCudaProgram(
     // Sprites - Buildings
     cuMemAlloc(&cptr_spriteSheet_buildings, img_spritesheet_buildings.size());
     cuMemcpyHtoD(cptr_spriteSheet_buildings, img_spritesheet_buildings.data(), img_spritesheet_buildings.size());
+
+    cuMemAlloc(&cptr_dbgnumlabels, sizeof(uint32_t));
+    cuMemAlloc(&cptr_dbglabels, 100'000 * sizeof(DbgLabel));
     
 
     cuda_program =

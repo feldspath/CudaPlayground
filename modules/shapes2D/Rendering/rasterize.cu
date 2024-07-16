@@ -492,8 +492,25 @@ extern "C" __global__ void kernel(GameData _gamedata, cudaSurfaceObject_t gl_col
 
             ObjectSelection::rasterize_blockwise(object, framebuffer);
         }
+    }
 
+    grid.sync();
 
+    // if(gamedata.dbg_numLabels > 0)
+    for(int i = 0; i < *gamedata.dbg_numLabels; i++)
+    { // draw debug labels
+        // int i = 0;
+
+        Font font(gamedata.img_ascii_16);
+        TextRenderer textRenderer(font);
+
+        DbgLabel label = gamedata.dbg_labels[i];
+
+        Cursor cursor = textRenderer.newCursor(10.0f, label.x, label.y);
+        cursor.textColor = {1.0f, 1.0f, 1.0f};
+        // if(grid.thread_rank() == 0) printf("%d \n", label.size);
+        
+        textRenderer.drawText(label.label, cursor, framebuffer);
 
     }
 

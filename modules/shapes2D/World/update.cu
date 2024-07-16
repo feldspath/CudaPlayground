@@ -9,6 +9,7 @@
 #include "builtin_types.h"
 #include "common/helper_math.h"
 #include "common/matrix_math.h"
+#include "pathfinding.cuh"
 
 #include "./Rendering/ObjectSelection.cuh"
 
@@ -364,6 +365,20 @@ void updateGrid(Map map) {
     }
 
     printDuration("handleInputs            ", [&]() { handleInputs(map); });
+    
+    // if(cg::this_grid().thread_rank() == 0) printf("abc");
+    for(int i = 0; i < gamedata.state->numEntities; i++){
+        Entity& entity = gamedata.entities[i];
+        
+        int2 start = {entity.position.x, entity.position.y};
+        int2 end = {
+            entity.destination % map.cols,
+            entity.destination / map.cols,
+        };
+        
+        findPath(start, end, map, gamedata);
+    }
+
     // printDuration("fillCells               ", [&]() { fillCells(map, entities); });
     // printDuration("assignOneHouse          ", [&]() { assignOneHouse(map, entities); });
     // printDuration("assignOneCustomerToShop ", [&]() { assignOneCustomerToShop(map, entities); });
@@ -380,6 +395,8 @@ extern "C" __global__ void update(GameData _gamedata) {
 
     gamedata = _gamedata;
     GameState::instance = gamedata.state;
+
+    *gamedata.dbg_numLabels = 0;
 
     Allocator _allocator(gamedata.buffer, 0);
     allocator = &_allocator;

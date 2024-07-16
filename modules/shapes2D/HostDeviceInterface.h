@@ -215,6 +215,12 @@ struct Entity {
 
 static int BYTES_PER_ENTITY = sizeof(Entity);
 
+struct DbgLabel{
+    char label[32] = {0};
+    int size;
+    int x;
+    int y;
+};
 
 struct GameData{
     Uniforms uniforms;   // Args passed form host to device every frame
@@ -228,4 +234,7 @@ struct GameData{
     uint32_t *img_spritesheet;
     uint32_t *img_spritesheet_buildings;
     ConstructionList* constructions;
+
+    uint32_t* dbg_numLabels;
+    DbgLabel* dbg_labels;
 };

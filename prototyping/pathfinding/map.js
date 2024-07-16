@@ -175,7 +175,7 @@ export class Map{
 
 			}
 
-			// now find cell with smallest travel distance
+			//now find cell with smallest travel distance
 			let i_smallest = 0;
 			let d_smallest = Infinity;
 			for(let i = 0; i < this.width * this.height; i++){

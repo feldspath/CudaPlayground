@@ -238,3 +238,23 @@ static void strcat(char *dest, const char *src) {
         i++;
     strcpy(dest + i, src);
 }
+
+static int numberToString(int number, char* str){
+
+    int numDigits = floor(log10(max(abs(double(number)), 2.0))) + 1;
+    // printf("====\n");
+    int factor = 1;
+    for(int i = 0; i < numDigits; i++){
+        
+        int d = (number / factor) % 10;
+
+        str[numDigits - i - 1] = '0' + d;
+        // printf("str[%d] = %d\n", numDigits - i - 1, d);
+
+
+        factor = factor * 10;
+    }
+
+
+    return numDigits;
+}

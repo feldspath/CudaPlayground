@@ -1,4 +1,4 @@
-<!-- <meta http-equiv="refresh" content="1"> -->
+<meta http-equiv="refresh" content="1">
 <body>
 
 
@@ -124,7 +124,8 @@ let v = Math.floor(Date.now() * 12345) % 100;
 let path;
 let sum = 0.0;
 let count = 0;
-for(let i = 0; i < 100; i++){
+for(let i = 0; i < 1; i++)
+{
 
 	let t_start = Date.now();
 
@@ -137,7 +138,7 @@ for(let i = 0; i < 100; i++){
 	sum += millies;
 	count++;
 
-	if(i === v){
+	if(i === Math.floor(v / 100)){
 		path = result.path;
 		console.log(result);
 	}
