@@ -53,17 +53,11 @@ struct FactoryCell : public WorkplaceCell {
     static TileId type() { return FACTORY; }
 };
 
-static constexpr int maxVal(int a, int b) { return a > b ? a : b; }
-static constexpr int sizeOfCell() {
-    int max = maxVal(sizeof(HouseCell), sizeof(BaseCell));
-    max = maxVal(sizeof(RoadCell), max);
-    max = maxVal(sizeof(WorkplaceCell), max);
-    max = maxVal(sizeof(FactoryCell), max);
-    max = maxVal(sizeof(ShopCell), max);
-    return max;
-}
-static constexpr int sizeOfAdditionalData() { return sizeOfCell() - sizeof(BaseCell); }
-
-struct Cell : public BaseCell {
-    char additionnalData[sizeOfAdditionalData()];
+union Cell {
+    BaseCell cell;
+    HouseCell house;
+    FactoryCell factory;
+    RoadCell road;
+    ShopCell shop;
+    WorkplaceCell workplace;
 };

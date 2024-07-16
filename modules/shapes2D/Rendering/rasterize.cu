@@ -89,7 +89,7 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
                 color = sprites.grass.sampleFloat(u, v);
                 break;
             case HOUSE:
-                if (map->getCell<HouseCell>(sh_cellIndex).residentEntityIdx != -1) {
+                if (map->getTyped<HouseCell>(sh_cellIndex).residentEntityIdx != -1) {
                     color = sprites.house.sampleFloat(u, v);
                     break;
                 }
@@ -106,7 +106,7 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
             } else {
                 int colorId;
                 if (tileId == HOUSE) {
-                    int entityId = map->getCell<HouseCell>(sh_cellIndex).residentEntityIdx;
+                    int entityId = map->getTyped<HouseCell>(sh_cellIndex).residentEntityIdx;
                     if (entityId == -1) {
                         colorId = -1;
                     } else {
@@ -133,7 +133,7 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
                 }
             }
         } else if (uniforms.renderMode == RENDERMODE_LANDVALUE) {
-            int value = map->cellsData[sh_cellIndex].landValue;
+            int value = map->get(sh_cellIndex).landValue;
             float a = float(value) / 255.0f;
             color = float3{0.0f, 1.0f, 0.0f} * a + float3{1.0f, 0.0f, 0.0f} * (1 - a);
         }

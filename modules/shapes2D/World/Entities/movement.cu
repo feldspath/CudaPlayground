@@ -8,8 +8,8 @@ void fillCells(Map *map, Entities *entities) {
     auto block = cg::this_thread_block();
 
     // Reset cell occupation
-    processRange(map->count, [&](int cellId) {
-        int32_t *cellEntities = map->cellsData[cellId].entities;
+    processRange(map->getCount(), [&](int cellId) {
+        int32_t *cellEntities = map->get(cellId).entities;
         for (int i = 0; i < ENTITIES_PER_CELL; ++i) {
             cellEntities[i] = -1;
         }
@@ -22,7 +22,7 @@ void fillCells(Map *map, Entities *entities) {
         EntityState state = entity.state;
         if (state == GoHome || state == GoToWork || state == GoShopping || state == Shop) {
             int cell = map->cellAtPosition(entity.position);
-            int32_t *cellEntities = map->cellsData[cell].entities;
+            int32_t *cellEntities = map->get(cell).entities;
 
             for (int i = 0; i < ENTITIES_PER_CELL; ++i) {
                 if (atomicCAS(&cellEntities[i], -1, entityIdx) == -1) {
@@ -98,7 +98,7 @@ void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) 
                 }
 
                 for (int k = 0; k < ENTITIES_PER_CELL; ++k) {
-                    int otherIdx = map->cellsData[neighborCellId].entities[k];
+                    int otherIdx = map->get(neighborCellId).entities[k];
                     if (otherIdx == -1) {
                         break;
                     }

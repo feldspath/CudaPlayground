@@ -24,11 +24,15 @@ static unsigned int tileCost(TileId tile) {
     }
 }
 
-struct Map {
+class Map {
+private:
     Cell *cellsData;
     int rows;
     int cols;
     int count;
+
+public:
+    inline int getCount() const { return count; }
 
     Map(uint32_t numRows, uint32_t numCols, char *data) {
         cellsData = (Cell *)data;
@@ -66,28 +70,29 @@ struct Map {
     }
     int idFromCoords(int2 coords) { return idFromCoords(coords.x, coords.y); }
 
-    TileId getTileId(int cellId) const { return cellsData[cellId].tileId; }
-    void setTileId(int cellId, TileId tile) { cellsData[cellId].tileId = tile; }
+    TileId getTileId(int cellId) const { return cellsData[cellId].cell.tileId; }
+    void setTileId(int cellId, TileId tile) { cellsData[cellId].cell.tileId = tile; }
 
-    template <typename T> T &getCell(int cellId) { return *((T *)&cellsData[cellId]); }
+    template <typename T> T &getTyped(int cellId) { return *((T *)&cellsData[cellId]); }
+    BaseCell &get(int cellId) { return cellsData[cellId].cell; }
 
     // ROAD DATA
     // We assume that the network is flattened
-    int32_t &roadNetworkRepr(int cellId) { return getCell<RoadCell>(cellId).networkRepr; }
-    int32_t &roadNetworkId(int cellId) { return getCell<RoadCell>(cellId).networkId; }
+    int32_t &roadNetworkRepr(int cellId) { return getTyped<RoadCell>(cellId).networkRepr; }
+    int32_t &roadNetworkId(int cellId) { return getTyped<RoadCell>(cellId).networkId; }
 
     // HOUSE DATA
-    int32_t rentCost(int cellId) { return cellsData[cellId].landValue / 20 + 10; }
+    int32_t rentCost(int cellId) { return cellsData[cellId].cell.landValue / 20 + 10; }
 
     // SHOP DATA
     int32_t &shopCurrentWorkerCount(int cellId) {
-        return getCell<WorkplaceCell>(cellId).currentWorkerCount;
+        return getTyped<WorkplaceCell>(cellId).currentWorkerCount;
     }
 
     // WORKPLACE DATA
     bool isWorkplace(int cellId) const { return getTileId(cellId) & (SHOP | FACTORY); }
     int32_t &workplaceCapacity(int cellId) {
-        return getCell<WorkplaceCell>(cellId).workplaceCapacity;
+        return getTyped<WorkplaceCell>(cellId).workplaceCapacity;
     }
 
     // Network logic
@@ -123,7 +128,8 @@ struct Map {
     // Util functions
     template <typename Function> void processEachCell(TileId filter, Function &&f) {
         processRange(count, [&](int cellId) {
-            if (getTileId(cellId) & filter) {
+            // use 0 (UNKNOWN) to disable filtering
+            if ((getTileId(cellId) & filter) | !filter) {
                 f(cellId);
             }
         });

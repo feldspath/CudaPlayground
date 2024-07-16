@@ -115,15 +115,14 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
     case FACTORY: {
 
         if (grid.thread_rank() == 0) {
-            map->getCell<FactoryCell>(cellId).workplaceCapacity = FACTORY_CAPACITY;
+            map->getTyped<FactoryCell>(cellId).workplaceCapacity = FACTORY_CAPACITY;
         }
 
-        processRange(map->count, [&](int cellId) {
+        map->processEachCell(UNKNOWN, [&](int cellId) {
             auto diff = map->cellCoords(cellId) - map->cellCoords(cellId);
             int dist = length(make_float2(diff));
             if (dist < 20) {
-                map->cellsData[cellId].landValue =
-                    max(map->cellsData[cellId].landValue - 20 + int(dist), 0);
+                map->get(cellId).landValue = max(map->get(cellId).landValue - 20 + int(dist), 0);
             }
         });
 
@@ -132,7 +131,7 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
     case HOUSE:
         if (grid.thread_rank() == 0) {
             // Set house to unassigned
-            map->getCell<HouseCell>(cellId).residentEntityIdx = -1;
+            map->getTyped<HouseCell>(cellId).residentEntityIdx = -1;
         }
         break;
     case SHOP:
@@ -147,7 +146,7 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
         case HOUSE: {
             // if it was a house, destroy the entity living there
             if (grid.thread_rank() == 0) {
-                int entityId = map->getCell<HouseCell>(cellId).residentEntityIdx;
+                int entityId = map->getTyped<HouseCell>(cellId).residentEntityIdx;
                 if (entityId == -1) {
                     break;
                 }
@@ -172,7 +171,7 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
             // if it was a road, refresh the networks data
             int32_t network = map->roadNetworkRepr(cellId);
 
-            bool *validCells = allocator->alloc<bool *>(sizeof(bool) * map->count);
+            bool *validCells = allocator->alloc<bool *>(sizeof(bool) * map->getCount());
 
             map->processEachCell(ROAD, [&](int cellId) { validCells[cellId] = true; });
 
@@ -290,8 +289,8 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
 
 void assignHouseToWorkplace(Map *map, Entities *entities, int32_t houseId, int32_t workplaceId) {
     int32_t newEntity = entities->newEntity(map->getCellPosition(houseId), houseId, workplaceId);
-    map->getCell<HouseCell>(houseId).residentEntityIdx = newEntity;
-    map->getCell<WorkplaceCell>(workplaceId).workplaceCapacity -= 1;
+    map->getTyped<HouseCell>(houseId).residentEntityIdx = newEntity;
+    map->getTyped<WorkplaceCell>(workplaceId).workplaceCapacity -= 1;
 }
 
 void assignOneHouse(Map *map, Entities *entities) {
@@ -318,10 +317,10 @@ void assignOneHouse(Map *map, Entities *entities) {
 
     map->processEachCell(HOUSE | FACTORY | SHOP, [&](int cellId) {
         if (map->getTileId(cellId) == HOUSE &&
-            map->getCell<HouseCell>(cellId).residentEntityIdx == -1) {
+            map->getTyped<HouseCell>(cellId).residentEntityIdx == -1) {
             atomicAdd(&unassignedHouseCount, 1);
         } else if (map->isWorkplace(cellId) &&
-                   map->getCell<WorkplaceCell>(cellId).workplaceCapacity > 0) {
+                   map->getTyped<WorkplaceCell>(cellId).workplaceCapacity > 0) {
             atomicAdd(&availableWorkplaceCount, 1);
         }
     });
@@ -339,11 +338,11 @@ void assignOneHouse(Map *map, Entities *entities) {
 
     map->processEachCell(HOUSE | FACTORY | SHOP, [&](int cellId) {
         if (map->getTileId(cellId) == HOUSE &&
-            map->getCell<HouseCell>(cellId).residentEntityIdx == -1) {
+            map->getTyped<HouseCell>(cellId).residentEntityIdx == -1) {
             int idx = atomicAdd(&globalHouseIdx, 1);
             unassignedHouses[idx] = cellId;
         } else if (map->isWorkplace(cellId) &&
-                   map->getCell<WorkplaceCell>(cellId).workplaceCapacity > 0) {
+                   map->getTyped<WorkplaceCell>(cellId).workplaceCapacity > 0) {
             int idx = atomicAdd(&globalWorkplaceIdx, 1);
             availableWorkplaces[idx] = cellId;
         }
@@ -393,7 +392,7 @@ void assignOneHouse(Map *map, Entities *entities) {
                 int32_t workplaceId = targetWorkplace & 0xffffffffull;
                 assignHouseToWorkplace(map, entities, houseId, workplaceId);
             } else {
-                map->getCell<HouseCell>(houseId).residentEntityIdx = -1;
+                map->getTyped<HouseCell>(houseId).residentEntityIdx = -1;
             }
         }
     });
@@ -599,7 +598,7 @@ void entitiesInteractions(Map *map, Entities *entities) {
             if (map->getTileId(entity.workplaceId) == SHOP) {
                 if (entity.interaction == -1) {
                     for (int i = 0; i < ENTITIES_PER_CELL; ++i) {
-                        int otherIndex = map->cellsData[entity.workplaceId].entities[i];
+                        int otherIndex = map->get(entity.workplaceId).entities[i];
                         if (otherIndex == -1) {
                             break;
                         }
