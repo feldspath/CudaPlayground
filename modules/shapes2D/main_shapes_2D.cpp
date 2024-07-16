@@ -168,13 +168,15 @@ void loadScene(){
 
     { // CREATE ENTITIES
 
-        Entity entity = {
-            .position          = {26.0f, 59.0f},
-            .velocity          = {0.0f, 0.0f},
-            .destination       = 0,
-        };
+        // Entity entity = {
+        //     .position          = {26.0f, 59.0f},
+        // };
 
-        vector<Entity> entities = {entity};
+        // vector<Entity> entities = {entity};
+        vector<Entity> entities;// = {entity};
+
+        entities.push_back({.position = {26.0f, 59.0f}});
+        entities.push_back({.position = {26.0f,  9.0f}});
 
         cuMemcpyHtoD(cptr_entities, entities.data(), entities.size() * sizeof(Entity));
 
@@ -240,7 +242,14 @@ void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
 
     void *args[] = {&gamedata};
 
-    cuda_update->launchCooperative("update", args, {.blocksize = 64});
+    cuda_update->launchCooperative("kernel_update", args, {.blocksize = 64});
+
+    GameState state;
+    cuMemcpyDtoH(&state, cptr_gameState, sizeof(state));
+
+    uint32_t numBlocks = state.numEntities;
+    cuda_update->launch("kernel_pathfinding", args, {.gridsize = numBlocks, .blocksize = 256});
+    cuda_update->launchCooperative("kernel_updateGameState", args, {.blocksize = 64});
 
     // cuEventRecord(cevent_end, 0);
     // cuEventSynchronize(cevent_end);
@@ -348,7 +357,7 @@ void initCudaProgram(
     std::vector<uint8_t> &img_spritesheet,
     std::vector<uint8_t> &img_spritesheet_buildings
 ) {
-    cuMemAlloc(&cptr_buffer, 100'000'000);
+    cuMemAlloc(&cptr_buffer, 1'000'000'000);
     cuMemAlloc(&cptr_gameState, sizeof(GameState));
 
     initGameState();

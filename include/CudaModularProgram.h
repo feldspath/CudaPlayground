@@ -394,23 +394,11 @@ struct CudaModularProgram{
 				println("KERNEL: \"{}\"", strName);
 				int value;
 
-				cuKernelGetAttribute(&value, CU_FUNC_ATTRIBUTE_NUM_REGS, kernel, cuDevice);
+				cuFuncGetAttribute(&value, CU_FUNC_ATTRIBUTE_NUM_REGS, function);
 				println("    registers per thread  {:10}", value);
 
-				cuKernelGetAttribute(&value, CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK, kernel, cuDevice);
-				println("    max threads per block {:10}", value);
-
-				cuKernelGetAttribute(&value, CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES, kernel, cuDevice);
+				cuFuncGetAttribute(&value, CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES, function);
 				println("    shared memory         {:10}", value);
-
-				cuKernelGetAttribute(&value, CU_FUNC_ATTRIBUTE_CONST_SIZE_BYTES , kernel, cuDevice);
-				println("    constant memory       {:10}", value);
-
-				cuKernelGetAttribute(&value, CU_FUNC_ATTRIBUTE_LOCAL_SIZE_BYTES  , kernel, cuDevice);
-				println("    local memory          {:10}", value);
-
-				cuKernelGetAttribute(&value, CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES   , kernel, cuDevice);
-				println("    max dynamic memory    {:10}", value);
 
 
 				kernelNames.push_back(strName);

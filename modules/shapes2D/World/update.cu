@@ -338,24 +338,7 @@ void handleInputs(Map map) {
 
 }
 
-void updateGameState() {
-    auto grid = cg::this_grid();
 
-    if (grid.thread_rank() == 0) {
-        float dt = ((float)(nanotime_start - GameState::instance->previousFrameTime_ns)) / 1e9;
-        GameState::instance->previousFrameTime_ns = nanotime_start;
-        GameState::instance->currentTime_ms = currentTime_ms();
-        GameState::instance->population = gamedata.state->numEntities;
-        GameState::instance->previousMouseButtons = gamedata.uniforms.mouseButtons;
-
-        if (GameState::instance->firstFrame) {
-            GameState::instance->firstFrame = false;
-            GameState::instance->gameTime.dt = 0.0f;
-        } else {
-            GameState::instance->gameTime.incrementRealTime(dt * gamedata.uniforms.timeMultiplier);
-        }
-    }
-}
 
 void updateGrid(Map map) {
     nanotime_start = nanotime();
@@ -367,17 +350,17 @@ void updateGrid(Map map) {
     printDuration("handleInputs            ", [&]() { handleInputs(map); });
     
     // if(cg::this_grid().thread_rank() == 0) printf("abc");
-    for(int i = 0; i < gamedata.state->numEntities; i++){
-        Entity& entity = gamedata.entities[i];
+    // for(int i = 0; i < gamedata.state->numEntities; i++){
+    //     Entity& entity = gamedata.entities[i];
         
-        int2 start = {entity.position.x, entity.position.y};
-        int2 end = {
-            entity.destination % map.cols,
-            entity.destination / map.cols,
-        };
+    //     int2 start = {entity.position.x, entity.position.y};
+    //     int2 end = {
+    //         entity.destination % map.cols,
+    //         entity.destination / map.cols,
+    //     };
         
-        findPath(start, end, map, gamedata);
-    }
+    //     findPath(start, end, map, gamedata);
+    // }
 
     // printDuration("fillCells               ", [&]() { fillCells(map, entities); });
     // printDuration("assignOneHouse          ", [&]() { assignOneHouse(map, entities); });
@@ -386,10 +369,12 @@ void updateGrid(Map map) {
     // printDuration("moveEntities            ", [&]() { moveEntities(map, entities, allocator, GameState::instance->gameTime.getDt());});
     // printDuration("updateEntitiesState     ", [&]() { updateEntitiesState(map, entities); });
     // printDuration("entitiesInteractions    ", [&]() { entitiesInteractions(map, entities); });
-    printDuration("updateGameState         ", [&]() { updateGameState(); });
+    // printDuration("updateGameState         ", [&]() { updateGameState(); });
 }
 
-extern "C" __global__ void update(GameData _gamedata) {
+
+
+extern "C" __global__ void kernel_update(GameData _gamedata) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -410,4 +395,74 @@ extern "C" __global__ void update(GameData _gamedata) {
 
     updateGrid(map);
     
+}
+
+extern "C" __global__ 
+void kernel_pathfinding(GameData gamedata) {
+
+
+    // for(int i = 0; i < gamedata.state->numEntities; i++){
+    //     Entity& entity = gamedata.entities[i];
+        
+    //     int2 start = {entity.position.x, entity.position.y};
+    //     int2 end = {
+    //         entity.destination % map.cols,
+    //         entity.destination / map.cols,
+    //     };
+        
+    //     findPath(start, end, map, gamedata);
+    // }
+    Map map = Map(gamedata.numRows, gamedata.numCols, gamedata.cells);
+
+    int entityIndex = blockIdx.x;
+    Entity& entity = gamedata.entities[entityIndex];
+
+    int numCells = map.rows * map.cols;
+
+    Allocator allocator(gamedata.buffer, 1'000'000);
+    uint32_t* grid_costmap       = allocator.alloc<uint32_t*>(gamedata.state->numEntities * 4 * numCells);
+	uint32_t* grid_distancefield = allocator.alloc<uint32_t*>(gamedata.state->numEntities * 4 * numCells);
+	uint32_t* grid_flowfield     = allocator.alloc<uint32_t*>(gamedata.state->numEntities * 4 * numCells);
+
+    uint32_t* block_costmap       = grid_costmap       + entityIndex * 4 * numCells;
+    uint32_t* block_distancefield = grid_distancefield + entityIndex * 4 * numCells;
+    uint32_t* block_flowfield     = grid_flowfield     + entityIndex * 4 * numCells;
+
+    // if(threadIdx.x == 0) printf("entityIndex: %d \n", entityIndex);
+
+    // if(entityIndex != 0) return;
+
+    int2 start = {entity.position.x, entity.position.y};
+    int2 end = {
+        entity.destination % map.cols,
+        entity.destination / map.cols,
+    };
+    
+    findPath(start, end, map, gamedata, block_costmap, block_distancefield, block_flowfield);
+
+
+    // printf("test")
+}
+
+
+extern "C" __global__
+void kernel_updateGameState(GameData gamedata) {
+    auto grid = cg::this_grid();
+
+    GameState::instance = gamedata.state;
+
+    if (grid.thread_rank() == 0) {
+        float dt = ((float)(nanotime_start - GameState::instance->previousFrameTime_ns)) / 1e9;
+        GameState::instance->previousFrameTime_ns = nanotime_start;
+        GameState::instance->currentTime_ms = currentTime_ms();
+        GameState::instance->population = gamedata.state->numEntities;
+        GameState::instance->previousMouseButtons = gamedata.uniforms.mouseButtons;
+
+        if (GameState::instance->firstFrame) {
+            GameState::instance->firstFrame = false;
+            GameState::instance->gameTime.dt = 0.0f;
+        } else {
+            GameState::instance->gameTime.incrementRealTime(dt * gamedata.uniforms.timeMultiplier);
+        }
+    }
 }

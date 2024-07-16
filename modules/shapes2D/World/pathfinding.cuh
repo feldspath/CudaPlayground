@@ -3,24 +3,30 @@
 #include "HostDeviceInterface.h"
 #include "World/map.cuh"
 
-void findPath(int2 start, int2 end, Map map, GameData gamedata){
+void findPath(
+	int2 start, int2 end, Map map, GameData gamedata,
+	uint32_t* costmap, uint32_t* distancefield, uint32_t* flowfield
+){
 
 	auto grid = cg::this_grid();
+	auto block = cg::this_thread_block();
 
-	Allocator allocator(gamedata.buffer, 0);
+	
 
 	int numCells = map.rows * map.cols;
 	
-	uint32_t* costmap = allocator.alloc<uint32_t*>(4 * numCells);
-	uint32_t* distancefield = allocator.alloc<uint32_t*>(4 * numCells);
-	uint32_t* flowfield = allocator.alloc<uint32_t*>(4 * numCells);
+	
 
 	uint32_t endID = end.x + end.y * map.cols;
 
 	uint64_t t_start = nanotime();
 
 	// COMPUTE COSTMAP
-	processRange(numCells, [&](int cellID){
+	for(
+		int cellID = block.thread_rank();
+		cellID < numCells;
+		cellID += block.size()
+	){
 
 		int cell_x = cellID % map.cols;
 		int cell_y = cellID / map.cols;
@@ -34,18 +40,23 @@ void findPath(int2 start, int2 end, Map map, GameData gamedata){
 		}
 
 		costmap[cellID] = cost;
-	});
+	}
 
-	grid.sync();
+	block.sync();
+
 
 	// COMPUTE DISTANCE FIELD
 
 	// init distances
-	processRange(numCells, [&](int cellID){
+	for(
+		int cellID = block.thread_rank();
+		cellID < numCells;
+		cellID += block.size()
+	){
 		distancefield[cellID] = cellID == endID ? 0 : 1'000'000'000;
-	});
+	}
 
-	grid.sync();
+	block.sync();
 
 	// uint64_t nanos = nanotime() - t_start;
 	// float millies = double(nanos) / 1'000'000.0f;
@@ -55,7 +66,11 @@ void findPath(int2 start, int2 end, Map map, GameData gamedata){
 	// TODO: currently computed for all cells each iteration. Probably can be 
 	// reduced to cells at radius from target with radius = iterations?
 	for(int i = 0; i < map.rows; i++){
-		processRange(numCells, [&](int cellID){
+		for(
+			int cellID = block.thread_rank();
+			cellID < numCells;
+			cellID += block.size()
+		){
 			// current cell is target, 
 			// neighbors are sources that try to go to target
 
@@ -88,12 +103,12 @@ void findPath(int2 start, int2 end, Map map, GameData gamedata){
 
 				atomicMin(&distancefield[sourceID], cost);
 			}
-		});
+		}
 
-		grid.sync();
+		block.sync();
 	}
 
-	grid.sync();
+	block.sync();
 
 	// uint64_t nanos = nanotime() - t_start;
 	// float millies = double(nanos) / 1'000'000.0f;
@@ -101,7 +116,11 @@ void findPath(int2 start, int2 end, Map map, GameData gamedata){
 
 	// COMPUTE FLOW FIELD
 	// for each cell, we compute the direction to the neighbor with the smallest distance
-	processRange(numCells, [&](int cellID){
+	for(
+		int cellID = block.thread_rank();
+		cellID < numCells;
+		cellID += block.size()
+	){
 		int cell_x = cellID % map.cols;
 		int cell_y = cellID / map.cols;
 
@@ -130,21 +149,26 @@ void findPath(int2 start, int2 end, Map map, GameData gamedata){
 
 		// store index of neighbor we should move to
 		flowfield[cellID] = cheapestNeighborIndex;
-	});
+	}
 
-	grid.sync();
+	block.sync();
 
 	// uint64_t nanos = nanotime() - t_start;
 	// float millies = double(nanos) / 1'000'000.0f;
 	// if(grid.thread_rank() == 0) printf("millies: %f\n", millies);
 
 	// DEBUG PRINT
-	processRange(numCells, [&](int cellID){
+	for(
+		int cellID = block.thread_rank();
+		cellID < numCells;
+		cellID += block.size()
+	){
 		int cell_x = cellID % map.cols;
 		int cell_y = cellID / map.cols;
 
 		// int value = distancefield[cellID];
-		int value = flowfield[cellID];
+		// int value = flowfield[cellID];
+		int value = costmap[cellID];
 
 		mat4 viewProj = gamedata.uniforms.proj * gamedata.uniforms.view;
 		float2 screenPos = projectPosToScreenPos(
@@ -178,7 +202,7 @@ void findPath(int2 start, int2 end, Map map, GameData gamedata){
 			uint32_t lblIndex = atomicAdd(gamedata.dbg_numLabels, 1);
 			gamedata.dbg_labels[lblIndex] = label;
 		}
-	});
+	}
 
 
 
