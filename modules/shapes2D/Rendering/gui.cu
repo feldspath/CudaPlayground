@@ -60,8 +60,8 @@ void GUI::renderInfoPanel(Map *map, Entities *entities) {
         case HOUSE: {
             textRenderer.drawText("House", cursor, framebuffer);
             cursor.newline();
-
-            int entityId = *map->houseTileData(id);
+            ;
+            int entityId = map->getCell<HouseCell>(id).residentEntityIdx;
             if (entityId == -1) {
                 textRenderer.drawText("No resident", cursor, framebuffer);
                 cursor.newline();

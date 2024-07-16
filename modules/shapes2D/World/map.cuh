@@ -69,32 +69,26 @@ struct Map {
     TileId getTileId(int cellId) const { return cellsData[cellId].tileId; }
     void setTileId(int cellId, TileId tile) { cellsData[cellId].tileId = tile; }
 
-    char *tileData(int cellId) { return cellsData[cellId].additionalData; }
+    template <typename T> T &getCell(int cellId) { return *((T *)&cellsData[cellId]); }
 
     // ROAD DATA
-
-    int32_t *roadTileData(int cellId) { return (int32_t *)(tileData(cellId)); }
-
     // We assume that the network is flattened
-    int32_t &roadNetworkRepr(int cellId) { return roadTileData(cellId)[0]; }
-    int32_t &roadNetworkId(int cellId) { return roadTileData(cellId)[1]; }
-
-    // FACTORY DATA
-    int32_t *factoryTileData(int cellId) { return (int32_t *)(tileData(cellId)); }
+    int32_t &roadNetworkRepr(int cellId) { return getCell<RoadCell>(cellId).networkRepr; }
+    int32_t &roadNetworkId(int cellId) { return getCell<RoadCell>(cellId).networkId; }
 
     // HOUSE DATA
-    int32_t *houseTileData(int cellId) { return (int32_t *)(tileData(cellId)); }
-
     int32_t rentCost(int cellId) { return cellsData[cellId].landValue / 20 + 10; }
 
     // SHOP DATA
-    int32_t *shopTileData(int cellId) { return (int32_t *)(tileData(cellId)); }
-
-    int32_t &shopCurrentWorkerCount(int cellId) { return shopTileData(cellId)[1]; }
+    int32_t &shopCurrentWorkerCount(int cellId) {
+        return getCell<WorkplaceCell>(cellId).currentWorkerCount;
+    }
 
     // WORKPLACE DATA
     bool isWorkplace(int cellId) const { return getTileId(cellId) & (SHOP | FACTORY); }
-    int32_t &workplaceCapacity(int cellId) { return *(int32_t *)(tileData(cellId)); }
+    int32_t &workplaceCapacity(int cellId) {
+        return getCell<WorkplaceCell>(cellId).workplaceCapacity;
+    }
 
     // Network logic
     Neighbors neighborNetworks(int cellId) {

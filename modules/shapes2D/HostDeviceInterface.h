@@ -2,6 +2,7 @@
 #pragma once
 
 #include "World/Path/path.h"
+#include "World/cell.h"
 #include "World/time.h"
 #include "builtin_types.h"
 
@@ -115,30 +116,6 @@ struct GameState {
     float fillCells_ms;
     float moveEntities_ms;
     float updateEntitiesState_ms;
-};
-
-// CELLS
-
-enum TileId {
-    UNKNOWN = 0,
-    GRASS = 1,
-    ROAD = 2,
-    HOUSE = 4,
-    FACTORY = 8,
-    SHOP = 16,
-};
-
-inline TileId operator|(TileId a, TileId b) {
-    return static_cast<TileId>(static_cast<int>(a) | static_cast<int>(b));
-}
-
-#define ENTITIES_PER_CELL 8
-
-struct Cell {
-    TileId tileId;
-    int32_t landValue;
-    int32_t entities[ENTITIES_PER_CELL];
-    char additionalData[8];
 };
 
 static int BYTES_PER_CELL = sizeof(Cell);

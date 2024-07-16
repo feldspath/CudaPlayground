@@ -115,8 +115,7 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
     case FACTORY: {
 
         if (grid.thread_rank() == 0) {
-            // Set capacity
-            *map->factoryTileData(cellId) = FACTORY_CAPACITY;
+            map->getCell<FactoryCell>(cellId).workplaceCapacity = FACTORY_CAPACITY;
         }
 
         processRange(map->count, [&](int cellId) {
@@ -133,7 +132,7 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
     case HOUSE:
         if (grid.thread_rank() == 0) {
             // Set house to unassigned
-            *map->houseTileData(cellId) = -1;
+            map->getCell<HouseCell>(cellId).residentEntityIdx = -1;
         }
         break;
     case SHOP:
@@ -148,7 +147,7 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
         case HOUSE: {
             // if it was a house, destroy the entity living there
             if (grid.thread_rank() == 0) {
-                int entityId = *map->houseTileData(cellId);
+                int entityId = map->getCell<HouseCell>(cellId).residentEntityIdx;
                 if (entityId == -1) {
                     break;
                 }
@@ -291,14 +290,8 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
 
 void assignHouseToWorkplace(Map *map, Entities *entities, int32_t houseId, int32_t workplaceId) {
     int32_t newEntity = entities->newEntity(map->getCellPosition(houseId), houseId, workplaceId);
-    int32_t *houseData = map->houseTileData(houseId);
-    *houseData = newEntity;
-
-    if (map->getTileId(workplaceId) == FACTORY) {
-        *map->factoryTileData(workplaceId) -= 1;
-    } else if (map->getTileId(workplaceId) == SHOP) {
-        *map->shopTileData(workplaceId) -= 1;
-    }
+    map->getCell<HouseCell>(houseId).residentEntityIdx = newEntity;
+    map->getCell<WorkplaceCell>(workplaceId).workplaceCapacity -= 1;
 }
 
 void assignOneHouse(Map *map, Entities *entities) {
@@ -324,10 +317,11 @@ void assignOneHouse(Map *map, Entities *entities) {
     grid.sync();
 
     map->processEachCell(HOUSE | FACTORY | SHOP, [&](int cellId) {
-        if (map->getTileId(cellId) == HOUSE && *map->houseTileData(cellId) == -1) {
+        if (map->getTileId(cellId) == HOUSE &&
+            map->getCell<HouseCell>(cellId).residentEntityIdx == -1) {
             atomicAdd(&unassignedHouseCount, 1);
-        } else if ((map->getTileId(cellId) == FACTORY && *map->factoryTileData(cellId) > 0) ||
-                   (map->getTileId(cellId) == SHOP && *map->shopTileData(cellId) > 0)) {
+        } else if (map->isWorkplace(cellId) &&
+                   map->getCell<WorkplaceCell>(cellId).workplaceCapacity > 0) {
             atomicAdd(&availableWorkplaceCount, 1);
         }
     });
@@ -344,11 +338,12 @@ void assignOneHouse(Map *map, Entities *entities) {
         allocator->alloc<uint32_t *>(sizeof(uint32_t) * unassignedHouseCount);
 
     map->processEachCell(HOUSE | FACTORY | SHOP, [&](int cellId) {
-        if (map->getTileId(cellId) == HOUSE && *map->houseTileData(cellId) == -1) {
+        if (map->getTileId(cellId) == HOUSE &&
+            map->getCell<HouseCell>(cellId).residentEntityIdx == -1) {
             int idx = atomicAdd(&globalHouseIdx, 1);
             unassignedHouses[idx] = cellId;
-        } else if ((map->getTileId(cellId) == FACTORY && *map->factoryTileData(cellId) > 0) ||
-                   (map->getTileId(cellId) == SHOP && *map->shopTileData(cellId) > 0)) {
+        } else if (map->isWorkplace(cellId) &&
+                   map->getCell<WorkplaceCell>(cellId).workplaceCapacity > 0) {
             int idx = atomicAdd(&globalWorkplaceIdx, 1);
             availableWorkplaces[idx] = cellId;
         }
@@ -394,12 +389,11 @@ void assignOneHouse(Map *map, Entities *entities) {
         block.sync();
 
         if (block.thread_rank() == 0) {
-            int32_t *houseData = map->houseTileData(houseId);
             if (targetWorkplace != uint64_t(Infinity) << 32ull && !atomicAdd(&assigned, 1)) {
                 int32_t workplaceId = targetWorkplace & 0xffffffffull;
                 assignHouseToWorkplace(map, entities, houseId, workplaceId);
             } else {
-                *houseData = -1;
+                map->getCell<HouseCell>(houseId).residentEntityIdx = -1;
             }
         }
     });
