@@ -222,6 +222,12 @@ struct DbgLabel{
     int y;
 };
 
+struct Line{
+    float2 start;
+    float2 end;
+    uint32_t color;
+};
+
 struct GameData{
     Uniforms uniforms;   // Args passed form host to device every frame
     GameState *state;          // Managed only by device
@@ -237,4 +243,7 @@ struct GameData{
 
     uint32_t* dbg_numLabels;
     DbgLabel* dbg_labels;
+
+    Line* lines;
+    uint32_t* numLines;
 };

@@ -253,7 +253,12 @@ struct CudaModularProgram{
 
 	unordered_map<string, CUevent> events_launch_start;
 	unordered_map<string, CUevent> events_launch_end;
-	unordered_map<string, float> last_launch_duration;
+	// unordered_map<string, float> last_launch_duration;
+
+	int MAX_LAUNCH_DURATIONS = 10;
+	unordered_map<string, deque<float>> last_launch_durations;
+
+	bool measureTimings = false;
 
 
 	CudaModularProgram(CudaModularProgramArgs args){
@@ -403,6 +408,14 @@ struct CudaModularProgram{
 
 				kernelNames.push_back(strName);
 				kernels[strName] = function;
+
+				CUevent event_start;
+				CUevent event_end;
+				cuEventCreate(&event_start, CU_EVENT_DEFAULT);
+				cuEventCreate(&event_end, CU_EVENT_DEFAULT);
+
+				events_launch_start[strName] = event_start;
+				events_launch_end[strName] = event_end;
 			}
 		}
 
@@ -427,10 +440,17 @@ struct CudaModularProgram{
 
 	void launch(string kernelName, void* args[], OptionalLaunchSettings launchArgs = {}){
 
+		CUevent event_start = events_launch_start[kernelName];
+		CUevent event_end   = events_launch_end[kernelName];
+
+		cuEventRecord(event_start, 0);
+
 		auto res_launch = cuLaunchKernel(kernels[kernelName],
 			launchArgs.gridsize, 1, 1,
 			launchArgs.blocksize, 1, 1,
 			0, 0, args, nullptr);
+
+		cuEventRecord(event_end, 0);
 
 		if (res_launch != CUDA_SUCCESS) {
 			const char* str;
@@ -438,23 +458,56 @@ struct CudaModularProgram{
 			printf("error: %s \n", str);
 			cout << __FILE__ << " - " << __LINE__ << endl;
 		}
+
+		if(measureTimings){
+			cuCtxSynchronize();
+
+			float duration;
+			cuEventElapsedTime(&duration, event_start, event_end);
+
+			// last_launch_duration[kernelName] = duration;
+
+			auto& durations = last_launch_durations[kernelName];
+			durations.push_back(duration);
+			if(durations.size() >= MAX_LAUNCH_DURATIONS) durations.pop_front();
+		}
 	}
 
 	void launch(string kernelName, void* args[], int count){
 
+		CUevent event_start = events_launch_start[kernelName];
+		CUevent event_end   = events_launch_end[kernelName];
+
 		uint32_t blockSize = 256;
 		uint32_t gridSize = (count + blockSize - 1) / blockSize;
+
+		cuEventRecord(event_start, 0);
 
 		auto res_launch = cuLaunchKernel(kernels[kernelName],
 			gridSize, 1, 1,
 			blockSize, 1, 1,
 			0, 0, args, nullptr);
 
+		cuEventRecord(event_end, 0);
+
 		if (res_launch != CUDA_SUCCESS) {
 			const char* str;
 			cuGetErrorString(res_launch, &str);
 			printf("error: %s \n", str);
 			cout << __FILE__ << " - " << __LINE__ << endl;
+		}
+
+		if(measureTimings){
+			cuCtxSynchronize();
+
+			float duration;
+			cuEventElapsedTime(&duration, event_start, event_end);
+
+			// last_launch_duration[kernelName] = duration;
+
+			auto& durations = last_launch_durations[kernelName];
+			durations.push_back(duration);
+			if(durations.size() >= MAX_LAUNCH_DURATIONS) durations.pop_front();
 		}
 	}
 
@@ -463,7 +516,6 @@ struct CudaModularProgram{
 		CUevent event_start = events_launch_start[kernelName];
 		CUevent event_end   = events_launch_end[kernelName];
 
-		// cuEventRecord(event_start, 0);
 
 		CUdevice device;
 		int numSMs;
@@ -481,6 +533,8 @@ struct CudaModularProgram{
 		// make sure at least 10 workgroups are spawned)
 		numBlocks = std::clamp(numBlocks, 10, 100'000);
 
+		cuEventRecord(event_start, 0);
+
 		auto kernel = this->kernels[kernelName];
 		auto res_launch = cuLaunchCooperativeKernel(kernel,
 			numBlocks, 1, 1,
@@ -494,16 +548,20 @@ struct CudaModularProgram{
 			cout << __FILE__ << " - " << __LINE__ << endl;
 		}
 
-		// cuEventRecord(event_end, 0);
+		cuEventRecord(event_end, 0);
 
-		// if(launchArgs.measureDuration){
-		// 	cuCtxSynchronize();
+		if(measureTimings){
+			cuCtxSynchronize();
 
-		// 	float duration;
-		// 	cuEventElapsedTime(&duration, event_start, event_end);
+			float duration;
+			cuEventElapsedTime(&duration, event_start, event_end);
 
-		// 	last_launch_duration[kernelName] = duration;
-		// }
+			// last_launch_duration[kernelName] = duration;
+
+			auto& durations = last_launch_durations[kernelName];
+			durations.push_back(duration);
+			if(durations.size() >= MAX_LAUNCH_DURATIONS) durations.pop_front();
+		}
 	}
 
 };

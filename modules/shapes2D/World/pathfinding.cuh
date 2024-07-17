@@ -4,8 +4,8 @@
 #include "World/map.cuh"
 
 void findPath(
-	int2 start, int2 end, Map map, GameData gamedata,
-	uint32_t* costmap, uint32_t* distancefield, uint32_t* flowfield
+	int2 start, int2 end, Map map, GameData gamedata
+	// uint32_t* costmap, uint32_t* distancefield, uint32_t* flowfield
 ){
 
 	auto grid = cg::this_grid();
@@ -15,7 +15,9 @@ void findPath(
 
 	int numCells = map.rows * map.cols;
 	
-	
+	__shared__ uint32_t costmap[64 * 64];
+	__shared__ uint32_t distancefield[64 * 64];
+	__shared__ uint32_t flowfield[64 * 64];
 
 	uint32_t endID = end.x + end.y * map.cols;
 
@@ -36,6 +38,8 @@ void findPath(
 
 		int cost = 1;
 		if(type == TileId::STONE){
+			cost = 10'000;
+		}else if(type == TileId::WATER){
 			cost = 10'000;
 		}
 
@@ -153,58 +157,65 @@ void findPath(
 
 	block.sync();
 
-	// uint64_t nanos = nanotime() - t_start;
-	// float millies = double(nanos) / 1'000'000.0f;
-	// if(grid.thread_rank() == 0) printf("millies: %f\n", millies);
 
-	// DEBUG PRINT
-	for(
-		int cellID = block.thread_rank();
-		cellID < numCells;
-		cellID += block.size()
-	){
-		int cell_x = cellID % map.cols;
-		int cell_y = cellID / map.cols;
+	// =============
+	// DISPLAY PATHS
+	// =============
 
-		// int value = distancefield[cellID];
-		// int value = flowfield[cellID];
-		int value = costmap[cellID];
+	auto toCellID = [&](int x, int y){
+		return x + y * map.cols;
+	};
 
+	auto fromCellID = [&](int id){
+		int2 coord;
+		coord.x = id % map.cols;
+		coord.y = id / map.cols;
+
+		return coord;
+	};
+
+	// if(false)
+	if(threadIdx.x == 0){
 		mat4 viewProj = gamedata.uniforms.proj * gamedata.uniforms.view;
-		float2 screenPos = projectPosToScreenPos(
-			make_float3(cell_x, cell_y, 0.0), viewProj, 
-			gamedata.uniforms.width, gamedata.uniforms.height
-		);
+		Entity& entity = gamedata.entities[blockIdx.x];
+		
 
-		float2 nextScreenPos = projectPosToScreenPos(
-			make_float3(cell_x + 1, cell_y + 1, 0.0), viewProj, 
-			gamedata.uniforms.width, gamedata.uniforms.height
-		);
+		// printf("[%d] %d, %d \n", blockIdx.x, end.x, end.y);
 
-		float2 diff_start = make_float2(cell_x - start.x, cell_y - start.y);
-		float2 diff_end = make_float2(cell_x - end.x, cell_y - end.y);
-		float l_start = length(diff_start);
-		float l_end = length(diff_end);
+		int startID = toCellID(start.x, start.y);
 
-		// if(cellID == 3420 - 5 * 64 + 10)
-		if(l_start < 5.0 || l_end < 5.0f)
-		{
-			DbgLabel label;
-			label.label[0] = 'A';
-			label.size = 1;
-			label.x = (screenPos.x + nextScreenPos.x) / 2.0f;
-			label.y = (screenPos.y + nextScreenPos.y) / 2.0f;
+		for(int i = 0; i < 50; i++){
+			int nextID = flowfield[startID];
+			float2 nextPos = make_float2(fromCellID(nextID)) + 0.5f;
+			float2 currPos = make_float2(fromCellID(startID)) + 0.5f;
 
-			memset(&label.label[0], 0, 32);
+			if(startID == nextID) break;
 
-			label.size = numberToString(value, &label.label[0]);
+			float2 screenPos = projectPosToScreenPos(
+				make_float3(currPos.x, currPos.y, 0.0), viewProj, 
+				gamedata.uniforms.width, gamedata.uniforms.height
+			);
 
-			uint32_t lblIndex = atomicAdd(gamedata.dbg_numLabels, 1);
-			gamedata.dbg_labels[lblIndex] = label;
+			float2 nextScreenPos = projectPosToScreenPos(
+				make_float3(nextPos.x, nextPos.y, 0.0), viewProj, 
+				gamedata.uniforms.width, gamedata.uniforms.height
+			);
+
+			Line line;
+			line.start = screenPos;
+			line.end = nextScreenPos;
+			line.color = (blockIdx.x + 13) * 12345678;
+
+			uint32_t lineIndex = atomicAdd(gamedata.numLines, 1);
+			gamedata.lines[lineIndex] = line;
+
+			startID = nextID;
 		}
+
+		
+
+
 	}
-
-
 
 }
 

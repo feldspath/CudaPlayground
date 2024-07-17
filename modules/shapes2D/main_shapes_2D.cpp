@@ -34,6 +34,7 @@ CUdeviceptr cptr_spriteSheet;
 CUdeviceptr cptr_spriteSheet_buildings;
 CUdeviceptr cptr_ascii_32;
 CUdeviceptr cptr_dbglabels, cptr_dbgnumlabels;
+CUdeviceptr cptr_lines, cptr_numLines;
 uint32_t gridRows;
 uint32_t gridCols;
 
@@ -44,6 +45,7 @@ CUevent cevent_start, cevent_end;
 
 int renderMode = RENDERMODE_DEFAULT;
 bool printTimings = false;
+bool displayTimings = false;
 bool creativeMode = false;
 float timeMultiplier = 1.0f;
 
@@ -128,16 +130,19 @@ void loadMap() {
 
 void loadScene(){
 
+    std::vector<Cell> gridCells;
+    uint32_t width;
+    uint32_t height;
+
     { // LOAD MAP
         auto asciidata = readBinaryFile("./resources/testscenes/map_64x64.png");
-        uint32_t width;
-        uint32_t height;
+        
         std::vector<uint8_t> img;
         lodepng::decode(img, width, height, (const unsigned char *)asciidata->data_char, size_t(asciidata->size));
 
         uint32_t* img_u32 = (uint32_t*)img.data();
 
-        std::vector<Cell> gridCells(width * height);
+        gridCells.resize(width * height);
         for (int x = 0; x < width; x++) 
         for (int y = 0; y < height; y++) 
         {
@@ -168,6 +173,14 @@ void loadScene(){
 
     { // CREATE ENTITIES
 
+        // std::random_device r;
+        std::default_random_engine e1(0);
+        std::uniform_int_distribution<int> uniform_dist(0, width - 1);
+
+        int randomNumber = uniform_dist(e1);
+
+
+
         // Entity entity = {
         //     .position          = {26.0f, 59.0f},
         // };
@@ -175,8 +188,18 @@ void loadScene(){
         // vector<Entity> entities = {entity};
         vector<Entity> entities;// = {entity};
 
-        entities.push_back({.position = {26.0f, 59.0f}});
-        entities.push_back({.position = {26.0f,  9.0f}});
+        for(int i = 0; i < 500; i++){
+            int rx = uniform_dist(e1);
+            int ry = uniform_dist(e1);
+
+            int cellID = rx + width * ry;
+
+            if(gridCells[cellID].tileId == TileId::GRASS){
+                entities.push_back({.position = {float(rx) + 0.5f, float(ry) + 0.5f}});
+            }
+        }
+
+        println("#entities: {}", entities.size());
 
         cuMemcpyHtoD(cptr_entities, entities.data(), entities.size() * sizeof(Entity));
 
@@ -239,6 +262,8 @@ void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
     gamedata.constructions   = (ConstructionList*)cptr_constructions;
     gamedata.dbg_numLabels   = (uint32_t*)cptr_dbgnumlabels;
     gamedata.dbg_labels      = (DbgLabel*)cptr_dbglabels;
+    gamedata.lines           = (Line*)cptr_lines;
+    gamedata.numLines        = (uint32_t*)cptr_numLines;
 
     void *args[] = {&gamedata};
 
@@ -326,6 +351,8 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
     gamedata.constructions   = (ConstructionList*)cptr_constructions;
     gamedata.dbg_numLabels   = (uint32_t*)cptr_dbgnumlabels;
     gamedata.dbg_labels      = (DbgLabel*)cptr_dbglabels;
+    gamedata.lines           = (Line*)cptr_lines;
+    gamedata.numLines        = (uint32_t*)cptr_numLines;
 
     void *args[] = {&gamedata, &output_surf};
 
@@ -409,6 +436,9 @@ void initCudaProgram(
 
     cuMemAlloc(&cptr_dbgnumlabels, sizeof(uint32_t));
     cuMemAlloc(&cptr_dbglabels, 100'000 * sizeof(DbgLabel));
+
+    cuMemAlloc(&cptr_numLines, sizeof(uint32_t));
+    cuMemAlloc(&cptr_lines, 1'000'000 * sizeof(Line));
     
 
     cuda_program =
@@ -483,7 +513,14 @@ int main() {
 
     loadScene();
 
-    auto update = [&]() { updateCUDA(renderer); };
+    auto update = [&]() { 
+
+        cuda_update->measureTimings = displayTimings;
+        cuda_program->measureTimings = displayTimings;
+        
+
+        updateCUDA(renderer); 
+    };
 
     auto render = [&]() {
         renderer->view.framebuffer->setSize(renderer->width, renderer->height);
@@ -518,7 +555,8 @@ int main() {
             ImGui::RadioButton("Land value", &renderMode, RENDERMODE_LANDVALUE);
 
             ImGui::Text("Options");
-            ImGui::Checkbox("Pring Timings", &printTimings);
+            ImGui::Checkbox("Print Timings", &printTimings);
+            ImGui::Checkbox("Display Timings", &displayTimings);
             ImGui::Checkbox("Creative Mode", &creativeMode);
             ImGui::SliderFloat("Time multiplier", &timeMultiplier, 0.1f, 10.0f);
 
@@ -528,6 +566,61 @@ int main() {
             ImGui::SameLine();
             if (ImGui::Button("Load Map")) {
                 loadMap();
+            }
+
+            ImGui::End();
+        }
+
+        {
+            ImGui::SetNextWindowPos(ImVec2(10, 280 + 180 + 230 + 10));
+            ImGui::SetNextWindowSize(ImVec2(490, 230));
+
+            ImGui::Begin("Timings");
+
+            static ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg;
+
+            ImGui::Text("Timings: ");
+            if (ImGui::BeginTable("Timings", 2, flags)){
+
+                // HEADER
+                ImGui::TableSetupColumn("Label");
+                ImGui::TableSetupColumn("Milliseconds");
+                ImGui::TableHeadersRow();
+
+                for(auto& [label, durations] : cuda_program->last_launch_durations){
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::TextUnformatted(label.c_str());
+
+                    float sum = 0.0;
+                    for(int i = 0; i < durations.size(); i++){
+                        sum += durations[i];
+                    }
+                    float avg = sum / float(durations.size());
+
+                    ImGui::TableSetColumnIndex(1);
+                    string strTime = format("{:6.3f}", avg);
+                    ImGui::TextUnformatted(strTime.c_str());
+                }
+
+                for(auto& [label, durations] : cuda_update->last_launch_durations){
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::TextUnformatted(label.c_str());
+
+                    float sum = 0.0;
+                    for(int i = 0; i < durations.size(); i++){
+                        sum += durations[i];
+                    }
+                    float avg = sum / float(durations.size());
+
+                    ImGui::TableSetColumnIndex(1);
+                    string strTime = format("{:6.3f}", avg);
+                    ImGui::TextUnformatted(strTime.c_str());
+                }
+                
+
+                ImGui::EndTable();
             }
 
             ImGui::End();

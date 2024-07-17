@@ -516,6 +516,43 @@ extern "C" __global__ void kernel(GameData _gamedata, cudaSurfaceObject_t gl_col
 
     grid.sync();
 
+    for_blockwise(*gamedata.numLines, [&](int index){
+        Line line = gamedata.lines[index];
+
+        
+        float l = length(line.end - line.start);
+        int numPixels = 2.0 * l;
+
+        for(
+            int i = block.thread_rank();
+            i < numPixels;
+            i += block.size()
+        ){
+
+            float u = float(i) / numPixels;
+
+            int2 pixelPos = make_int2((1.0f - u) * line.start + u * line.end);
+
+            if(pixelPos.x < 0 || pixelPos.x >= uniforms.width) continue;
+            if(pixelPos.y < 0 || pixelPos.y >= uniforms.height) continue;
+
+            int pixelID = pixelPos.x + pixelPos.y * uniforms.width;
+
+            uint64_t udepth = 0;
+            uint64_t pixel = (udepth << 32) | line.color;
+
+
+            atomicMin(&framebuffer.data[pixelID], pixel);
+
+
+
+        }
+
+
+    });
+
+    grid.sync();
+
     uint32_t &maxNanos = *allocator->alloc<uint32_t *>(4);
 
     // transfer framebuffer to opengl texture

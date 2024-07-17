@@ -308,7 +308,8 @@ void handleInputs(Map map) {
     }
 
     // handle selecting entity target
-    if(grid.thread_rank() == 0){
+    // if(grid.thread_rank() == 0)
+    {
         int pixelX = cursorPos.x;
         int pixelY = uniforms.height - cursorPos.y;
 
@@ -317,9 +318,9 @@ void handleInputs(Map map) {
 
         // printf("%f, %f \n", pos_W.x, pos_W.y);
 
-        if(uniforms.mouseButtons == 1 && GameState::instance->previousMouseButtons == 0){
-            printf("%u \n", gamedata.state->numEntities);
-        }
+        // if(uniforms.mouseButtons == 1 && GameState::instance->previousMouseButtons == 0){
+        //     printf("%u \n", gamedata.state->numEntities);
+        // }
 
         processRange(gamedata.state->numEntities, [&](int index){
 
@@ -382,6 +383,7 @@ extern "C" __global__ void kernel_update(GameData _gamedata) {
     GameState::instance = gamedata.state;
 
     *gamedata.dbg_numLabels = 0;
+    *gamedata.numLines = 0;
 
     Allocator _allocator(gamedata.buffer, 0);
     allocator = &_allocator;
@@ -419,14 +421,14 @@ void kernel_pathfinding(GameData gamedata) {
 
     int numCells = map.rows * map.cols;
 
-    Allocator allocator(gamedata.buffer, 1'000'000);
-    uint32_t* grid_costmap       = allocator.alloc<uint32_t*>(gamedata.state->numEntities * 4 * numCells);
-	uint32_t* grid_distancefield = allocator.alloc<uint32_t*>(gamedata.state->numEntities * 4 * numCells);
-	uint32_t* grid_flowfield     = allocator.alloc<uint32_t*>(gamedata.state->numEntities * 4 * numCells);
+    // Allocator allocator(gamedata.buffer, 1'000'000);
+    // uint32_t* grid_costmap       = allocator.alloc<uint32_t*>(gamedata.state->numEntities * 4 * numCells);
+	// uint32_t* grid_distancefield = allocator.alloc<uint32_t*>(gamedata.state->numEntities * 4 * numCells);
+	// uint32_t* grid_flowfield     = allocator.alloc<uint32_t*>(gamedata.state->numEntities * 4 * numCells);
 
-    uint32_t* block_costmap       = grid_costmap       + entityIndex * 4 * numCells;
-    uint32_t* block_distancefield = grid_distancefield + entityIndex * 4 * numCells;
-    uint32_t* block_flowfield     = grid_flowfield     + entityIndex * 4 * numCells;
+    // uint32_t* block_costmap       = grid_costmap       + entityIndex * 4 * numCells;
+    // uint32_t* block_distancefield = grid_distancefield + entityIndex * 4 * numCells;
+    // uint32_t* block_flowfield     = grid_flowfield     + entityIndex * 4 * numCells;
 
     // if(threadIdx.x == 0) printf("entityIndex: %d \n", entityIndex);
 
@@ -438,7 +440,8 @@ void kernel_pathfinding(GameData gamedata) {
         entity.destination / map.cols,
     };
     
-    findPath(start, end, map, gamedata, block_costmap, block_distancefield, block_flowfield);
+    findPath(start, end, map, gamedata);
+    // findPath(start, end, map, gamedata, block_costmap, block_distancefield, block_flowfield);
 
 
     // printf("test")
