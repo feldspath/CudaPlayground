@@ -173,6 +173,12 @@ struct Entity {
     Path path;
     int32_t destination;
 
+    int32_t inventory;
+
+    // Waiting logic
+    GameTime waitStop;
+    bool waiting;
+
     inline bool isLost() { return destination != -1 && !path.isValid(); }
 
     void resetStateStart() { stateStart = GameState::instance->gameTime; }
@@ -183,6 +189,22 @@ struct Entity {
         destination = -1;
         interaction = -1;
         state = newState;
+    }
+
+    void wait(uint32_t minutes) {
+        active = false;
+        waiting = true;
+        waitStop = GameState::instance->gameTime + GameTime::fromMinutes(minutes);
+    }
+
+    void checkWaitStatus() {
+        if (!waiting) {
+            return;
+        }
+        if (waitStop <= GameState::instance->gameTime) {
+            waiting = false;
+            active = true;
+        }
     }
 };
 

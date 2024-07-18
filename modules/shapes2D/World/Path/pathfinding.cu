@@ -26,7 +26,7 @@ static PathfindingList locateLostEntities(Map *map, Entities *entities, Allocato
     }
     grid.sync();
 
-    entities->processAll([&](int entityIndex) {
+    entities->processAllActive([&](int entityIndex) {
         Entity &entity = entities->get(entityIndex);
         if (entity.isLost()) {
             uint32_t targetId = entity.destination;

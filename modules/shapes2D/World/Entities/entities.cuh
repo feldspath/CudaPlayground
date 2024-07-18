@@ -27,11 +27,15 @@ public:
         get(entityId).active = false;
     }
 
-    template <typename Function> void processAll(Function &&function) {
+    template <typename Function> void processAllActive(Function &&function) {
         processRange(getCount(), [&](int idx) {
             if (get(idx).active) {
                 function(idx);
             }
         });
+    }
+
+    template <typename Function> void processAll(Function &&function) {
+        processRange(getCount(), [&](int idx) { function(idx); });
     }
 };

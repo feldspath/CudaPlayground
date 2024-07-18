@@ -1,16 +1,17 @@
 #include <cooperative_groups.h>
 #include <curand_kernel.h>
 
+#include "common/helper_math.h"
 #include "common/utils.cuh"
 
 #include "HostDeviceInterface.h"
 #include "World/Entities/entities.cuh"
 #include "World/Entities/movement.cuh"
 #include "World/Path/pathfinding.cuh"
+#include "World/cell_buffer.cuh"
 #include "World/map.cuh"
 #include "World/time.h"
 #include "builtin_types.h"
-#include "common/helper_math.h"
 #include "common/matrix_math.h"
 
 namespace cg = cooperative_groups;
@@ -18,6 +19,11 @@ namespace cg = cooperative_groups;
 Uniforms uniforms;
 Allocator *allocator;
 uint64_t nanotime_start;
+
+CellBuffer shops;
+CellBuffer houses;
+CellBuffer factories;
+CellBuffer workplaces;
 
 curandStateXORWOW_t thread_random_state;
 
@@ -138,7 +144,7 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
         if (grid.thread_rank() == 0) {
             // Set capacities
             map->workplaceCapacity(cellId) = SHOP_WORK_CAPACITY;
-            map->shopCurrentWorkerCount(cellId) = 0;
+            map->getTyped<WorkplaceCell>(cellId).currentWorkerCount = 0;
         }
         break;
     case GRASS: {
@@ -159,7 +165,7 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
         case FACTORY:
         case SHOP: {
             // if the removed tile was a factory or shop, destroy the associated entities
-            entities->processAll([&](int entityId) {
+            entities->processAllActive([&](int entityId) {
                 auto &entity = entities->get(entityId);
                 if (entity.workplaceId == cellId) {
                     map->workplaceCapacity(entity.workplaceId)++;
@@ -184,7 +190,7 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
             });
             grid.sync();
 
-            entities->processAll([&](int entityId) {
+            entities->processAllActive([&](int entityId) {
                 auto &entity = entities->get(entityId);
                 if (!validCells[map->cellAtPosition(entity.position)]) {
                     entity.path.reset();
@@ -298,102 +304,39 @@ void assignOneHouse(Map *map, Entities *entities) {
     auto block = cg::this_thread_block();
 
     grid.sync();
-
-    int32_t &assigned = *allocator->alloc<int32_t *>(4);
-    uint32_t &unassignedHouseCount = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
-    uint32_t &availableWorkplaceCount = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
-    uint32_t &globalHouseIdx = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
-    uint32_t &globalWorkplaceIdx = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
-
+    int32_t &assigned = *allocator->alloc<int32_t *>(sizeof(int32_t));
     if (grid.thread_rank() == 0) {
-        unassignedHouseCount = 0;
-        availableWorkplaceCount = 0;
-        globalHouseIdx = 0;
-        globalWorkplaceIdx = 0;
         assigned = 0;
     }
-
     grid.sync();
 
-    map->processEachCell(HOUSE | FACTORY | SHOP, [&](int cellId) {
-        if (map->getTileId(cellId) == HOUSE &&
-            map->getTyped<HouseCell>(cellId).residentEntityIdx == -1) {
-            atomicAdd(&unassignedHouseCount, 1);
-        } else if (map->isWorkplace(cellId) &&
-                   map->getTyped<WorkplaceCell>(cellId).workplaceCapacity > 0) {
-            atomicAdd(&availableWorkplaceCount, 1);
-        }
+    CellBuffer unassignedHouses = houses.subBuffer(allocator, [&](int cellId) {
+        return map->getTyped<HouseCell>(cellId).residentEntityIdx == -1;
     });
-
     grid.sync();
-
-    if (unassignedHouseCount == 0 || availableWorkplaceCount == 0) {
+    if (unassignedHouses.getCount() == 0) {
         return;
     }
 
-    uint32_t *availableWorkplaces =
-        allocator->alloc<uint32_t *>(sizeof(uint32_t) * availableWorkplaceCount);
-    uint32_t *unassignedHouses =
-        allocator->alloc<uint32_t *>(sizeof(uint32_t) * unassignedHouseCount);
-
-    map->processEachCell(HOUSE | FACTORY | SHOP, [&](int cellId) {
-        if (map->getTileId(cellId) == HOUSE &&
-            map->getTyped<HouseCell>(cellId).residentEntityIdx == -1) {
-            int idx = atomicAdd(&globalHouseIdx, 1);
-            unassignedHouses[idx] = cellId;
-        } else if (map->isWorkplace(cellId) &&
-                   map->getTyped<WorkplaceCell>(cellId).workplaceCapacity > 0) {
-            int idx = atomicAdd(&globalWorkplaceIdx, 1);
-            availableWorkplaces[idx] = cellId;
-        }
+    CellBuffer availableWorkplaces = workplaces.subBuffer(allocator, [&](int cellId) {
+        return map->getTyped<WorkplaceCell>(cellId).workplaceCapacity > 0;
     });
-
     grid.sync();
+    if (availableWorkplaces.getCount() == 0) {
+        return;
+    }
 
-    __shared__ uint64_t targetWorkplace;
-    for_blockwise(unassignedHouseCount, [&](int hIdx) {
+    unassignedHouses.processEachCell_blockwise([&](int houseCellId) {
         if (assigned) {
             return;
         }
+        int32_t workplaceId =
+            workplaces.findClosestOnNetworkBlockwise(*map, houseCellId, [&](int cellId) {
+                return map->getTyped<WorkplaceCell>(cellId).workplaceCapacity > 0;
+            });
 
-        int houseId = unassignedHouses[hIdx];
-
-        // Get neighbor networks
-        auto houseNets = map->neighborNetworks(houseId);
-        int2 tileCoords = map->cellCoords(houseId);
-
-        if (block.thread_rank() == 0) {
-            targetWorkplace = uint64_t(Infinity) << 32ull;
-        }
-
-        block.sync();
-
-        // Check all tiles for factories
-        processRangeBlock(availableWorkplaceCount, [&](int fIdx) {
-            int workplaceId = availableWorkplaces[fIdx];
-
-            // Get the networks the factory is connected to
-            auto factoryNets = map->neighborNetworks(workplaceId);
-            if (map->sharedNetworks(factoryNets, houseNets).data[0] != -1) {
-                // This factory shares the same network
-                int2 workplaceCoords = map->cellCoords(workplaceId);
-                int2 diff = workplaceCoords - tileCoords;
-                uint32_t distance = abs(diff.x) + abs(diff.y);
-                uint64_t target = (uint64_t(distance) << 32ull) | uint64_t(workplaceId);
-                // keep the closest factory
-                atomicMin(&targetWorkplace, target);
-            }
-        });
-
-        block.sync();
-
-        if (block.thread_rank() == 0) {
-            if (targetWorkplace != uint64_t(Infinity) << 32ull && !atomicAdd(&assigned, 1)) {
-                int32_t workplaceId = targetWorkplace & 0xffffffffull;
-                assignHouseToWorkplace(map, entities, houseId, workplaceId);
-            } else {
-                map->getTyped<HouseCell>(houseId).residentEntityIdx = -1;
-            }
+        if (block.thread_rank() == 0 && workplaceId != -1 && !atomicAdd(&assigned, 1)) {
+            assignHouseToWorkplace(map, entities, houseCellId, workplaceId);
         }
     });
 }
@@ -402,87 +345,76 @@ void assignOneCustomerToShop(Map *map, Entities *entities) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
-    grid.sync();
-
-    int32_t &assigned = *allocator->alloc<int32_t *>(4);
-    uint32_t &availableShopsCount = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
-    uint32_t &globalShopIdx = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
-
-    if (grid.thread_rank() == 0) {
-        assigned = 0;
-        availableShopsCount = 0;
-        globalShopIdx = 0;
-    }
-
-    grid.sync();
-
-    map->processEachCell(SHOP, [&](int cellId) {
-        // Look for open shop
-        if (map->shopCurrentWorkerCount(cellId) > 0) {
-            atomicAdd(&availableShopsCount, 1);
+    if (grid.block_rank() == 0) {
+        __shared__ bool assigned;
+        if (block.thread_rank() == 0) {
+            assigned = false;
         }
-    });
-
-    grid.sync();
-
-    if (availableShopsCount == 0) {
-        return;
-    }
-
-    uint32_t *availableShops = allocator->alloc<uint32_t *>(sizeof(uint32_t) * availableShopsCount);
-    uint32_t *reachableShops = allocator->alloc<uint32_t *>(sizeof(uint32_t) * availableShopsCount);
-
-    map->processEachCell(SHOP, [&](int cellId) {
-        // Look for open shop
-        if (map->shopCurrentWorkerCount(cellId) > 0) {
-            int idx = atomicAdd(&globalShopIdx, 1);
-            availableShops[idx] = cellId;
-        }
-    });
-
-    grid.sync();
-
-    for (int entityIdx = 0; entityIdx < entities->getCount(); entityIdx++) {
-        Entity &entity = entities->get(entityIdx);
-        if (!entity.active || entity.state != GoShopping || entity.destination != -1) {
-            continue;
-        }
-
-        if (grid.thread_rank() == 0) {
-            globalShopIdx = 0;
-        }
-        grid.sync();
-
-        int entityCell = map->cellAtPosition(entity.position);
-
-        // Get neighbor networks
-        auto entityNets = map->neighborNetworks(entityCell);
-        int2 tileCoords = map->cellCoords(entityCell);
-
-        processRange(availableShopsCount, [&](int sIdx) {
-            int shopId = availableShops[sIdx];
-
-            // Get the networks the shop is connected to
-            auto shopNets = map->neighborNetworks(shopId);
-            if (map->sharedNetworks(shopNets, entityNets).data[0] != -1) {
-                // This factory shares the same network
-                int bufferIdx = atomicAdd(&globalShopIdx, 1);
-                reachableShops[bufferIdx] = shopId;
+        block.sync();
+        for (int entityIdx = 0; entityIdx < entities->getCount(); entityIdx++) {
+            if (assigned) {
+                return;
             }
-        });
+            Entity &entity = entities->get(entityIdx);
+            if (!entity.active || entity.state != GoShopping || entity.destination != -1) {
+                continue;
+            }
 
-        grid.sync();
+            int32_t shopId = shops.findClosestOnNetworkBlockwise(
+                *map, map->cellAtPosition(entity.position),
+                [&](int cellId) { return map->getTyped<ShopCell>(cellId).woodCount > 0; });
 
-        if (globalShopIdx == 0) {
-            // No reachable shop
-            continue;
+            if (block.thread_rank() == 0) {
+                if (shopId != -1) {
+                    entity.destination = shopId;
+                    assigned = true;
+                } else {
+                    entity.changeState(GoHome);
+                }
+            }
+            block.sync();
+            if (assigned) {
+                return;
+            }
         }
+    }
+}
 
-        if (grid.thread_rank() == 0) {
-            uint32_t randomShopIdx = curand(&thread_random_state) % globalShopIdx;
-            entity.destination = reachableShops[randomShopIdx];
+void assignShopWorkerToFactory(Map *map, Entities *entities) {
+    auto grid = cg::this_grid();
+    auto block = cg::this_thread_block();
+
+    if (grid.block_rank() == 0) {
+        __shared__ bool assigned;
+        if (block.thread_rank() == 0) {
+            assigned = false;
         }
-        break;
+        block.sync();
+        for (int entityIdx = 0; entityIdx < entities->getCount(); entityIdx++) {
+            if (assigned) {
+                return;
+            }
+            Entity &entity = entities->get(entityIdx);
+            if (!entity.active || entity.state != Work ||
+                map->getTileId(entity.workplaceId) != SHOP || entity.destination != -1) {
+                continue;
+            }
+
+            int32_t factoryId = factories.findClosestOnNetworkBlockwise(
+                *map, map->cellAtPosition(entity.position),
+                [&](int cellId) { return map->getTyped<FactoryCell>(cellId).stockCount > 0; });
+
+            if (block.thread_rank() == 0) {
+                if (factoryId != -1) {
+                    entity.destination = factoryId;
+                    assigned = true;
+                }
+            }
+            block.sync();
+            if (assigned) {
+                return;
+            }
+        }
     }
 }
 
@@ -497,6 +429,11 @@ void updateEntitiesState(Map *map, Entities *entities) {
     // Each thread handles an entity
     entities->processAll([&](int entityIndex) {
         Entity &entity = entities->get(entityIndex);
+        entity.checkWaitStatus();
+
+        if (!entity.active) {
+            return;
+        }
 
         bool destinationReached = false;
         if (entity.destination != -1 &&
@@ -533,9 +470,9 @@ void updateEntitiesState(Map *map, Entities *entities) {
             if (destinationReached) {
                 entity.changeState(Work);
                 if (map->getTileId(entity.workplaceId) == SHOP) {
-                    atomicAdd(&map->shopCurrentWorkerCount(entity.workplaceId), 1);
+                    atomicAdd(&map->getTyped<WorkplaceCell>(entity.workplaceId).currentWorkerCount,
+                              1);
                 }
-
             } else if (entity.destination == -1) {
                 entity.destination = entity.workplaceId;
             }
@@ -554,20 +491,31 @@ void updateEntitiesState(Map *map, Entities *entities) {
             }
             break;
         }
-        case Work:
+        case Work: {
             if (!workHours.contains(gameTime.timeOfDay())) {
-                int moneyEarned = gameTime.minutesElapsedSince(entity.stateStart) / 7;
-                int taxes = moneyEarned / 10;
-                int rent = map->rentCost(entity.houseId);
-                atomicAdd(&GameState::instance->playerMoney, rent + taxes);
-                entity.money += max(moneyEarned - rent, 0);
                 entity.changeState(GoShopping);
-
-                if (map->getTileId(entity.workplaceId) == SHOP) {
-                    atomicAdd(&map->shopCurrentWorkerCount(entity.workplaceId), -1);
-                }
+                atomicAdd(&map->getTyped<WorkplaceCell>(entity.workplaceId).currentWorkerCount, -1);
+            } else {
+                if (map->getTileId(entity.workplaceId) == FACTORY) {
+                    atomicAdd(&map->getTyped<FactoryCell>(entity.workplaceId).stockCount, 1);
+                    entity.wait(30);
+                } else if (map->getTileId(entity.workplaceId) == SHOP)
+                    if (destinationReached && entity.destination == entity.workplaceId) {
+                        atomicAdd(&map->getTyped<ShopCell>(entity.workplaceId).woodCount,
+                                  entity.inventory);
+                        entity.inventory = 0;
+                        entity.destination = -1;
+                        entity.wait(10);
+                    } else if (destinationReached &&
+                               map->getTileId(entity.destination) == FACTORY) {
+                        entity.wait(10);
+                        entity.inventory +=
+                            min(map->getTyped<FactoryCell>(entity.destination).stockCount, 50);
+                        entity.destination = entity.workplaceId;
+                    }
             }
             break;
+        }
         case Rest:
             if (workHours.contains(gameTime.timeOfDay())) {
                 entity.changeState(GoToWork);
@@ -590,7 +538,7 @@ void entitiesInteractions(Map *map, Entities *entities) {
     auto block = cg::this_thread_block();
 
     // Update interactions
-    entities->processAll([&](int entityIndex) {
+    entities->processAllActive([&](int entityIndex) {
         Entity &entity = entities->get(entityIndex);
 
         switch (entity.state) {
@@ -714,24 +662,39 @@ void handleInputs(Map *map, Entities *entities) {
     }
 }
 
+void fillCellBuffers(Map *map) {
+    auto grid = cg::this_grid();
+    workplaces.fill(*map, allocator, [&](int cellId) { return map->isWorkplace(cellId); });
+    factories.fill(*map, allocator, [&](int cellId) { return map->getTileId(cellId) == FACTORY; });
+    shops.fill(*map, allocator, [&](int cellId) { return map->getTileId(cellId) == SHOP; });
+    houses.fill(*map, allocator, [&](int cellId) { return map->getTileId(cellId) == HOUSE; });
+}
+
 void updateGrid(Map *map, Entities *entities) {
+    auto grid = cg::this_grid();
+
     nanotime_start = nanotime();
 
     if (uniforms.printTimings && cg::this_grid().thread_rank() == 0) {
         printf("================================\n");
     }
 
+    printDuration("fillCellBuffers             ", [&]() { fillCellBuffers(map); });
     printDuration("handleInputs                ", [&]() { handleInputs(map, entities); });
     printDuration("fillCells                   ", [&]() { fillCells(map, entities); });
     printDuration("assignOneHouse              ", [&]() { assignOneHouse(map, entities); });
     printDuration("assignOneCustomerToShop     ",
                   [&]() { assignOneCustomerToShop(map, entities); });
+    printDuration("assignShopWorkerToFactory   ",
+                  [&]() { assignShopWorkerToFactory(map, entities); });
     printDuration("performPathFinding          ",
                   [&]() { performPathFinding(map, entities, allocator); });
     printDuration("moveEntities                ", [&]() {
         moveEntities(map, entities, allocator, GameState::instance->gameTime.getDt());
     });
+    grid.sync();
     printDuration("updateEntitiesState         ", [&]() { updateEntitiesState(map, entities); });
+    grid.sync();
     printDuration("entitiesInteractions        ", [&]() { entitiesInteractions(map, entities); });
     printDuration("updateGameState             ", [&]() { updateGameState(entities); });
 }

@@ -109,7 +109,7 @@ void GUI::renderInfoPanel(Map *map, Entities *entities) {
             break;
         }
         case FACTORY: {
-            textRenderer.drawText("Factory", cursor, framebuffer);
+            textRenderer.drawText("Wood Factory", cursor, framebuffer);
             cursor.newline();
 
             cursor.fontsize = 16.0;
@@ -119,6 +119,11 @@ void GUI::renderInfoPanel(Map *map, Entities *entities) {
             // worker count
             textRenderer.drawText("Employees: ", cursor, framebuffer);
             itos(FACTORY_CAPACITY - map->workplaceCapacity(id), displayString);
+            textRenderer.drawText(displayString, cursor, framebuffer);
+            cursor.newline();
+
+            textRenderer.drawText("Stock: ", cursor, framebuffer);
+            itos(map->getTyped<FactoryCell>(id).stockCount, displayString);
             textRenderer.drawText(displayString, cursor, framebuffer);
             cursor.newline();
             break;
@@ -134,6 +139,11 @@ void GUI::renderInfoPanel(Map *map, Entities *entities) {
             // worker count
             textRenderer.drawText("Employees: ", cursor, framebuffer);
             itos(SHOP_WORK_CAPACITY - map->workplaceCapacity(id), displayString);
+            textRenderer.drawText(displayString, cursor, framebuffer);
+            cursor.newline();
+
+            textRenderer.drawText("Wood Stock: ", cursor, framebuffer);
+            itos(map->getTyped<ShopCell>(id).woodCount, displayString);
             textRenderer.drawText(displayString, cursor, framebuffer);
             cursor.newline();
             break;

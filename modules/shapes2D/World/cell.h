@@ -40,15 +40,19 @@ struct WorkplaceCell : public BaseCell {
     int32_t workplaceCapacity;
     int32_t currentWorkerCount;
 
+    bool isOpen() const { return currentWorkerCount > 0; }
+
     static TileId type() { return SHOP | FACTORY; }
 };
 
 struct ShopCell : public WorkplaceCell {
+    int32_t woodCount;
 
     static TileId type() { return SHOP; }
 };
 
 struct FactoryCell : public WorkplaceCell {
+    int32_t stockCount;
 
     static TileId type() { return FACTORY; }
 };

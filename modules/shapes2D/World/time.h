@@ -116,6 +116,11 @@ public:
         return diff.gameMinutes();
     }
 
+    static GameTime fromMinutes(uint32_t minutes) {
+        return GameTime(minutes * REAL_SECONDS_PER_GAME_MIN);
+    }
+
     bool operator<(const GameTime &other) { return realTime_s < other.realTime_s; }
     bool operator<=(const GameTime &other) { return realTime_s <= other.realTime_s; }
+    GameTime operator+(const GameTime &other) { return GameTime(realTime_s + other.realTime_s); }
 };

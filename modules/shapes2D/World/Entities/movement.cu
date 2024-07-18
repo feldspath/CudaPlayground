@@ -17,7 +17,7 @@ void fillCells(Map *map, Entities *entities) {
 
     grid.sync();
 
-    entities->processAll([&](int entityIdx) {
+    entities->processAllActive([&](int entityIdx) {
         Entity &entity = entities->get(entityIdx);
         EntityState state = entity.state;
         if (state == GoHome || state == GoToWork || state == GoShopping || state == Shop) {
@@ -53,7 +53,7 @@ void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) 
     grid.sync();
 
     // Count entities to move
-    entities->processAll([&](int entityIdx) {
+    entities->processAllActive([&](int entityIdx) {
         Entity &entity = entities->get(entityIdx);
         if (entity.path.isValid()) {
             atomicAdd(&entitiesToMoveCount, 1);
@@ -68,7 +68,7 @@ void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) 
 
     // Allocate buffer and store entities to move
     uint32_t *entitiesToMove = allocator->alloc<uint32_t *>(sizeof(uint32_t) * entitiesToMoveCount);
-    entities->processAll([&](int entityIdx) {
+    entities->processAllActive([&](int entityIdx) {
         Entity &entity = entities->get(entityIdx);
         if (entity.path.isValid()) {
             int idx = atomicAdd(&bufferIdx, 1);
@@ -154,11 +154,12 @@ void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) 
 
         // check each side of the entity for wall collision
         neighborCells.forEachDir([&](Direction direction, uint32_t cellId) {
-            // no collision with roads, house, workplace and shops.
+            // no collision with roads, house, workplace, shops, and destination
             TileId tile = map->getTileId(cellId);
             if ((tile == ROAD && map->neighborNetworks(entity.destination)
                                      .contains(map->roadNetworkRepr(cellId))) ||
-                tile == SHOP || cellId == entity.workplaceId || cellId == entity.houseId) {
+                tile == SHOP || cellId == entity.workplaceId || cellId == entity.houseId ||
+                cellId == entity.destination) {
                 return;
             }
 

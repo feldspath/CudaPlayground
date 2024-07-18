@@ -84,11 +84,6 @@ public:
     // HOUSE DATA
     int32_t rentCost(int cellId) { return cellsData[cellId].cell.landValue / 20 + 10; }
 
-    // SHOP DATA
-    int32_t &shopCurrentWorkerCount(int cellId) {
-        return getTyped<WorkplaceCell>(cellId).currentWorkerCount;
-    }
-
     // WORKPLACE DATA
     bool isWorkplace(int cellId) const { return getTileId(cellId) & (SHOP | FACTORY); }
     int32_t &workplaceCapacity(int cellId) {
@@ -129,7 +124,7 @@ public:
     template <typename Function> void processEachCell(TileId filter, Function &&f) {
         processRange(count, [&](int cellId) {
             // use 0 (UNKNOWN) to disable filtering
-            if ((getTileId(cellId) & filter) | !filter) {
+            if ((getTileId(cellId) & filter) || !filter) {
                 f(cellId);
             }
         });

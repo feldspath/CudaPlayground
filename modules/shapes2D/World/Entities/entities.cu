@@ -23,6 +23,7 @@ uint32_t Entities::newEntity(float2 position, uint32_t house, uint32_t workplace
     entity.interaction = -1;
     entity.happiness = 255;
     entity.active = true;
+    entity.inventory = 0;
 
     return id;
 }
