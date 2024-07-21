@@ -3,18 +3,21 @@
 #include "HostDeviceInterface.h"
 #include "World/map.cuh"
 
+
+// encode direction to the eight neighbors as a bitmask with 3 bit
 constexpr uint32_t DIR_TO_MASK_LUT[9] = {
 	 0,    // -1, -1		
 	 1,    //  0, -1
 	 2,    //  1, -1
 	 3,    // -1,  0
-	-1,    //  0,  0   INVALID, MUST NOT HAPPEN
+	-1,    //  0,  0   INVALID, MUST NOT HAPPEN 
 	 4,    //  1,  0
 	 5,    // -1,  1
 	 6,    //  0,  1
 	 7,    //  1,  1
 };
 
+// get the direction from the given bitmask
 constexpr int2 MASK_TO_DIR_LUT[8] = {
 	int2{-1, -1},
 	int2{ 0, -1},
@@ -37,6 +40,10 @@ int2 maskToNeighborDir(uint32_t mask){
 	return MASK_TO_DIR_LUT[mask];
 }
 
+
+// Pathfinding for a 64x64 grid
+// - Result is a flowfield in shared memory
+// - Each thread block computes one flow field. Arguments for each thread of a block must be identical
 void findPath(
 	int2 start, int2 end, Map map, GameData gamedata
 	// uint32_t* costmap, uint32_t* distancefield, uint32_t* flowfield
@@ -61,9 +68,9 @@ void findPath(
 
 	int numCells = map.rows * map.cols;
 	
-	__shared__ uint8_t costmap[64 * 64];
-	__shared__ uint32_t distancefield[64 * 64];
-	__shared__ uint8_t flowfield[64 * 64];
+	__shared__ uint8_t costmap[64 * 64];           // cost of traversal of each cell. 
+	__shared__ uint32_t distancefield[64 * 64];    // stores the shortest distance to the target for each cell
+	__shared__ uint8_t flowfield[64 * 64];         // cellwise directions towards target
 
 	uint32_t startID = toCellID(start.x, start.y);
 	uint32_t endID = toCellID(end.x, end.y);
@@ -71,6 +78,9 @@ void findPath(
 	uint64_t t_start = nanotime();
 
 	// COMPUTE COSTMAP
+	// Costmap is the same for all blocks, so it could probably
+	// be stored in global memory, but then again it's so cheap to compute 
+	// that it does not really matter that each block computes it for itself. 
 	for(
 		int cellID = block.thread_rank();
 		cellID < numCells;
@@ -113,9 +123,14 @@ void findPath(
 	// float millies = double(nanos) / 1'000'000.0f;
 	// if(grid.thread_rank() == 0) printf("millies: %f\n", millies);
 
-	// now repeatedly compute distance towards goal, starting from goal
-	// TODO: currently computed for all cells each iteration. Probably can be 
-	// reduced to cells at radius from target with radius = iterations?
+	// Propagates distances iteratively, from goal to start. Each iteration propagates by one cell.
+	// 
+	// This is by far the most expensive pass because it is done <mapsize> times. 
+	// I think this isn't even correct. It probably has to be done shortestPath.length times. 
+	// In a maze, it probably propagates one cell at a time so if we don't to it shortestPath.length times, 
+	// it won't even be able to propagate from end to start. 
+	//
+	// Works fine for the example map, though, since there shortest paths aren't extensively long. 
 	for(int i = 0; i < map.rows; i++){
 		for(
 			int cellID = block.thread_rank();
