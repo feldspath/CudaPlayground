@@ -125,10 +125,12 @@ static int BYTES_PER_CELL = sizeof(Cell);
 enum EntityState {
     Rest,
     GoToWork,
-    Work,
+    WorkAtFactory,
+    WorkAtShop,
     GoHome,
     Shop,
     GoShopping,
+    UpgradeHouse,
 };
 
 struct Uniforms {
@@ -152,6 +154,14 @@ struct Uniforms {
 };
 
 struct Entity {
+    friend class Entities;
+
+private:
+    // disabled entities do not exist in the world
+    bool disabled;
+
+public:
+    // entity is inactive when waiting
     bool active;
 
     // movement
@@ -162,8 +172,6 @@ struct Entity {
     uint32_t houseId;
     uint32_t workplaceId;
     EntityState state;
-    uint32_t money;
-    uint32_t happiness;
 
     GameTime stateStart;
     // entity id of the current interaction. -1 if the entity is not engaged in any interaction.
@@ -177,7 +185,6 @@ struct Entity {
 
     // Waiting logic
     GameTime waitStop;
-    bool waiting;
 
     inline bool isLost() { return destination != -1 && !path.isValid(); }
 
@@ -193,16 +200,11 @@ struct Entity {
 
     void wait(uint32_t minutes) {
         active = false;
-        waiting = true;
         waitStop = GameState::instance->gameTime + GameTime::fromMinutes(minutes);
     }
 
     void checkWaitStatus() {
-        if (!waiting) {
-            return;
-        }
         if (waitStop <= GameState::instance->gameTime) {
-            waiting = false;
             active = true;
         }
     }

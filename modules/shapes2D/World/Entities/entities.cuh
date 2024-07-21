@@ -24,18 +24,28 @@ public:
     void remove(uint32_t entityId) {
         *((uint32_t *)(&buffer[MAX_ENTITY_COUNT]) - 1 - *holesCount) = entityId;
         (*holesCount)++;
-        get(entityId).active = false;
+        get(entityId).disabled = true;
     }
 
     template <typename Function> void processAllActive(Function &&function) {
         processRange(getCount(), [&](int idx) {
-            if (get(idx).active) {
+            auto &entity = get(idx);
+            if (entity.disabled) {
+                return;
+            }
+            if (entity.active) {
                 function(idx);
             }
         });
     }
 
     template <typename Function> void processAll(Function &&function) {
-        processRange(getCount(), [&](int idx) { function(idx); });
+        processRange(getCount(), [&](int idx) {
+            auto &entity = get(idx);
+            if (entity.disabled) {
+                return;
+            }
+            function(idx);
+        });
     }
 };

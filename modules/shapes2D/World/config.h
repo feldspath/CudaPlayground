@@ -1,11 +1,14 @@
 #pragma once
 
-static constexpr int MAPX = 512;
-static constexpr int MAPY = 512;
+static constexpr int MAPX = 64;
+static constexpr int MAPY = 64;
 
 static int FACTORY_CAPACITY = 4;
 static int SHOP_WORK_CAPACITY = 2;
 static int SHOP_CUSTOMERS_PER_WORKER = 4;
+#define HOUSE_UPGRADE_WOOD_COUNT 20
+#define str(x)                   #x
+#define xstr(x)                  str(x)
 
 static float ENTITY_RADIUS = 0.2f;
 static float ENTITY_SPEED = 10.0f;

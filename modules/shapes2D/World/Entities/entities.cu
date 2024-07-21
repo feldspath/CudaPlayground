@@ -18,11 +18,10 @@ uint32_t Entities::newEntity(float2 position, uint32_t house, uint32_t workplace
     entity.workplaceId = workplace;
     entity.state = Rest;
     entity.path.reset();
-    entity.money = 0;
     entity.destination = -1;
     entity.interaction = -1;
-    entity.happiness = 255;
     entity.active = true;
+    entity.disabled = false;
     entity.inventory = 0;
 
     return id;

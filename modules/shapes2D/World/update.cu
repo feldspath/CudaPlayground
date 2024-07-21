@@ -119,9 +119,8 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
         break;
     }
     case FACTORY: {
-
         if (grid.thread_rank() == 0) {
-            map->getTyped<FactoryCell>(cellId).workplaceCapacity = FACTORY_CAPACITY;
+            map->getTyped<FactoryCell>(cellId) = FactoryCell();
         }
 
         map->processEachCell(UNKNOWN, [&](int cellId) {
@@ -136,15 +135,12 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
     }
     case HOUSE:
         if (grid.thread_rank() == 0) {
-            // Set house to unassigned
-            map->getTyped<HouseCell>(cellId).residentEntityIdx = -1;
+            map->getTyped<HouseCell>(cellId) = HouseCell();
         }
         break;
     case SHOP:
         if (grid.thread_rank() == 0) {
-            // Set capacities
-            map->workplaceCapacity(cellId) = SHOP_WORK_CAPACITY;
-            map->getTyped<WorkplaceCell>(cellId).currentWorkerCount = 0;
+            map->getTyped<ShopCell>(cellId) = ShopCell();
         }
         break;
     case GRASS: {
@@ -157,21 +153,32 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
                     break;
                 }
                 int workplaceId = entities->get(entityId).workplaceId;
-                map->workplaceCapacity(workplaceId)++;
+                atomicAdd(&map->workplaceCapacity(workplaceId), 1);
                 entities->remove(entityId);
             }
             break;
         }
-        case FACTORY:
-        case SHOP: {
+        case FACTORY: {
             // if the removed tile was a factory or shop, destroy the associated entities
-            entities->processAllActive([&](int entityId) {
+            entities->processAll([&](int entityId) {
                 auto &entity = entities->get(entityId);
                 if (entity.workplaceId == cellId) {
-                    map->workplaceCapacity(entity.workplaceId)++;
+                    map->getTyped<HouseCell>(entity.houseId) = HouseCell();
                     entities->remove(entityId);
                 }
             });
+            break;
+        }
+        case SHOP: {
+            // if the removed tile was a factory or shop, destroy the associated entities
+            entities->processAll([&](int entityId) {
+                auto &entity = entities->get(entityId);
+                if (entity.workplaceId == cellId) {
+                    map->getTyped<HouseCell>(entity.houseId) = HouseCell();
+                    entities->remove(entityId);
+                }
+            });
+            break;
         }
         case ROAD: {
             // if it was a road, refresh the networks data
@@ -190,7 +197,7 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
             });
             grid.sync();
 
-            entities->processAllActive([&](int entityId) {
+            entities->processAll([&](int entityId) {
                 auto &entity = entities->get(entityId);
                 if (!validCells[map->cellAtPosition(entity.position)]) {
                     entity.path.reset();
@@ -282,6 +289,7 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
                     map->roadNetworkId(cellId) = networkIds[map->roadNetworkId(net)];
                 }
             });
+            break;
         }
         default:
             break;
@@ -395,8 +403,7 @@ void assignShopWorkerToFactory(Map *map, Entities *entities) {
                 return;
             }
             Entity &entity = entities->get(entityIdx);
-            if (!entity.active || entity.state != Work ||
-                map->getTileId(entity.workplaceId) != SHOP || entity.destination != -1) {
+            if (!entity.active || entity.state != WorkAtShop || entity.destination != -1) {
                 continue;
             }
 
@@ -441,16 +448,9 @@ void updateEntitiesState(Map *map, Entities *entities) {
             destinationReached = true;
             entity.position = map->getCellPosition(entity.destination);
             entity.velocity = float2{0.0f, 0.0f};
-            entity.happiness = max(
-                int(entity.happiness) - (gameTime.minutesElapsedSince(entity.stateStart)) / 10, 0);
         }
 
-        TimeInterval workHours;
-        if (map->getTileId(entity.workplaceId) == SHOP) {
-            workHours = TimeInterval::shopHours;
-        } else if (map->getTileId(entity.workplaceId) == FACTORY) {
-            workHours = TimeInterval::factoryHours;
-        }
+        TimeInterval workHours = TimeInterval::workHours;
 
         switch (entity.state) {
         case GoHome: {
@@ -466,53 +466,64 @@ void updateEntitiesState(Map *map, Entities *entities) {
                 entity.changeState(GoShopping);
                 break;
             }
+            if (entity.destination == -1) {
+                entity.destination = entity.workplaceId;
+                break;
+            }
 
             if (destinationReached) {
-                entity.changeState(Work);
-                if (map->getTileId(entity.workplaceId) == SHOP) {
-                    atomicAdd(&map->getTyped<WorkplaceCell>(entity.workplaceId).currentWorkerCount,
-                              1);
+                atomicAdd(&map->getTyped<WorkplaceCell>(entity.workplaceId).currentWorkerCount, 1);
+                switch (map->getTileId(entity.workplaceId)) {
+                case SHOP: {
+                    entity.changeState(WorkAtShop);
+                    break;
                 }
-            } else if (entity.destination == -1) {
-                entity.destination = entity.workplaceId;
+                case FACTORY: {
+                    entity.changeState(WorkAtFactory);
+                    break;
+                }
+                default:
+                }
             }
             break;
         }
         case GoShopping: {
-            if (!TimeInterval::shopHours.contains(gameTime.timeOfDay())) {
+            if (!TimeInterval::upgradeHours.contains(gameTime.timeOfDay())) {
                 entity.changeState(GoHome);
                 break;
             }
             // entity destination is not handled here
             if (destinationReached) {
                 entity.changeState(Shop);
-            } else if (!TimeInterval::shopHours.contains(gameTime.timeOfDay())) {
-                entity.changeState(GoHome);
             }
             break;
         }
-        case Work: {
+        case WorkAtFactory: {
             if (!workHours.contains(gameTime.timeOfDay())) {
                 entity.changeState(GoShopping);
                 atomicAdd(&map->getTyped<WorkplaceCell>(entity.workplaceId).currentWorkerCount, -1);
-            } else {
-                if (map->getTileId(entity.workplaceId) == FACTORY) {
-                    atomicAdd(&map->getTyped<FactoryCell>(entity.workplaceId).stockCount, 1);
-                    entity.wait(30);
-                } else if (map->getTileId(entity.workplaceId) == SHOP)
-                    if (destinationReached && entity.destination == entity.workplaceId) {
-                        atomicAdd(&map->getTyped<ShopCell>(entity.workplaceId).woodCount,
-                                  entity.inventory);
-                        entity.inventory = 0;
-                        entity.destination = -1;
-                        entity.wait(10);
-                    } else if (destinationReached &&
-                               map->getTileId(entity.destination) == FACTORY) {
-                        entity.wait(10);
-                        entity.inventory +=
-                            min(map->getTyped<FactoryCell>(entity.destination).stockCount, 50);
-                        entity.destination = entity.workplaceId;
-                    }
+                break;
+            }
+            atomicAdd(&map->getTyped<FactoryCell>(entity.workplaceId).stockCount, 1);
+            entity.wait(30);
+            break;
+        }
+        case WorkAtShop: {
+            if (!workHours.contains(gameTime.timeOfDay())) {
+                entity.changeState(GoShopping);
+                atomicAdd(&map->getTyped<WorkplaceCell>(entity.workplaceId).currentWorkerCount, -1);
+                break;
+            }
+            if (destinationReached && entity.destination == entity.workplaceId) {
+                atomicAdd(&map->getTyped<ShopCell>(entity.workplaceId).woodCount, entity.inventory);
+                entity.inventory = 0;
+                entity.destination = -1;
+                entity.wait(10);
+            } else if (destinationReached && map->getTileId(entity.destination) == FACTORY) {
+                entity.inventory +=
+                    min(map->getTyped<FactoryCell>(entity.destination).stockCount, 5);
+                entity.destination = entity.workplaceId;
+                entity.wait(10);
             }
             break;
         }
@@ -521,54 +532,38 @@ void updateEntitiesState(Map *map, Entities *entities) {
                 entity.changeState(GoToWork);
             }
             break;
-        case Shop:
-            // waiting to be handled by a shop worker
-            if (!TimeInterval::shopHours.contains(gameTime.timeOfDay())) {
+        case Shop: {
+            if (!TimeInterval::upgradeHours.contains(gameTime.timeOfDay())) {
                 entity.changeState(GoHome);
             }
-            break;
-        default:
+
+            int shopId = map->cellAtPosition(entity.position);
+            int32_t &shopWood = map->getTyped<ShopCell>(shopId).woodCount;
+
+            int stock = 5;
+            int old = atomicSub(&shopWood, stock);
+
+            if (old - stock < 0) {
+                int eq = min(-(old - stock), stock);
+                atomicAdd(&shopWood, eq);
+                stock -= eq;
+                printf("old: %d, stock: %d, eq: %d\n", old, stock, eq);
+            }
+            if (stock > 0) {
+                entity.inventory += stock;
+                entity.changeState(UpgradeHouse);
+                entity.destination = entity.houseId;
+                entity.wait(10);
+            }
             break;
         }
-    });
-}
-
-void entitiesInteractions(Map *map, Entities *entities) {
-    auto grid = cg::this_grid();
-    auto block = cg::this_thread_block();
-
-    // Update interactions
-    entities->processAllActive([&](int entityIndex) {
-        Entity &entity = entities->get(entityIndex);
-
-        switch (entity.state) {
-        case Work: {
-            if (map->getTileId(entity.workplaceId) == SHOP) {
-                if (entity.interaction == -1) {
-                    for (int i = 0; i < ENTITIES_PER_CELL; ++i) {
-                        int otherIndex = map->get(entity.workplaceId).entities[i];
-                        if (otherIndex == -1) {
-                            break;
-                        }
-                        auto &other = entities->get(otherIndex);
-                        if (other.state == Shop &&
-                            atomicCAS(&other.interaction, -1, entityIndex) == -1) {
-                            entity.interaction = otherIndex;
-                            entity.resetStateStart();
-                        }
-                    }
-                } else if ((GameState::instance->gameTime.minutesElapsedSince(entity.stateStart)) >
-                           SHOP_TIME_MIN) {
-                    auto &other = entities->get(entity.interaction);
-                    entity.interaction = -1;
-                    other.interaction = -1;
-                    other.changeState(GoHome);
-                    other.happiness = min(other.happiness + other.money / 5, 255);
-                    int tax = other.money / 10;
-                    atomicAdd(&GameState::instance->playerMoney, tax);
-                    other.money = 0;
-                }
+        case UpgradeHouse: {
+            if (destinationReached) {
+                atomicAdd(&map->getTyped<HouseCell>(entity.houseId).woodCount, entity.inventory);
+                entity.inventory = 0;
+                entity.changeState(GoShopping);
             }
+            break;
         }
         default:
             break;
@@ -679,9 +674,12 @@ void updateGrid(Map *map, Entities *entities) {
         printf("================================\n");
     }
 
-    printDuration("fillCellBuffers             ", [&]() { fillCellBuffers(map); });
     printDuration("handleInputs                ", [&]() { handleInputs(map, entities); });
+    grid.sync();
+    printDuration("fillCellBuffers             ", [&]() { fillCellBuffers(map); });
+    grid.sync();
     printDuration("fillCells                   ", [&]() { fillCells(map, entities); });
+    grid.sync();
     printDuration("assignOneHouse              ", [&]() { assignOneHouse(map, entities); });
     printDuration("assignOneCustomerToShop     ",
                   [&]() { assignOneCustomerToShop(map, entities); });
@@ -695,7 +693,8 @@ void updateGrid(Map *map, Entities *entities) {
     grid.sync();
     printDuration("updateEntitiesState         ", [&]() { updateEntitiesState(map, entities); });
     grid.sync();
-    printDuration("entitiesInteractions        ", [&]() { entitiesInteractions(map, entities); });
+    // printDuration("entitiesInteractions        ", [&]() { entitiesInteractions(map, entities);
+    // });
     printDuration("updateGameState             ", [&]() { updateGameState(entities); });
 }
 

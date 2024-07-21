@@ -48,8 +48,8 @@ struct TimeInterval {
 
     bool contains(TOD time) const { return start <= time && time <= end; }
 
-    static const TimeInterval factoryHours;
-    static const TimeInterval shopHours;
+    static const TimeInterval workHours;
+    static const TimeInterval upgradeHours;
 };
 
 /// Used only for display. To perform operations, use GameTime.

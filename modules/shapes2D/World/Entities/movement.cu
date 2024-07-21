@@ -8,7 +8,7 @@ void fillCells(Map *map, Entities *entities) {
     auto block = cg::this_thread_block();
 
     // Reset cell occupation
-    processRange(map->getCount(), [&](int cellId) {
+    map->processEachCell(UNKNOWN, [&](int cellId) {
         int32_t *cellEntities = map->get(cellId).entities;
         for (int i = 0; i < ENTITIES_PER_CELL; ++i) {
             cellEntities[i] = -1;
@@ -17,17 +17,19 @@ void fillCells(Map *map, Entities *entities) {
 
     grid.sync();
 
-    entities->processAllActive([&](int entityIdx) {
+    entities->processAll([&](int entityIdx) {
         Entity &entity = entities->get(entityIdx);
         EntityState state = entity.state;
-        if (state == GoHome || state == GoToWork || state == GoShopping || state == Shop) {
-            int cell = map->cellAtPosition(entity.position);
-            int32_t *cellEntities = map->get(cell).entities;
+        if (state == Rest || state == WorkAtFactory) {
+            return;
+        }
 
-            for (int i = 0; i < ENTITIES_PER_CELL; ++i) {
-                if (atomicCAS(&cellEntities[i], -1, entityIdx) == -1) {
-                    break;
-                }
+        int cell = map->cellAtPosition(entity.position);
+        int32_t *cellEntities = map->get(cell).entities;
+
+        for (int i = 0; i < ENTITIES_PER_CELL; ++i) {
+            if (atomicCAS(&cellEntities[i], -1, entityIdx) == -1) {
+                break;
             }
         }
     });
