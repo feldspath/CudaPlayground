@@ -188,7 +188,7 @@ void loadScene(){
         // vector<Entity> entities = {entity};
         vector<Entity> entities;// = {entity};
 
-        for(int i = 0; i < 500; i++){
+        while(entities.size() < 500){
             int rx = uniform_dist(e1);
             int ry = uniform_dist(e1);
 
