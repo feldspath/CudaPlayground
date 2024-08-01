@@ -4,3 +4,4 @@ build/
 .vs/
 out/
 savefile.save
+cuda_compile_time.txt

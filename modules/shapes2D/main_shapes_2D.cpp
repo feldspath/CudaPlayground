@@ -125,15 +125,6 @@ void loadMap() {
 }
 
 void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
-    CUdevice device;
-    int numSMs;
-    cuCtxGetDevice(&device);
-    cuDeviceGetAttribute(&numSMs, CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT, device);
-
-    int workgroupSize = 64;
-
-    int numGroups = maxOccupancy(cuda_update, "update", workgroupSize, numSMs);
-
     cuEventRecord(cevent_start, 0);
 
     float time = now();
@@ -168,27 +159,20 @@ void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
     memcpy(&uniforms.invproj, &invproj, sizeof(invproj));
     memcpy(&uniforms.invview, &invview, sizeof(invview));
 
-    void *args[] = {&uniforms, &cptr_gameState, &cptr_buffer,  &gridRows,
-                    &gridCols, &cptr_grid,      &cptr_entities};
+    GameData gamedata;
+    gamedata.uniforms = uniforms;
+    gamedata.state = (GameState *)cptr_gameState;
+    gamedata.buffer = (unsigned int *)cptr_buffer;
+    gamedata.numRows = gridRows;
+    gamedata.numCols = gridCols;
+    gamedata.cells = (char *)cptr_grid;
+    gamedata.entitiesBuffer = (void *)cptr_entities;
+    gamedata.img_ascii_16 = (uint32_t *)cptr_ascii_32;
+    gamedata.img_spritesheet = (uint32_t *)cptr_spriteSheet;
 
-    auto res_launch = cuLaunchCooperativeKernel(cuda_update->kernels["update"], numGroups, 1, 1,
-                                                workgroupSize, 1, 1, 0, 0, args);
+    void *args[] = {&gamedata};
 
-    if (res_launch != CUDA_SUCCESS) {
-        const char *str;
-        cuGetErrorString(res_launch, &str);
-        printf("error: %s \n", str);
-    }
-
-    // cuEventRecord(cevent_end, 0);
-    // cuEventSynchronize(cevent_end);
-
-    //{
-    //    float total_ms;
-    //    cuEventElapsedTime(&total_ms, cevent_start, cevent_end);
-
-    //    std::cout << "Update duration: " << std::format("total:     {:6.1f} ms\n", total_ms);
-    //}
+    cuda_update->launchCooperative("update", args, {.blocksize = 64});
 
     cuCtxSynchronize();
 }
@@ -199,15 +183,6 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
                               GL_TEXTURE_2D, CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD);
 
     CUresult resultcode = CUDA_SUCCESS;
-
-    CUdevice device;
-    int numSMs;
-    cuCtxGetDevice(&device);
-    cuDeviceGetAttribute(&numSMs, CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT, device);
-
-    int workgroupSize = 64;
-
-    int numGroups = maxOccupancy(cuda_program, "kernel", workgroupSize, numSMs);
 
     std::vector<CUgraphicsResource> dynamic_resources = {cugl_colorbuffer};
     cuGraphicsMapResources(dynamic_resources.size(), dynamic_resources.data(),
@@ -221,6 +196,8 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
     cuEventRecord(cevent_start, 0);
 
     float time = now();
+
+    auto runtime = Runtime::getInstance();
 
     Uniforms uniforms;
     uniforms.width = renderer->width;
@@ -246,27 +223,20 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
     memcpy(&uniforms.invproj, &invproj, sizeof(invproj));
     memcpy(&uniforms.invview, &invview, sizeof(invview));
 
-    void *args[] = {&uniforms, &cptr_gameState, &cptr_buffer,   &output_surf,   &gridRows,
-                    &gridCols, &cptr_grid,      &cptr_entities, &cptr_ascii_32, &cptr_spriteSheet};
+    GameData gamedata;
+    gamedata.uniforms = uniforms;
+    gamedata.state = (GameState *)cptr_gameState;
+    gamedata.buffer = (unsigned int *)cptr_buffer;
+    gamedata.numRows = gridRows;
+    gamedata.numCols = gridCols;
+    gamedata.cells = (char *)cptr_grid;
+    gamedata.entitiesBuffer = (void *)cptr_entities;
+    gamedata.img_ascii_16 = (uint32_t *)cptr_ascii_32;
+    gamedata.img_spritesheet = (uint32_t *)cptr_spriteSheet;
 
-    auto res_launch = cuLaunchCooperativeKernel(cuda_program->kernels["kernel"], numGroups, 1, 1,
-                                                workgroupSize, 1, 1, 0, 0, args);
+    void *args[] = {&gamedata, &output_surf};
 
-    if (res_launch != CUDA_SUCCESS) {
-        const char *str;
-        cuGetErrorString(res_launch, &str);
-        printf("error: %s \n", str);
-    }
-
-    // cuEventRecord(cevent_end, 0);
-    // cuEventSynchronize(cevent_end);
-
-    //{
-    //    float total_ms;
-    //    cuEventElapsedTime(&total_ms, cevent_start, cevent_end);
-
-    //    std::cout << "Render duration: " << std::format("total:     {:6.1f} ms\n", total_ms);
-    //}
+    cuda_program->launchCooperative("kernel", args, {.blocksize = 64});
 
     cuCtxSynchronize();
 
@@ -331,7 +301,6 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
                                         "./modules/shapes2D/World/Path/path.cu",
                                         "./modules/shapes2D/World/direction.cu",
                                     },
-                                .kernels = {"kernel"},
                                 .customIncludeDirs = {"./modules/shapes2D", " ./modules"}});
 
     cuda_update =
@@ -346,7 +315,6 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
                                         "./modules/shapes2D/World/Entities/movement.cu",
                                         "./modules/shapes2D/World/direction.cu",
                                     },
-                                .kernels = {"update"},
                                 .customIncludeDirs = {"./modules/shapes2D", " ./modules"}});
 
     cuEventCreate(&cevent_start, 0);

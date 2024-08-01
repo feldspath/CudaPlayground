@@ -28,3 +28,6 @@ static unsigned int FACTORY_COST = 100;
 static unsigned int HOUSE_COST = 50;
 
 static float REAL_SECONDS_PER_GAME_MIN = 60.0 / (60.0 * 24.0);
+
+// Let's assume we can have as much entities as we have cells
+static constexpr int MAX_ENTITY_COUNT = MAPX * MAPY;

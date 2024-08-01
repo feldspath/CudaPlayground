@@ -15,8 +15,7 @@
 
 namespace cg = cooperative_groups;
 
-Uniforms uniforms;
-GameState *GameState::instance;
+GameData gameData;
 Allocator *allocator;
 uint64_t nanotime_start;
 
@@ -58,14 +57,14 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
-    processRange(uniforms.width * uniforms.height, [&](int pixelId) {
-        int pixelX = pixelId % int(uniforms.width);
-        int pixelY = pixelId / int(uniforms.width);
+    processRange(gameData.uniforms.width * gameData.uniforms.height, [&](int pixelId) {
+        int pixelX = pixelId % int(gameData.uniforms.width);
+        int pixelY = pixelId / int(gameData.uniforms.width);
 
         float2 pFrag = make_float2(pixelX, pixelY);
 
-        float3 pos_W =
-            unproject(pFrag, uniforms.invview * uniforms.invproj, uniforms.width, uniforms.height);
+        float3 pos_W = unproject(pFrag, gameData.uniforms.invview * gameData.uniforms.invproj,
+                                 gameData.uniforms.width, gameData.uniforms.height);
         int sh_cellIndex = map->cellAtPosition(float2{pos_W.x, pos_W.y});
         if (sh_cellIndex == -1) {
             return;
@@ -83,7 +82,7 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
         }
 
         float3 color;
-        if (uniforms.renderMode == RENDERMODE_DEFAULT) {
+        if (gameData.uniforms.renderMode == RENDERMODE_DEFAULT) {
             switch (map->getTileId(sh_cellIndex)) {
             case GRASS:
                 color = sprites.grass.sampleFloat(u, v);
@@ -99,7 +98,7 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
             }
             color *= GameState::instance->gameTime.timeOfDay().toFloat() * 0.5 + 0.5;
 
-        } else if (uniforms.renderMode == RENDERMODE_NETWORK) {
+        } else if (gameData.uniforms.renderMode == RENDERMODE_NETWORK) {
             TileId tileId = map->getTileId(sh_cellIndex);
             if (tileId == GRASS || tileId == UNKNOWN) {
                 color = {0.0f, 0.0f, 0.0f};
@@ -132,7 +131,7 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
                     color = float3{1.0f, 0.0f, 1.0f};
                 }
             }
-        } else if (uniforms.renderMode == RENDERMODE_LANDVALUE) {
+        } else if (gameData.uniforms.renderMode == RENDERMODE_LANDVALUE) {
             int value = map->get(sh_cellIndex).landValue;
             float a = float(value) / 255.0f;
             color = float3{0.0f, 1.0f, 0.0f} * a + float3{1.0f, 0.0f, 0.0f} * (1 - a);
@@ -152,26 +151,27 @@ void rasterizeEntities(Entities *entities, Framebuffer framebuffer) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
-    mat4 viewProj = uniforms.proj * uniforms.view;
+    mat4 viewProj = gameData.uniforms.proj * gameData.uniforms.view;
 
-    float sphereRadius = length(projectVectorToScreenPos(
-        float3{ENTITY_RADIUS, 0.0f, 0.0f}, viewProj, uniforms.width, uniforms.height));
+    float sphereRadius =
+        length(projectVectorToScreenPos(float3{ENTITY_RADIUS, 0.0f, 0.0f}, viewProj,
+                                        gameData.uniforms.width, gameData.uniforms.height));
     // sphereRadius = 5.0f;
     //  Each thread grabs an entity
     entities->processAll([&](int entityIndex) {
         float2 entityPos = entities->get(entityIndex).position;
         float2 screenPos = projectPosToScreenPos(make_float3(entityPos, 0.0f), viewProj,
-                                                 uniforms.width, uniforms.height);
+                                                 gameData.uniforms.width, gameData.uniforms.height);
 
         float min_x = screenPos.x - sphereRadius;
         float max_x = screenPos.x + sphereRadius;
         float min_y = screenPos.y - sphereRadius;
         float max_y = screenPos.y + sphereRadius;
 
-        min_x = clamp(min_x, 0.0f, uniforms.width);
-        min_y = clamp(min_y, 0.0f, uniforms.height);
-        max_x = clamp(max_x, 0.0f, uniforms.width);
-        max_y = clamp(max_y, 0.0f, uniforms.height);
+        min_x = clamp(min_x, 0.0f, gameData.uniforms.width);
+        min_y = clamp(min_y, 0.0f, gameData.uniforms.height);
+        max_x = clamp(max_x, 0.0f, gameData.uniforms.width);
+        max_y = clamp(max_y, 0.0f, gameData.uniforms.height);
 
         int size_x = ceil(max_x) - floor(min_x);
         int size_y = ceil(max_y) - floor(min_y);
@@ -187,8 +187,9 @@ void rasterizeEntities(Entities *entities, Framebuffer framebuffer) {
             }
 
             int2 pixelCoords = make_int2(pFrag.x, pFrag.y);
-            int pixelID = pixelCoords.x + pixelCoords.y * uniforms.width;
-            pixelID = clamp(pixelID, 0, int(uniforms.width * uniforms.height) - 1);
+            int pixelID = pixelCoords.x + pixelCoords.y * gameData.uniforms.width;
+            pixelID =
+                clamp(pixelID, 0, int(gameData.uniforms.width * gameData.uniforms.height) - 1);
 
             float3 color = make_float3(1.0f, 0.0f, 0.0f) *
                            (GameState::instance->gameTime.timeOfDay().toFloat() * 0.5 + 0.5);
@@ -206,10 +207,11 @@ void rasterizeFlowfield(Entities *entities, Framebuffer framebuffer) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
-    mat4 viewProj = uniforms.proj * uniforms.view;
+    mat4 viewProj = gameData.uniforms.proj * gameData.uniforms.view;
 
-    float sphereRadius = length(projectVectorToScreenPos(
-        float3{ENTITY_RADIUS, 0.0f, 0.0f}, viewProj, uniforms.width, uniforms.height));
+    float sphereRadius =
+        length(projectVectorToScreenPos(float3{ENTITY_RADIUS, 0.0f, 0.0f}, viewProj,
+                                        gameData.uniforms.width, gameData.uniforms.height));
     // sphereRadius = 5.0f;
     //  Each thread grabs an entity
     entities->processAll([&](int entityIndex) {
@@ -219,7 +221,7 @@ void rasterizeFlowfield(Entities *entities, Framebuffer framebuffer) {
         }
 
         float2 screenPos = projectPosToScreenPos(make_float3(entity.position, 0.0f), viewProj,
-                                                 uniforms.width, uniforms.height);
+                                                 gameData.uniforms.width, gameData.uniforms.height);
 
         for (int i = 0; i < 30; ++i) {
             float depth = 0.8f;
@@ -234,38 +236,35 @@ void rasterizeFlowfield(Entities *entities, Framebuffer framebuffer) {
                 continue;
             }
 
-            int pixelID = pixelCoords.x + pixelCoords.y * uniforms.width;
+            int pixelID = pixelCoords.x + pixelCoords.y * gameData.uniforms.width;
             atomicMin(&framebuffer.data[pixelID], pixel);
         }
     });
 }
 
-extern "C" __global__ void kernel(const Uniforms _uniforms, GameState *_gameState,
-                                  unsigned int *buffer, cudaSurfaceObject_t gl_colorbuffer,
-                                  uint32_t numRows, uint32_t numCols, char *cells,
-                                  void *entitiesBuffer, uint32_t *img_ascii_16,
-                                  uint32_t *img_spritesheet) {
+extern "C" __global__ void kernel(GameData _gameData, cudaSurfaceObject_t gl_colorbuffer) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
     asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(nanotime_start));
 
-    uniforms = _uniforms;
+    gameData = _gameData;
+    GameState::instance = gameData.state;
 
-    Allocator _allocator(buffer, 0);
+    Allocator _allocator(gameData.buffer, 0);
     allocator = &_allocator;
 
-    GameState::instance = _gameState;
-
-    Font font(img_ascii_16);
+    Font font(gameData.img_ascii_16);
     TextRenderer textRenderer(font);
-    SpriteSheet sprites(img_spritesheet);
+    SpriteSheet sprites(gameData.img_spritesheet);
 
     // allocate framebuffer memory
-    int framebufferSize = int(uniforms.width) * int(uniforms.height) * sizeof(uint64_t);
+    int framebufferSize =
+        int(gameData.uniforms.width) * int(gameData.uniforms.height) * sizeof(uint64_t);
     uint64_t *framebufferData = allocator->alloc<uint64_t *>(framebufferSize);
 
-    Framebuffer framebuffer(uint32_t(uniforms.width), uint32_t(uniforms.height), framebufferData);
+    Framebuffer framebuffer(uint32_t(gameData.uniforms.width), uint32_t(gameData.uniforms.height),
+                            framebufferData);
 
     // clear framebuffer
     framebuffer.clear(uint64_t(BACKGROUND_COLOR));
@@ -274,22 +273,23 @@ extern "C" __global__ void kernel(const Uniforms _uniforms, GameState *_gameStat
 
     {
         Map *map = allocator->alloc<Map *>(sizeof(Map));
-        *map = Map(numRows, numCols, cells);
+        *map = Map(gameData.numRows, gameData.numCols, gameData.cells);
 
         Entities *entities = allocator->alloc<Entities *>(sizeof(Entities));
-        *entities = Entities(entitiesBuffer);
+        *entities = Entities(gameData.entitiesBuffer);
 
         rasterizeGrid(map, entities, sprites, framebuffer);
         grid.sync();
         rasterizeEntities(entities, framebuffer);
         grid.sync();
 
-        if (uniforms.displayFlowfield) {
+        if (gameData.uniforms.displayFlowfield) {
             rasterizeFlowfield(entities, framebuffer);
             grid.sync();
         }
 
-        GUI gui(framebuffer, textRenderer, sprites, uniforms.proj * uniforms.view);
+        GUI gui(framebuffer, textRenderer, sprites,
+                gameData.uniforms.proj * gameData.uniforms.view);
         gui.render(map, entities);
     }
 
