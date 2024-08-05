@@ -102,6 +102,7 @@ struct GameState {
     uint64_t previousFrameTime_ns;
     uint32_t currentTime_ms;
     GameTime gameTime;
+    GameTime previousGameTime;
 
     // Game stuff
     unsigned int playerMoney;
@@ -109,13 +110,6 @@ struct GameState {
     int32_t buildingDisplay;
 
     static GameState *instance;
-
-    // Timings
-    float assignOneHouse_ms;
-    float performPathFinding_ms;
-    float fillCells_ms;
-    float moveEntities_ms;
-    float updateEntitiesState_ms;
 };
 
 static int BYTES_PER_CELL = sizeof(Cell);

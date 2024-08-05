@@ -520,8 +520,8 @@ void updateEntitiesState(Map *map, Entities *entities) {
                 entity.destination = -1;
                 entity.wait(10);
             } else if (destinationReached && map->getTileId(entity.destination) == FACTORY) {
-                entity.inventory +=
-                    min(map->getTyped<FactoryCell>(entity.destination).stockCount, 5);
+                entity.inventory += min(map->getTyped<FactoryCell>(entity.destination).stockCount,
+                                        SHOP_WORKER_INVENTORY_SIZE);
                 entity.destination = entity.workplaceId;
                 entity.wait(10);
             }
@@ -547,7 +547,6 @@ void updateEntitiesState(Map *map, Entities *entities) {
                 int eq = min(-(old - stock), stock);
                 atomicAdd(&shopWood, eq);
                 stock -= eq;
-                printf("old: %d, stock: %d, eq: %d\n", old, stock, eq);
             }
             if (stock > 0) {
                 entity.inventory += stock;
@@ -573,13 +572,13 @@ void updateEntitiesState(Map *map, Entities *entities) {
 
 void updateGameState(Entities *entities) {
     auto grid = cg::this_grid();
-
     if (grid.thread_rank() == 0) {
         float dt = ((float)(nanotime_start - GameState::instance->previousFrameTime_ns)) / 1e9;
         GameState::instance->previousFrameTime_ns = nanotime_start;
         GameState::instance->currentTime_ms = currentTime_ms();
         GameState::instance->population = entities->getCount();
         GameState::instance->previousMouseButtons = gameData.uniforms.mouseButtons;
+        GameState::instance->previousGameTime = GameState::instance->gameTime;
 
         if (GameState::instance->firstFrame) {
             GameState::instance->firstFrame = false;
@@ -669,6 +668,21 @@ void fillCellBuffers(Map *map) {
     houses.fill(*map, allocator, [&](int cellId) { return map->getTileId(cellId) == HOUSE; });
 }
 
+void handleTimeEvents(Map *map, Entities *entities) {
+    auto tod = GameState::instance->gameTime.timeOfDay();
+    auto prevTod = GameState::instance->previousGameTime.timeOfDay();
+
+    TOD sellResourcesTime{23, 0};
+    if (prevTod <= sellResourcesTime && sellResourcesTime <= tod) {
+        // sell all resources at 23:00
+        shops.processEachCell([&](int cellId) {
+            ShopCell &shop = map->getTyped<ShopCell>(cellId);
+            atomicAdd(&GameState::instance->playerMoney, shop.woodCount * WOOD_SELL_PRICE);
+            shop.woodCount = 0;
+        });
+    }
+}
+
 void updateGrid(Map *map, Entities *entities) {
     auto grid = cg::this_grid();
 
@@ -684,6 +698,7 @@ void updateGrid(Map *map, Entities *entities) {
     grid.sync();
     printDuration("fillCells                   ", [&]() { fillCells(map, entities); });
     grid.sync();
+    printDuration("handleTimeEvents            ", [&]() { handleTimeEvents(map, entities); });
     printDuration("assignOneHouse              ", [&]() { assignOneHouse(map, entities); });
     printDuration("assignOneCustomerToShop     ",
                   [&]() { assignOneCustomerToShop(map, entities); });

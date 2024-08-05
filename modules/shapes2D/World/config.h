@@ -9,6 +9,8 @@ static int SHOP_CUSTOMERS_PER_WORKER = 4;
 #define HOUSE_UPGRADE_WOOD_COUNT 20
 #define str(x)                   #x
 #define xstr(x)                  str(x)
+static int WOOD_SELL_PRICE = 5;
+static int SHOP_WORKER_INVENTORY_SIZE = 20;
 
 static float ENTITY_RADIUS = 0.2f;
 static float ENTITY_SPEED = 10.0f;
