@@ -58,39 +58,32 @@ void GUI::renderInfoPanel(Map *map, Entities *entities) {
 
         switch (map->getTileId(id)) {
         case HOUSE: {
+            HouseCell &house = map->getTyped<HouseCell>(id);
             textRenderer.drawText("House", cursor, framebuffer);
             cursor.newline();
-            ;
-            int entityId = map->getTyped<HouseCell>(id).residentEntityIdx;
-            if (entityId == -1) {
-                textRenderer.drawText("No resident", cursor, framebuffer);
-                cursor.newline();
-            } else {
-                auto &entity = entities->get(entityId);
-                cursor.fontsize = 16.0;
 
-                // resident job
-                switch (map->getTileId(entity.workplaceId)) {
-                case SHOP: {
-                    textRenderer.drawText("Job: shop worker", cursor, framebuffer);
-                    break;
-                }
-                case FACTORY: {
-                    textRenderer.drawText("Job: factory worker", cursor, framebuffer);
-                    break;
-                }
-                default:
-                    textRenderer.drawText("Job: unemployed", cursor, framebuffer);
-                    break;
-                }
-                cursor.newline();
+            cursor.fontsize = 16.0;
 
-                textRenderer.drawText("Wood count: ", cursor, framebuffer);
-                itos(map->getTyped<HouseCell>(id).woodCount, displayString);
-                textRenderer.drawText(displayString, cursor, framebuffer);
-                textRenderer.drawText("/" xstr(HOUSE_UPGRADE_WOOD_COUNT), cursor, framebuffer);
-                cursor.newline();
-            }
+            textRenderer.drawText("Resident count: ", cursor, framebuffer);
+            itos(house.residentCount, displayString);
+            textRenderer.drawText(displayString, cursor, framebuffer);
+            textRenderer.drawText("/", cursor, framebuffer);
+            itos(house.maxResidents(), displayString);
+            textRenderer.drawText(displayString, cursor, framebuffer);
+            cursor.newline();
+
+            textRenderer.drawText("Level: ", cursor, framebuffer);
+            itos(house.level + 1, displayString);
+            textRenderer.drawText(displayString, cursor, framebuffer);
+            cursor.newline();
+
+            textRenderer.drawText("Wood count: ", cursor, framebuffer);
+            itos(house.woodCount, displayString);
+            textRenderer.drawText(displayString, cursor, framebuffer);
+            textRenderer.drawText("/", cursor, framebuffer);
+            itos(house.upgradeCost(), displayString);
+            textRenderer.drawText(displayString, cursor, framebuffer);
+            cursor.newline();
             break;
         }
         case FACTORY: {
@@ -98,8 +91,6 @@ void GUI::renderInfoPanel(Map *map, Entities *entities) {
             cursor.newline();
 
             cursor.fontsize = 16.0;
-
-            // open hours
 
             // worker count
             textRenderer.drawText("Employees: ", cursor, framebuffer);
@@ -118,8 +109,6 @@ void GUI::renderInfoPanel(Map *map, Entities *entities) {
             cursor.newline();
 
             cursor.fontsize = 16.0;
-
-            // open hours
 
             // worker count
             textRenderer.drawText("Employees: ", cursor, framebuffer);

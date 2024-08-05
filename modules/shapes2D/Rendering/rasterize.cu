@@ -88,7 +88,7 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
                 color = sprites.grass.sampleFloat(u, v);
                 break;
             case HOUSE:
-                if (map->getTyped<HouseCell>(sh_cellIndex).residentEntityIdx != -1) {
+                if (map->getTyped<HouseCell>(sh_cellIndex).residentCount > 0) {
                     color = sprites.house.sampleFloat(u, v);
                     break;
                 }
@@ -105,12 +105,7 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
             } else {
                 int colorId;
                 if (tileId == HOUSE) {
-                    int entityId = map->getTyped<HouseCell>(sh_cellIndex).residentEntityIdx;
-                    if (entityId == -1) {
-                        colorId = -1;
-                    } else {
-                        colorId = entities->get(entityId).workplaceId;
-                    }
+                    colorId = 0;
                 } else if (tileId == ROAD) {
                     colorId = map->roadNetworkRepr(sh_cellIndex);
                 } else {

@@ -6,9 +6,7 @@ static constexpr int MAPY = 64;
 static int FACTORY_CAPACITY = 4;
 static int SHOP_WORK_CAPACITY = 2;
 static int SHOP_CUSTOMERS_PER_WORKER = 4;
-#define HOUSE_UPGRADE_WOOD_COUNT 20
-#define str(x)                   #x
-#define xstr(x)                  str(x)
+static int HOUSE_BASE_UPGRADE_WOOD_COUNT = 20;
 static int WOOD_SELL_PRICE = 5;
 static int SHOP_WORKER_INVENTORY_SIZE = 20;
 

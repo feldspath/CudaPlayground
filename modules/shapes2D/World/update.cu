@@ -146,16 +146,14 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
     case GRASS: {
         switch (oldTile) {
         case HOUSE: {
-            // if it was a house, destroy the entity living there
-            if (grid.thread_rank() == 0) {
-                int entityId = map->getTyped<HouseCell>(cellId).residentEntityIdx;
-                if (entityId == -1) {
-                    break;
+            // if it was a house, destroy the entities living there
+            entities->processAll([&](int entityId) {
+                if (entities->get(entityId).houseId == cellId) {
+                    int workplaceId = entities->get(entityId).workplaceId;
+                    atomicAdd(&map->workplaceCapacity(workplaceId), 1);
+                    entities->remove(entityId);
                 }
-                int workplaceId = entities->get(entityId).workplaceId;
-                atomicAdd(&map->workplaceCapacity(workplaceId), 1);
-                entities->remove(entityId);
-            }
+            });
             break;
         }
         case FACTORY: {
@@ -303,7 +301,7 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
 
 void assignHouseToWorkplace(Map *map, Entities *entities, int32_t houseId, int32_t workplaceId) {
     int32_t newEntity = entities->newEntity(map->getCellPosition(houseId), houseId, workplaceId);
-    map->getTyped<HouseCell>(houseId).residentEntityIdx = newEntity;
+    map->getTyped<HouseCell>(houseId).residentCount += 1;
     map->getTyped<WorkplaceCell>(workplaceId).workplaceCapacity -= 1;
 }
 
@@ -319,7 +317,8 @@ void assignOneHouse(Map *map, Entities *entities) {
     grid.sync();
 
     CellBuffer unassignedHouses = houses.subBuffer(allocator, [&](int cellId) {
-        return map->getTyped<HouseCell>(cellId).residentEntityIdx == -1;
+        HouseCell &house = map->getTyped<HouseCell>(cellId);
+        return house.residentCount < house.maxResidents();
     });
     grid.sync();
     if (unassignedHouses.getCount() == 0) {
@@ -668,7 +667,7 @@ void fillCellBuffers(Map *map) {
     houses.fill(*map, allocator, [&](int cellId) { return map->getTileId(cellId) == HOUSE; });
 }
 
-void handleTimeEvents(Map *map, Entities *entities) {
+void handleEvents(Map *map, Entities *entities) {
     auto tod = GameState::instance->gameTime.timeOfDay();
     auto prevTod = GameState::instance->previousGameTime.timeOfDay();
 
@@ -681,6 +680,13 @@ void handleTimeEvents(Map *map, Entities *entities) {
             shop.woodCount = 0;
         });
     }
+
+    houses.processEachCell([&](int cellId) {
+        HouseCell &house = map->getTyped<HouseCell>(cellId);
+        if (house.woodCount >= house.upgradeCost()) {
+            house.levelUp();
+        }
+    });
 }
 
 void updateGrid(Map *map, Entities *entities) {
@@ -698,7 +704,7 @@ void updateGrid(Map *map, Entities *entities) {
     grid.sync();
     printDuration("fillCells                   ", [&]() { fillCells(map, entities); });
     grid.sync();
-    printDuration("handleTimeEvents            ", [&]() { handleTimeEvents(map, entities); });
+    printDuration("handleEvents                ", [&]() { handleEvents(map, entities); });
     printDuration("assignOneHouse              ", [&]() { assignOneHouse(map, entities); });
     printDuration("assignOneCustomerToShop     ",
                   [&]() { assignOneCustomerToShop(map, entities); });

@@ -26,13 +26,24 @@ struct BaseCell {
 };
 
 struct HouseCell : public BaseCell {
-    int32_t residentEntityIdx;
+    int32_t residentCount;
     int32_t woodCount;
+    int32_t level;
 
     HouseCell() {
-        residentEntityIdx = -1;
+        residentCount = 0;
         woodCount = 0;
+        level = 0;
     }
+
+    int upgradeCost() const { return HOUSE_BASE_UPGRADE_WOOD_COUNT << level; }
+
+    void levelUp() {
+        woodCount -= upgradeCost();
+        level++;
+    }
+
+    int maxResidents() const { return 1 << level; }
 
     static TileId type() { return HOUSE; }
 };
@@ -68,8 +79,12 @@ struct ShopCell : public WorkplaceCell {
 
 struct FactoryCell : public WorkplaceCell {
     int32_t stockCount;
+    int32_t level;
 
-    FactoryCell() : WorkplaceCell(FACTORY_CAPACITY) { stockCount = 0; }
+    FactoryCell() : WorkplaceCell(FACTORY_CAPACITY) {
+        stockCount = 0;
+        level = 0;
+    }
 
     static TileId type() { return FACTORY; }
 };
