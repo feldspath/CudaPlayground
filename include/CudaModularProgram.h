@@ -381,7 +381,7 @@ struct CudaModularProgram {
             for (CUfunction function : functions) {
                 const char *name;
                 CUkernel kernel = (CUkernel)function;
-                cuKernelGetName(&name, kernel);
+                cuFuncGetName(&name, function);
 
                 string strName = name;
 
