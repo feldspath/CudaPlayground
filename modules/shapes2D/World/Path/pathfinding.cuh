@@ -6,46 +6,29 @@ void performPathFinding(Map *map, Entities *entities, Allocator *allocator);
 
 struct FieldCell {
     uint32_t distance;
-    int32_t cellId;
 };
 
 struct FlowField {
     Map *map;
-    Neighbors networkIds;
-
     FieldCell *integrationField;
-    uint32_t fieldSize;
-    uint32_t target;
+    uint32_t targetId;
 
     FlowField() {}
 
-    FlowField(Map *map, uint32_t target, uint32_t origin) {
+    FlowField(Map *map, uint32_t target) {
         this->map = map;
-        this->target = target;
-        networkIds = map->sharedNetworks(origin, target);
-
-        fieldSize = 0;
-        networkIds.forEach([&](int network) { fieldSize += map->roadNetworkId(network); });
+        this->targetId = target;
     }
 
     void setBuffer(FieldCell *integrationField) { this->integrationField = integrationField; }
 
-    inline uint32_t length() const { return fieldSize; }
-    inline uint32_t size() const { return fieldSize * sizeof(FieldCell); }
+    constexpr uint32_t length() const { return 64 * 64; }
+    constexpr uint32_t size() const { return length() * sizeof(FieldCell); }
 
-    // The cell should be a road in one of the networks in networkIds
-    inline bool isCellInField(uint32_t cellId) const {
-        return map->getTileId(cellId) == ROAD && networkIds.contains(map->roadNetworkRepr(cellId));
-    }
+    void resetCell(uint32_t cellId);
 
-    int32_t fieldId(uint32_t cellId) const;
-
-    void resetCell(uint32_t fieldId);
-
-    inline FieldCell &getFieldCell(uint32_t fieldId) { return integrationField[fieldId]; }
-    inline const FieldCell &getFieldCell(uint32_t fieldId) const {
-        return integrationField[fieldId];
-    }
+    inline FieldCell &getFieldCell(uint32_t cellId) { return integrationField[cellId]; }
+    inline const FieldCell &getFieldCell(uint32_t cellId) const { return integrationField[cellId]; }
 
     Path extractPath(uint32_t originId) const;
 
