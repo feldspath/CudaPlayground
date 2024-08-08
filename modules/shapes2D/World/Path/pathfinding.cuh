@@ -2,39 +2,55 @@
 #include "World/Entities/entities.cuh"
 #include "World/map.cuh"
 
-void performPathFinding(Map *map, Entities *entities, Allocator *allocator);
-
-struct FieldCell {
-    uint32_t distance;
-};
-
-struct FlowField {
-    Map *map;
-    FieldCell *integrationField;
+struct IntegrationField {
+    uint32_t *distances;
     uint32_t targetId;
 
-    FlowField() {}
+    IntegrationField() {}
 
-    FlowField(Map *map, uint32_t target, FieldCell *integrationField) {
-        this->map = map;
+    // Buffer has to be at least of size IntegrationField::size()
+    IntegrationField(uint32_t target, uint32_t *buffer) {
         this->targetId = target;
-        this->integrationField = integrationField;
+        this->distances = buffer;
     }
 
-    static constexpr uint32_t size() { return 64 * 64; }
+    static constexpr uint32_t size() { return MAPX * MAPY; }
 
     void resetCell(uint32_t cellId);
 
-    inline FieldCell &getFieldCell(uint32_t cellId) { return integrationField[cellId]; }
-    inline const FieldCell &getFieldCell(uint32_t cellId) const { return integrationField[cellId]; }
-
-    Path extractPath(uint32_t originId) const;
-
-    bool isNeighborValid(uint32_t fieldId, uint32_t neighborId, Direction neighborDir) const;
+    inline uint32_t &getCell(uint32_t cellId) { return distances[cellId]; }
+    inline const uint32_t &getCell(uint32_t cellId) const { return distances[cellId]; }
 };
 
-struct Pathfinding {
+struct Flowfield {
+    bool valid;
+    uint8_t *directions;
+};
+
+struct PathfindingInfo {
     uint32_t entityIdx;
     uint32_t origin;
     uint32_t target;
+};
+
+struct PathfindingList {
+    PathfindingInfo *data;
+    uint32_t count;
+};
+
+class PathfindingManager {
+private:
+    Flowfield *cachedFlowfields;
+
+public:
+    PathfindingManager() {}
+
+    // Perform pathfinding
+    void update(Map &map, Entities &entities, Allocator &allocator);
+
+private:
+    PathfindingList locateLostEntities(Map &map, Entities &entities, Allocator &allocator) const;
+    bool isNeighborValid(Map &map, uint32_t cellId, uint32_t neighborId, Direction neighborDir,
+                         uint32_t targetId) const;
+    Path extractPath(Map &map, const IntegrationField &field, const PathfindingInfo &info) const;
 };

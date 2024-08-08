@@ -3,44 +3,39 @@
 
 #include "pathfinding.cuh"
 
-struct PathfindingList {
-    Pathfinding *data;
-    uint32_t count;
-};
-
 // Locate all entities that required pathfinding
-static PathfindingList locateLostEntities(Map *map, Entities *entities, Allocator *allocator) {
+PathfindingList PathfindingManager::locateLostEntities(Map &map, Entities &entities,
+                                                       Allocator &allocator) const {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
     grid.sync();
 
-    // One flow field per lost entity
     PathfindingList pathfindingList;
     pathfindingList.data =
-        allocator->alloc<Pathfinding *>(entities->getCount() * sizeof(Pathfinding));
-    uint32_t &lostCount = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
+        allocator.alloc<PathfindingInfo *>(entities.getCount() * sizeof(PathfindingInfo));
+    uint32_t &lostCount = *allocator.alloc<uint32_t *>(sizeof(uint32_t));
 
     if (grid.thread_rank() == 0) {
         lostCount = 0;
     }
     grid.sync();
 
-    entities->processAllActive([&](int entityIndex) {
-        Entity &entity = entities->get(entityIndex);
+    entities.processAllActive([&](int entityIndex) {
+        Entity &entity = entities.get(entityIndex);
         if (entity.isLost()) {
             uint32_t targetId = entity.destination;
-            int originId = map->cellAtPosition(entity.position);
-            if (map->sharedNetworks(originId, targetId).data[0] == -1) {
+            int originId = map.cellAtPosition(entity.position);
+            if (map.sharedNetworks(originId, targetId).data[0] == -1) {
                 printf("Error: entity %d cannot reach its destination\n", entityIndex);
                 return;
             }
-            Pathfinding p;
-            p.entityIdx = entityIndex;
-            p.origin = originId;
-            p.target = targetId;
+            PathfindingInfo info;
+            info.entityIdx = entityIndex;
+            info.origin = originId;
+            info.target = targetId;
             uint32_t id = atomicAdd(&lostCount, 1);
-            pathfindingList.data[id] = p;
+            pathfindingList.data[id] = info;
         }
     });
 
@@ -53,53 +48,53 @@ static PathfindingList locateLostEntities(Map *map, Entities *entities, Allocato
     return pathfindingList;
 }
 
-void performPathFinding(Map *map, Entities *entities, Allocator *allocator) {
+void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocator) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
     PathfindingList pathfindingList = locateLostEntities(map, entities, allocator);
 
-    __shared__ FieldCell fieldBuffer[FlowField::size()];
+    __shared__ uint32_t fieldBuffer[IntegrationField::size()];
 
     // Each block handles a lost entity
     for_blockwise(min(pathfindingList.count, 500), [&](int bufferIdx) {
-        Pathfinding info = pathfindingList.data[bufferIdx];
-        FlowField flowField(map, info.target, fieldBuffer);
+        PathfindingInfo info = pathfindingList.data[bufferIdx];
+        IntegrationField field(info.target, fieldBuffer);
 
         // Init buffer
-        processRangeBlock(FlowField::size(), [&](int idx) { flowField.resetCell(idx); });
+        processRangeBlock(IntegrationField::size(), [&](int idx) { field.resetCell(idx); });
 
         block.sync();
 
         if (block.thread_rank() == 0) {
             // Init target tile
-            flowField.getFieldCell(info.target).distance = 0;
+            field.getCell(info.target) = 0;
         }
 
         block.sync();
 
-        // Build flowfield
+        // Build integration field
         int iterations = 0;
         // The first path found is the smallest in size but not necessarily the shortest, because
         // there are different distance values. This condition ensures that it continues enough
         // to ensure path optimality.
-        while (10 * iterations <= flowField.getFieldCell(info.origin).distance) {
+        while (10 * iterations <= field.getCell(info.origin)) {
             iterations++;
             // The field is split accross the threads of the block
-            processRangeBlock(FlowField::size(), [&](int currentCellId) {
-                FieldCell &fieldCell = flowField.getFieldCell(currentCellId);
+            processRangeBlock(IntegrationField::size(), [&](int currentCellId) {
+                auto &fieldCell = field.getCell(currentCellId);
 
-                map->extendedNeighborCells(currentCellId)
+                map.extendedNeighborCells(currentCellId)
                     .forEachDir([&](Direction dir, int neighborId) {
-                        if (!flowField.isNeighborValid(currentCellId, neighborId, dir)) {
+                        if (!isNeighborValid(map, currentCellId, neighborId, dir, info.target)) {
                             return;
                         }
-                        uint32_t neighborDistance = flowField.getFieldCell(neighborId).distance;
+                        uint32_t neighborDistance = field.getCell(neighborId);
                         if (neighborDistance == uint32_t(Infinity)) {
                             return;
                         }
                         uint32_t newDistance = neighborDistance + (int(dir) < 4 ? 10u : 14u);
-                        fieldCell.distance = min(fieldCell.distance, newDistance);
+                        fieldCell = min(fieldCell, newDistance);
                     });
             });
 
@@ -109,14 +104,15 @@ void performPathFinding(Map *map, Entities *entities, Allocator *allocator) {
 
         // Extract path
         if (block.thread_rank() == 0) {
-            entities->get(info.entityIdx).path = flowField.extractPath(info.origin);
+            entities.get(info.entityIdx).path = extractPath(map, field, info);
         }
         block.sync();
     });
 }
 
-Path FlowField::extractPath(uint32_t originId) const {
-    int current = originId;
+Path PathfindingManager::extractPath(Map &map, const IntegrationField &field,
+                                     const PathfindingInfo &info) const {
+    int current = info.origin;
     bool reached = false;
     Path path;
 
@@ -127,18 +123,18 @@ Path FlowField::extractPath(uint32_t originId) const {
         int nextCell;
 
         // We assume that there is always a possible path to the target
-        map->extendedNeighborCells(current).forEachDir([&](Direction neighborDir, int neighborId) {
-            if (!isNeighborValid(current, neighborId, neighborDir) || reached) {
+        map.extendedNeighborCells(current).forEachDir([&](Direction neighborDir, int neighborId) {
+            if (!isNeighborValid(map, current, neighborId, neighborDir, info.target) || reached) {
                 return;
             }
-            if (neighborId == targetId) {
+            if (neighborId == info.target) {
                 reached = true;
                 dir = neighborDir;
                 min = 0;
                 return;
             }
 
-            uint32_t distance = getFieldCell(neighborId).distance;
+            uint32_t distance = field.getCell(neighborId);
             if (distance < min) {
                 min = distance;
                 dir = neighborDir;
@@ -157,13 +153,14 @@ Path FlowField::extractPath(uint32_t originId) const {
     return path;
 }
 
-void FlowField::resetCell(uint32_t cellId) {
-    auto &fieldCell = getFieldCell(cellId);
-    fieldCell.distance = uint32_t(Infinity);
+void IntegrationField::resetCell(uint32_t cellId) {
+    auto &fieldCell = getCell(cellId);
+    fieldCell = uint32_t(Infinity);
 }
 
-bool FlowField::isNeighborValid(uint32_t cellId, uint32_t neighborId, Direction neighborDir) const {
-    if (neighborId != targetId && map->getTileId(neighborId) != ROAD) {
+bool PathfindingManager::isNeighborValid(Map &map, uint32_t cellId, uint32_t neighborId,
+                                         Direction neighborDir, uint32_t targetId) const {
+    if (neighborId != targetId && map.getTileId(neighborId) != ROAD) {
         return false;
     }
 
@@ -171,10 +168,10 @@ bool FlowField::isNeighborValid(uint32_t cellId, uint32_t neighborId, Direction 
         return true;
     }
 
-    int2 currentCellCoord = map->cellCoords(cellId);
+    int2 currentCellCoord = map.cellCoords(cellId);
     int2 dirCoords = coordFromEnum(neighborDir);
-    int id1 = map->idFromCoords(currentCellCoord + int2{dirCoords.x, 0});
-    int id2 = map->idFromCoords(currentCellCoord + int2{0, dirCoords.y});
-    return !((id1 == -1 || map->getTileId(id1) != ROAD) &&
-             (id2 == -1 || map->getTileId(id2) != ROAD));
+    int id1 = map.idFromCoords(currentCellCoord + int2{dirCoords.x, 0});
+    int id2 = map.idFromCoords(currentCellCoord + int2{0, dirCoords.y});
+    return !((id1 == -1 || map.getTileId(id1) != ROAD) &&
+             (id2 == -1 || map.getTileId(id2) != ROAD));
 }

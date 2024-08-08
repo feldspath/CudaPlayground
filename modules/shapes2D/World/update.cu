@@ -18,6 +18,7 @@ namespace cg = cooperative_groups;
 
 GameData gameData;
 Allocator *allocator;
+PathfindingManager *pathfindingManager;
 uint64_t nanotime_start;
 
 CellBuffer shops;
@@ -710,8 +711,9 @@ void updateGrid(Map *map, Entities *entities) {
                   [&]() { assignOneCustomerToShop(map, entities); });
     printDuration("assignShopWorkerToFactory   ",
                   [&]() { assignShopWorkerToFactory(map, entities); });
-    printDuration("performPathFinding          ",
-                  [&]() { performPathFinding(map, entities, allocator); });
+    printDuration("pathfinding                 ",
+                  [&]() { pathfindingManager->update(*map, *entities, *allocator); });
+    grid.sync();
     printDuration("moveEntities                ", [&]() {
         moveEntities(map, entities, allocator, GameState::instance->gameTime.getDt());
     });
@@ -732,6 +734,9 @@ extern "C" __global__ void update(GameData _gameData) {
 
     Allocator _allocator(gameData.buffer, 0);
     allocator = &_allocator;
+
+    PathfindingManager _pathfindingManager;
+    pathfindingManager = &_pathfindingManager;
 
     curand_init(grid.thread_rank() + GameState::instance->currentTime_ms, 0, 0,
                 &thread_random_state);
