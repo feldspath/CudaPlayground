@@ -15,15 +15,13 @@ struct FlowField {
 
     FlowField() {}
 
-    FlowField(Map *map, uint32_t target) {
+    FlowField(Map *map, uint32_t target, FieldCell *integrationField) {
         this->map = map;
         this->targetId = target;
+        this->integrationField = integrationField;
     }
 
-    void setBuffer(FieldCell *integrationField) { this->integrationField = integrationField; }
-
-    constexpr uint32_t length() const { return 64 * 64; }
-    constexpr uint32_t size() const { return length() * sizeof(FieldCell); }
+    static constexpr uint32_t size() { return 64 * 64; }
 
     void resetCell(uint32_t cellId);
 
@@ -32,11 +30,10 @@ struct FlowField {
 
     Path extractPath(uint32_t originId) const;
 
-    bool isNeighborValid(uint32_t fieldId, Direction neighborDir) const;
+    bool isNeighborValid(uint32_t fieldId, uint32_t neighborId, Direction neighborDir) const;
 };
 
 struct Pathfinding {
-    FlowField flowField;
     uint32_t entityIdx;
     uint32_t origin;
     uint32_t target;
