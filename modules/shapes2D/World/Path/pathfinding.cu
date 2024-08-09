@@ -102,53 +102,47 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
             block.sync();
         }
 
+        // Create flowfield from integration field
+        processRangeBlock(IntegrationField::size(), [&](int cellId) {
+            uint32_t minDistance = uint32_t(Infinity);
+            Direction dir;
+            map.extendedNeighborCells(cellId).forEachDir(
+                [&](Direction neighborDir, int neighborId) {
+                    if (!isNeighborValid(map, cellId, neighborId, neighborDir, info.target)) {
+                        return;
+                    }
+
+                    uint32_t distance = field.getCell(neighborId);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        dir = neighborDir;
+                    }
+                });
+
+            cachedFlowfields[info.target].directions[cellId] = uint8_t(dir);
+        });
+
         // Extract path
         if (block.thread_rank() == 0) {
-            entities.get(info.entityIdx).path = extractPath(map, field, info);
+            entities.get(info.entityIdx).path = extractPath(map, info);
         }
         block.sync();
     });
 }
 
-Path PathfindingManager::extractPath(Map &map, const IntegrationField &field,
-                                     const PathfindingInfo &info) const {
+Path PathfindingManager::extractPath(Map &map, const PathfindingInfo &info) const {
     int current = info.origin;
     bool reached = false;
     Path path;
 
     while (!reached && path.length() < Path::MAX_LENGTH) {
-        // Retrieve path
-        uint32_t min = uint32_t(Infinity);
-        Direction dir;
-        int nextCell;
-
-        // We assume that there is always a possible path to the target
-        map.extendedNeighborCells(current).forEachDir([&](Direction neighborDir, int neighborId) {
-            if (!isNeighborValid(map, current, neighborId, neighborDir, info.target) || reached) {
-                return;
-            }
-            if (neighborId == info.target) {
-                reached = true;
-                dir = neighborDir;
-                min = 0;
-                return;
-            }
-
-            uint32_t distance = field.getCell(neighborId);
-            if (distance < min) {
-                min = distance;
-                dir = neighborDir;
-                nextCell = neighborId;
-            }
-        });
-
-        if (min == uint32_t(Infinity)) {
-            printf("Pathfinding error\n");
+        Direction dir = Direction(cachedFlowfields[info.target].directions[current]);
+        path.append(dir);
+        current = map.neighborCell(current, dir);
+        if (current == -1) {
+            printf("pathfinding error\n");
             return Path();
         }
-
-        path.append(dir);
-        current = nextCell;
     }
     return path;
 }

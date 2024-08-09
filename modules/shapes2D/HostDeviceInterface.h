@@ -206,6 +206,11 @@ public:
 
 static int BYTES_PER_ENTITY = sizeof(Entity);
 
+struct Flowfield {
+    bool valid;
+    uint8_t directions[MAPX * MAPY];
+};
+
 struct GameData {
     Uniforms uniforms;    // Args passed form host to device every frame
     GameState *state;     // Managed only by device
@@ -214,6 +219,7 @@ struct GameData {
     uint32_t numCols;
     char *cells;
     void *entitiesBuffer;
+    void *pathfindingBuffer;
     uint32_t *img_ascii_16;
     uint32_t *img_spritesheet;
 };

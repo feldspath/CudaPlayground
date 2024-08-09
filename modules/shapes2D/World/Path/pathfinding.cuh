@@ -22,11 +22,6 @@ struct IntegrationField {
     inline const uint32_t &getCell(uint32_t cellId) const { return distances[cellId]; }
 };
 
-struct Flowfield {
-    bool valid;
-    uint8_t *directions;
-};
-
 struct PathfindingInfo {
     uint32_t entityIdx;
     uint32_t origin;
@@ -43,7 +38,7 @@ private:
     Flowfield *cachedFlowfields;
 
 public:
-    PathfindingManager() {}
+    PathfindingManager(void *buffer) : cachedFlowfields((Flowfield *)(buffer)) {}
 
     // Perform pathfinding
     void update(Map &map, Entities &entities, Allocator &allocator);
@@ -52,5 +47,5 @@ private:
     PathfindingList locateLostEntities(Map &map, Entities &entities, Allocator &allocator) const;
     bool isNeighborValid(Map &map, uint32_t cellId, uint32_t neighborId, Direction neighborDir,
                          uint32_t targetId) const;
-    Path extractPath(Map &map, const IntegrationField &field, const PathfindingInfo &info) const;
+    Path extractPath(Map &map, const PathfindingInfo &info) const;
 };

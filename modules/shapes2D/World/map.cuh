@@ -149,4 +149,10 @@ public:
         });
         return result;
     }
+
+    int32_t neighborCell(int cellId, Direction dir) {
+        int2 coords = cellCoords(cellId);
+        int2 dirCoord = coordFromEnum(dir);
+        return idFromCoords(coords.x + dirCoord.x, coords.y + dirCoord.y);
+    }
 };
