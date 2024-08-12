@@ -36,12 +36,17 @@ struct PathfindingList {
 class PathfindingManager {
 private:
     Flowfield *cachedFlowfields;
+    TileId *tileIds;
 
 public:
     PathfindingManager(void *buffer) : cachedFlowfields((Flowfield *)(buffer)) {}
 
     // Perform pathfinding
     void update(Map &map, Entities &entities, Allocator &allocator);
+
+    void invalidateCache() {
+        processRange(MAPX * MAPY, [&](int cellId) { cachedFlowfields[cellId].state = INVALID; });
+    }
 
 private:
     PathfindingList locateLostEntities(Map &map, Entities &entities, Allocator &allocator) const;

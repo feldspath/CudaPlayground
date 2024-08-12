@@ -60,7 +60,7 @@ public:
         return y * cols + x;
     }
 
-    int2 cellCoords(int cellId) { return int2{cellId % cols, cellId / cols}; }
+    inline int2 cellCoords(int cellId) { return int2{cellId % cols, cellId / cols}; }
 
     inline int idFromCoords(int x, int y) {
         if (x >= cols || x < 0 || y >= rows || y < 0) {

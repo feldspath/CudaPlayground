@@ -3,12 +3,12 @@
 static constexpr int MAPX = 64;
 static constexpr int MAPY = 64;
 
-static int FACTORY_CAPACITY = 4;
-static int SHOP_WORK_CAPACITY = 2;
+static int FACTORY_CAPACITY = 40;
+static int SHOP_WORK_CAPACITY = 40;
 static int SHOP_CUSTOMERS_PER_WORKER = 4;
-static int HOUSE_BASE_UPGRADE_WOOD_COUNT = 20;
+static int HOUSE_BASE_UPGRADE_WOOD_COUNT = 5;
 static int WOOD_SELL_PRICE = 5;
-static int SHOP_WORKER_INVENTORY_SIZE = 20;
+static int SHOP_WORKER_INVENTORY_SIZE = 40;
 
 static float ENTITY_RADIUS = 0.2f;
 static float ENTITY_SPEED = 10.0f;
@@ -27,7 +27,10 @@ static unsigned int ROAD_COST = 5;
 static unsigned int FACTORY_COST = 100;
 static unsigned int HOUSE_COST = 50;
 
-static float REAL_SECONDS_PER_GAME_MIN = 60.0 / (60.0 * 24.0);
+static float REAL_SECONDS_PER_GAME_MIN = 300.0 / (60.0 * 24.0);
 
-// Let's assume we can have as much entities as we have cells
-static constexpr int MAX_ENTITY_COUNT = MAPX * MAPY;
+// Let's assume we can have 10 times as much entities as we have cells (40k for now)
+static constexpr int MAX_ENTITY_COUNT = 10 * MAPX * MAPY;
+
+static constexpr int MAX_FLOWFIELDS_PER_FRAME = 500;
+static constexpr int MAX_PATHS_PER_FRAME = 2000;

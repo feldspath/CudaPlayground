@@ -279,7 +279,7 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
             int cellId = y * gridCols + x;
             gridCells[cellId].cell.tileId = GRASS;
             gridCells[cellId].cell.landValue = 255;
-            flowfields[cellId].valid = false;
+            flowfields[cellId].state = INVALID;
         }
     }
     cuMemcpyHtoD(cptr_grid, gridCells.data(), gridCells.size() * BYTES_PER_CELL);

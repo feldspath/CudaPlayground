@@ -206,8 +206,15 @@ public:
 
 static int BYTES_PER_ENTITY = sizeof(Entity);
 
+enum FlowfieldState {
+    VALID = 0,
+    INVALID = 1,
+    // marked for computation this frame
+    MARKED = 2,
+};
+
 struct Flowfield {
-    bool valid;
+    FlowfieldState state;
     uint8_t directions[MAPX * MAPY];
 };
 

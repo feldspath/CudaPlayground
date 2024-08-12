@@ -61,6 +61,8 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
 
     switch (newTile) {
     case ROAD: {
+        pathfindingManager->invalidateCache();
+
         int *cumulNeighborNetworksSizes =
             allocator->alloc<int *>(sizeof(int) * (Neighbors::size() + 1));
         int *neighborNetworks = allocator->alloc<int *>(sizeof(int) * Neighbors::size());
@@ -180,6 +182,8 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
             break;
         }
         case ROAD: {
+            pathfindingManager->invalidateCache();
+
             // if it was a road, refresh the networks data
             int32_t network = map->roadNetworkRepr(cellId);
 
@@ -673,14 +677,14 @@ void handleEvents(Map *map, Entities *entities) {
     auto prevTod = GameState::instance->previousGameTime.timeOfDay();
 
     TOD sellResourcesTime{23, 0};
-    if (prevTod <= sellResourcesTime && sellResourcesTime <= tod) {
-        // sell all resources at 23:00
-        shops.processEachCell([&](int cellId) {
-            ShopCell &shop = map->getTyped<ShopCell>(cellId);
-            atomicAdd(&GameState::instance->playerMoney, shop.woodCount * WOOD_SELL_PRICE);
-            shop.woodCount = 0;
-        });
-    }
+    // if (prevTod <= sellResourcesTime && sellResourcesTime <= tod) {
+    //     // sell all resources at 23:00
+    //     shops.processEachCell([&](int cellId) {
+    //         ShopCell &shop = map->getTyped<ShopCell>(cellId);
+    //         atomicAdd(&GameState::instance->playerMoney, shop.woodCount * WOOD_SELL_PRICE);
+    //         shop.woodCount = 0;
+    //     });
+    // }
 
     houses.processEachCell([&](int cellId) {
         HouseCell &house = map->getTyped<HouseCell>(cellId);
