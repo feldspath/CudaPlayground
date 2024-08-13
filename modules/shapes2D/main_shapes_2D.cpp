@@ -260,7 +260,7 @@ void initGameState() {
 
 void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> &img_ascii_32,
                      std::vector<uint8_t> &img_spritesheet) {
-    cuMemAlloc(&cptr_buffer, 100'000'000);
+    cuMemAlloc(&cptr_buffer, 200'000'000);
     cuMemAlloc(&cptr_gameState, sizeof(GameState));
 
     initGameState();

@@ -127,7 +127,7 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
                       [&](int cellId) { tilesBuffer[cellId] = map.getTileId(cellId); });
 
     // Each block handles a flowfield
-    for_blockwise(flowfieldsToComputeCount, [&](int bufferIdx) {
+    for_blockwise(min(flowfieldsToComputeCount, MAX_FLOWFIELDS_PER_FRAME), [&](int bufferIdx) {
         uint32_t target = flowfieldsToCompute[bufferIdx];
         IntegrationField field(target, fieldBuffer);
 

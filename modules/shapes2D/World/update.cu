@@ -357,76 +357,65 @@ void assignOneCustomerToShop(Map *map, Entities *entities) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
-    if (grid.block_rank() == 0) {
-        __shared__ bool assigned;
-        if (block.thread_rank() == 0) {
-            assigned = false;
-        }
-        block.sync();
-        for (int entityIdx = 0; entityIdx < entities->getCount(); entityIdx++) {
-            if (assigned) {
-                return;
-            }
-            Entity &entity = entities->get(entityIdx);
-            if (!entity.active || entity.state != GoShopping || entity.destination != -1) {
-                continue;
-            }
-
-            int32_t shopId = shops.findClosestOnNetworkBlockwise(
-                *map, map->cellAtPosition(entity.position),
-                [&](int cellId) { return map->getTyped<ShopCell>(cellId).woodCount > 0; });
-
-            if (block.thread_rank() == 0) {
-                if (shopId != -1) {
-                    entity.destination = shopId;
-                    assigned = true;
-                } else {
-                    entity.changeState(GoHome);
-                }
-            }
-            block.sync();
-            if (assigned) {
-                return;
-            }
-        }
+    __shared__ bool assigned;
+    if (block.thread_rank() == 0) {
+        assigned = false;
     }
+    for_blockwise(entities->getCount(), [&](int entityIdx) {
+        block.sync();
+        if (assigned) {
+            return;
+        }
+        Entity &entity = entities->get(entityIdx);
+        if (!entity.active || entity.state != GoShopping || entity.destination != -1) {
+            return;
+        }
+
+        int32_t shopId = shops.findClosestOnNetworkBlockwise(
+            *map, map->cellAtPosition(entity.position),
+            [&](int cellId) { return map->getTyped<ShopCell>(cellId).woodCount > 0; });
+
+        if (block.thread_rank() == 0) {
+            if (shopId != -1) {
+                entity.destination = shopId;
+                assigned = true;
+            } else {
+                entity.changeState(GoHome);
+            }
+        }
+    });
 }
 
 void assignShopWorkerToFactory(Map *map, Entities *entities) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
-    if (grid.block_rank() == 0) {
-        __shared__ bool assigned;
+    __shared__ bool assigned;
+    if (block.thread_rank() == 0) {
+        assigned = false;
+    }
+    block.sync();
+    for_blockwise(entities->getCount(), [&](int entityIdx) {
+        if (assigned) {
+            return;
+        }
+        Entity &entity = entities->get(entityIdx);
+        if (!entity.active || entity.state != WorkAtShop || entity.destination != -1) {
+            return;
+        }
+
+        int32_t factoryId = factories.findClosestOnNetworkBlockwise(
+            *map, map->cellAtPosition(entity.position),
+            [&](int cellId) { return map->getTyped<FactoryCell>(cellId).stockCount > 0; });
+
         if (block.thread_rank() == 0) {
-            assigned = false;
+            if (factoryId != -1) {
+                entity.destination = factoryId;
+                assigned = true;
+            }
         }
         block.sync();
-        for (int entityIdx = 0; entityIdx < entities->getCount(); entityIdx++) {
-            if (assigned) {
-                return;
-            }
-            Entity &entity = entities->get(entityIdx);
-            if (!entity.active || entity.state != WorkAtShop || entity.destination != -1) {
-                continue;
-            }
-
-            int32_t factoryId = factories.findClosestOnNetworkBlockwise(
-                *map, map->cellAtPosition(entity.position),
-                [&](int cellId) { return map->getTyped<FactoryCell>(cellId).stockCount > 0; });
-
-            if (block.thread_rank() == 0) {
-                if (factoryId != -1) {
-                    entity.destination = factoryId;
-                    assigned = true;
-                }
-            }
-            block.sync();
-            if (assigned) {
-                return;
-            }
-        }
-    }
+    });
 }
 
 uint32_t currentTime_ms() { return uint32_t((nanotime_start / (uint64_t)1e6) & 0xffffffff); }
