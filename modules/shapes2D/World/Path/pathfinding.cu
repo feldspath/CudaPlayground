@@ -31,11 +31,9 @@ PathfindingList PathfindingManager::locateLostEntities(Map &map, Entities &entit
             uint32_t targetId = entity.destination;
             int originId = map.cellAtPosition(entity.position);
             if (map.sharedNetworks(originId, targetId).data[0] == -1) {
-                printf("Error: entity %d cannot reach its destination. Removing it.\n",
+                printf("Error: entity %d cannot reach its destination. Placing it back at home.\n",
                        entityIndex);
-                int workplaceId = entity.workplaceId;
-                atomicAdd(&map.workplaceCapacity(workplaceId), 1);
-                entities.remove(entityIndex);
+                entity.position = map.getCellPosition(entity.houseId);
                 return;
             }
             uint32_t id = atomicAdd(&lostCount, 1);

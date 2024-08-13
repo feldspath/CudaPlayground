@@ -164,7 +164,7 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
             entities->processAll([&](int entityId) {
                 auto &entity = entities->get(entityId);
                 if (entity.workplaceId == cellId) {
-                    map->getTyped<HouseCell>(entity.houseId) = HouseCell();
+                    atomicSub(&map->getTyped<HouseCell>(entity.houseId).residentCount, 1);
                     entities->remove(entityId);
                 }
             });
