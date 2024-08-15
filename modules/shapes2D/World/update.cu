@@ -684,6 +684,20 @@ void handleEvents(Map *map, Entities *entities) {
     });
 }
 
+void moveEntitiesBetter(Map *map, Entities *entities, Allocator *allocator, float gameDt) {
+    auto grid = cg::this_grid();
+    float dt = min(0.01f, gameDt);
+    float cumul = 0.0f;
+    int iterations = 0;
+    do {
+        moveEntities(map, entities, allocator, dt);
+        grid.sync();
+        cumul += dt;
+        dt = min(0.01f, gameDt - cumul);
+        iterations++;
+    } while (cumul < gameDt);
+}
+
 void updateGrid(Map *map, Entities *entities) {
     auto grid = cg::this_grid();
 
@@ -708,8 +722,8 @@ void updateGrid(Map *map, Entities *entities) {
     printDuration("pathfinding                 ",
                   [&]() { pathfindingManager->update(*map, *entities, *allocator); });
     grid.sync();
-    printDuration("moveEntities                ", [&]() {
-        moveEntities(map, entities, allocator, GameState::instance->gameTime.getDt());
+    printDuration("moveEntitiesBetter           ", [&]() {
+        moveEntitiesBetter(map, entities, allocator, GameState::instance->gameTime.getDt());
     });
     grid.sync();
     printDuration("updateEntitiesState         ", [&]() { updateEntitiesState(map, entities); });

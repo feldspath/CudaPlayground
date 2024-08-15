@@ -43,6 +43,8 @@ void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) 
 
     grid.sync();
 
+    // Saving allocator offset
+    int64_t allocatorOffset = allocator->offset;
     // Count entities to move
     uint32_t &entitiesToMoveCount = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
     uint32_t &bufferIdx = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
@@ -191,4 +193,7 @@ void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) 
             }
         }
     });
+
+    // Reset allocator offset
+    allocator->offset = allocatorOffset;
 }
