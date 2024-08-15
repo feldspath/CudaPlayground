@@ -160,7 +160,7 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
             // The field is split accross the threads of the block
             for (int currentCellId = block.thread_rank(); currentCellId < MAP_SIZE;
                  currentCellId += block.size()) {
-                if (currentCellId > MAP_SIZE) {
+                if (currentCellId >= MAP_SIZE) {
                     return;
                 }
                 int2 currentCellCoord = map.cellCoords(currentCellId);
