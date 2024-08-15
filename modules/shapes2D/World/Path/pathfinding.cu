@@ -58,6 +58,7 @@ PathfindingList PathfindingManager::locateLostEntities(Map &map, Entities &entit
     return pathfindingList;
 }
 
+#ifdef PROFILE
 #define PROFILE_START()                                                                            \
     block.sync();                                                                                  \
     uint64_t t_start = nanotime();
@@ -70,6 +71,14 @@ PathfindingList PathfindingManager::locateLostEntities(Map &map, Entities &entit
         float millis = nanos / 1e6;                                                                \
         printf("%s: %8.3f ms\n", name, millis);                                                    \
     }
+#else
+#define PROFILE_START()
+#define PROFILE_END(name)
+#endif
+
+static int2 closeNeighbors[] = {int2{-1, 0}, int2{1, 0}, int2{0, -1}, int2{0, 1}};
+static int2 impactedNeighbors[] = {int2{0, 2}, int2{2, 3}, int2{0, 1}, int2{1, 3}};
+static int2 farNeighbors[] = {int2{-1, -1}, int2{1, -1}, int2{-1, 1}, int2{1, 1}};
 
 void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocator) {
     auto grid = cg::this_grid();
@@ -77,9 +86,9 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
 
     PathfindingList pathfindingList = locateLostEntities(map, entities, allocator);
 
-    if (grid.thread_rank() == 0 && pathfindingList.count > 0) {
-        printf("pathfindings to compute count: %d\n", pathfindingList.count);
-    }
+    // if (grid.thread_rank() == 0 && pathfindingList.count > 0) {
+    //     printf("pathfindings to compute count: %d\n", pathfindingList.count);
+    // }
 
     // list all the flowfields that have to be computed this frame
     uint32_t &flowfieldsToComputeCount = *allocator.alloc<uint32_t *>(sizeof(uint32_t));
@@ -111,29 +120,28 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
 
     grid.sync();
 
-    if (grid.thread_rank() == 0 && flowfieldsToComputeCount > 0) {
-        printf("flowfield to compute count: %d\n", flowfieldsToComputeCount);
-    }
+    // if (grid.thread_rank() == 0 && flowfieldsToComputeCount > 0) {
+    //     printf("flowfield to compute count: %d\n", flowfieldsToComputeCount);
+    // }
 
     // Compute the flowfields
-    __shared__ uint32_t fieldBuffer[IntegrationField::size()];
-    __shared__ TileId tilesBuffer[IntegrationField::size()];
+    __shared__ uint32_t fieldBuffer[MAP_SIZE];
+    __shared__ TileId tilesBuffer[MAP_SIZE];
 
     this->tileIds = tilesBuffer;
 
-    processRangeBlock(IntegrationField::size(),
-                      [&](int cellId) { tilesBuffer[cellId] = map.getTileId(cellId); });
+    processRangeBlock(MAP_SIZE, [&](int cellId) { tilesBuffer[cellId] = map.getTileId(cellId); });
 
     // Each block handles a flowfield
     for_blockwise(min(flowfieldsToComputeCount, MAX_FLOWFIELDS_PER_FRAME), [&](int bufferIdx) {
         uint32_t target = flowfieldsToCompute[bufferIdx];
-        IntegrationField field(target, fieldBuffer);
 
         // Init buffer
-        processRangeBlock(IntegrationField::size(), [&](int idx) {
-            field.resetCell(idx);
+        processRangeBlock(MAP_SIZE, [&](int idx) {
             if (idx == target) {
-                field.getCell(idx) = 0;
+                fieldBuffer[idx] = 0;
+            } else {
+                fieldBuffer[idx] = uint32_t(Infinity);
             }
         });
 
@@ -145,47 +153,76 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
         // to ensure path optimality.
 
         // simplifying the termination for now
+        PROFILE_START();
         int iteration = 0;
         while (iteration < 64) {
             iteration++;
             // The field is split accross the threads of the block
-            processRangeBlock(IntegrationField::size(), [&](int currentCellId) {
-                auto &fieldCell = field.getCell(currentCellId);
+            for (int currentCellId = block.thread_rank(); currentCellId < MAP_SIZE;
+                 currentCellId += block.size()) {
+                if (currentCellId > MAP_SIZE) {
+                    return;
+                }
+                int2 currentCellCoord = map.cellCoords(currentCellId);
+                uint32_t minDistance = fieldBuffer[currentCellId];
 
-                map.extendedNeighborCells(currentCellId)
-                    .forEachDir([&](Direction dir, int neighborId) {
-                        if (!isNeighborValid(map, currentCellId, neighborId, dir, target)) {
-                            return;
+                int2 toVisit[] = {closeNeighbors[0], closeNeighbors[1], closeNeighbors[2],
+                                  closeNeighbors[3], int2{0, 0},        int2{0, 0},
+                                  int2{0, 0},        int2{0, 0}};
+                int size = 4;
+                int idx = 0;
+                bool pushed[] = {false, false, false, false};
+                while (idx < size) {
+                    int2 neighborDir = toVisit[idx];
+                    int neighborId = map.idFromCoords(currentCellCoord + neighborDir);
+                    if (neighborId == currentCellId || neighborId == -1 ||
+                        (neighborId != target && tileIds[neighborId] != ROAD)) {
+                        idx++;
+                        continue;
+                    }
+                    bool diag = idx >= 4;
+                    if (!diag) {
+                        int2 impacted = impactedNeighbors[idx];
+                        if (!pushed[impacted.x]) {
+                            pushed[impacted.x] = true;
+                            toVisit[size] = farNeighbors[impacted.x];
+                            size++;
                         }
-                        uint32_t neighborDistance = field.getCell(neighborId);
-                        if (neighborDistance == uint32_t(Infinity)) {
-                            return;
+                        if (!pushed[impacted.y]) {
+                            pushed[impacted.y] = true;
+                            toVisit[size] = farNeighbors[impacted.y];
+                            size++;
                         }
-                        uint32_t newDistance = neighborDistance + (int(dir) < 4 ? 10u : 14u);
-                        fieldCell = min(fieldCell, newDistance);
-                    });
-            });
+                    }
+                    uint32_t neighborDistance = fieldBuffer[neighborId];
+                    uint32_t newDistance = neighborDistance + (diag ? 14 : 10);
+                    minDistance = min(minDistance, newDistance);
+                    idx++;
+                }
 
+                fieldBuffer[currentCellId] = minDistance;
+            }
             // Ensure that the iteration is completed by all threads before the next one
             block.sync();
         }
+        PROFILE_END("integration field");
 
         // Create flowfield from integration field
-        processRangeBlock(IntegrationField::size(), [&](int cellId) {
+        processRangeBlock(MAP_SIZE, [&](int cellId) {
             uint32_t minDistance = uint32_t(Infinity);
             Direction dir;
-            map.extendedNeighborCells(cellId).forEachDir(
-                [&](Direction neighborDir, int neighborId) {
-                    if (!isNeighborValid(map, cellId, neighborId, neighborDir, target)) {
-                        return;
-                    }
+            map.extendedNeighborCells(cellId).forEachDir([&](Direction neighborDir,
+                                                             int neighborId) {
+                if (!isNeighborValid(map, cellId, neighborId, coordFromEnum(neighborDir), target)) {
+                    return;
+                }
 
-                    uint32_t distance = field.getCell(neighborId);
-                    if (distance < minDistance) {
-                        minDistance = distance;
-                        dir = neighborDir;
-                    }
-                });
+                uint32_t distance = fieldBuffer[neighborId];
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    dir = neighborDir;
+                }
+            });
 
             cachedFlowfields[target].directions[cellId] = uint8_t(dir);
         });
@@ -221,26 +258,4 @@ Path PathfindingManager::extractPath(Map &map, const PathfindingInfo &info) cons
         }
     }
     return path;
-}
-
-void IntegrationField::resetCell(uint32_t cellId) {
-    auto &fieldCell = getCell(cellId);
-    fieldCell = uint32_t(Infinity);
-}
-
-bool PathfindingManager::isNeighborValid(Map &map, uint32_t cellId, uint32_t neighborId,
-                                         Direction neighborDir, uint32_t targetId) const {
-    if (neighborId != targetId && tileIds[neighborId] != ROAD) {
-        return false;
-    }
-
-    if (int(neighborDir) < 4) {
-        return true;
-    }
-
-    int2 currentCellCoord = map.cellCoords(cellId);
-    int2 dirCoords = coordFromEnum(neighborDir);
-    int id1 = map.idFromCoords(currentCellCoord + int2{dirCoords.x, 0});
-    int id2 = map.idFromCoords(currentCellCoord + int2{0, dirCoords.y});
-    return !((id1 == -1 || tileIds[id1] != ROAD) && (id2 == -1 || tileIds[id2] != ROAD));
 }

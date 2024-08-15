@@ -2,26 +2,6 @@
 #include "World/Entities/entities.cuh"
 #include "World/map.cuh"
 
-struct IntegrationField {
-    uint32_t *distances;
-    uint32_t targetId;
-
-    IntegrationField() {}
-
-    // Buffer has to be at least of size IntegrationField::size()
-    IntegrationField(uint32_t target, uint32_t *buffer) {
-        this->targetId = target;
-        this->distances = buffer;
-    }
-
-    static constexpr uint32_t size() { return MAPX * MAPY; }
-
-    void resetCell(uint32_t cellId);
-
-    inline uint32_t &getCell(uint32_t cellId) { return distances[cellId]; }
-    inline const uint32_t &getCell(uint32_t cellId) const { return distances[cellId]; }
-};
-
 struct PathfindingInfo {
     uint32_t entityIdx;
     uint32_t origin;
@@ -50,7 +30,21 @@ public:
 
 private:
     PathfindingList locateLostEntities(Map &map, Entities &entities, Allocator &allocator) const;
-    bool isNeighborValid(Map &map, uint32_t cellId, uint32_t neighborId, Direction neighborDir,
-                         uint32_t targetId) const;
+    inline bool isNeighborValid(Map &map, uint32_t cellId, uint32_t neighborId, int2 dirCoords,
+                                uint32_t targetId) const {
+        if (neighborId != targetId && tileIds[neighborId] != ROAD) {
+            return false;
+        }
+
+        if (dirCoords.x == 0 || dirCoords.y == 0) {
+            return true;
+        }
+
+        int2 currentCellCoord = map.cellCoords(cellId);
+        int id1 = map.idFromCoords(currentCellCoord + int2{dirCoords.x, 0});
+        int id2 = map.idFromCoords(currentCellCoord + int2{0, dirCoords.y});
+        return (id1 != -1 && tileIds[id1] == ROAD) || (id2 != -1 && tileIds[id2] == ROAD);
+    }
+
     Path extractPath(Map &map, const PathfindingInfo &info) const;
 };

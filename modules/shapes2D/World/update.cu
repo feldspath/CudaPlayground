@@ -62,6 +62,7 @@ void updateCell(Map *map, Entities *entities, UpdateInfo updateInfo) {
     switch (newTile) {
     case ROAD: {
         pathfindingManager->invalidateCache();
+        entities->processAllActive([&](int entityId) { entities->get(entityId).path.reset(); });
 
         int *cumulNeighborNetworksSizes =
             allocator->alloc<int *>(sizeof(int) * (Neighbors::size() + 1));

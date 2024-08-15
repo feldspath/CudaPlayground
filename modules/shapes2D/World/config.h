@@ -2,6 +2,7 @@
 
 static constexpr int MAPX = 64;
 static constexpr int MAPY = 64;
+static constexpr int MAP_SIZE = MAPX * MAPY;
 
 static int FACTORY_CAPACITY = 40;
 static int SHOP_WORK_CAPACITY = 40;

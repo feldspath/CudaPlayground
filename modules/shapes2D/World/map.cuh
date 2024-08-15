@@ -68,7 +68,7 @@ public:
         }
         return y * cols + x;
     }
-    int idFromCoords(int2 coords) { return idFromCoords(coords.x, coords.y); }
+    inline int idFromCoords(int2 coords) { return idFromCoords(coords.x, coords.y); }
 
     TileId getTileId(int cellId) const { return cellsData[cellId].cell.tileId; }
     void setTileId(int cellId, TileId tile) { cellsData[cellId].cell.tileId = tile; }
