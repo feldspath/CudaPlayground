@@ -174,7 +174,7 @@ void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
 
     void *args[] = {&gamedata};
 
-    cuda_update->launchCooperative("update", args, {.blocksize = 64});
+    cuda_update->launchCooperative("update", args, {.blocksize = 128});
 
     cuCtxSynchronize();
 }
@@ -238,7 +238,7 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
 
     void *args[] = {&gamedata, &output_surf};
 
-    cuda_program->launchCooperative("kernel", args, {.blocksize = 64});
+    cuda_program->launchCooperative("kernel", args, {.blocksize = 128});
 
     cuCtxSynchronize();
 
@@ -260,7 +260,7 @@ void initGameState() {
 
 void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> &img_ascii_32,
                      std::vector<uint8_t> &img_spritesheet) {
-    cuMemAlloc(&cptr_buffer, 200'000'000);
+    cuMemAlloc(&cptr_buffer, 400'000'000);
     cuMemAlloc(&cptr_gameState, sizeof(GameState));
 
     initGameState();

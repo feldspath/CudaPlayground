@@ -95,6 +95,12 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
     if (grid.thread_rank() == 0) {
         flowfieldsToComputeCount = 0;
     }
+
+    processRange(MAP_SIZE, [&](int idx) {
+        if (cachedFlowfields[idx].state == MARKED) {
+            cachedFlowfields[idx].state = INVALID;
+        }
+    });
     grid.sync();
 
     uint32_t *flowfieldsToCompute =
@@ -126,11 +132,13 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
 
     // Compute the flowfields
     __shared__ uint32_t fieldBuffer[MAP_SIZE];
-    __shared__ TileId tilesBuffer[MAP_SIZE];
+    __shared__ uint8_t tilesBuffer[MAP_SIZE];
+    __shared__ uint32_t iterations[MAP_SIZE];
 
     this->tileIds = tilesBuffer;
 
-    processRangeBlock(MAP_SIZE, [&](int cellId) { tilesBuffer[cellId] = map.getTileId(cellId); });
+    processRangeBlock(MAP_SIZE,
+                      [&](int cellId) { tilesBuffer[cellId] = uint8_t(map.getTileId(cellId)); });
 
     // Each block handles a flowfield
     for_blockwise(min(flowfieldsToComputeCount, MAX_FLOWFIELDS_PER_FRAME), [&](int bufferIdx) {
@@ -143,6 +151,7 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
             } else {
                 fieldBuffer[idx] = uint32_t(Infinity);
             }
+            iterations[idx] = 0;
         });
 
         block.sync();
@@ -154,15 +163,37 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
 
         // simplifying the termination for now
         PROFILE_START();
-        int iteration = 0;
-        while (iteration < 64) {
-            iteration++;
+        __shared__ bool updated;
+        if (block.thread_rank() == 0) {
+            updated = true;
+        }
+        block.sync();
+
+        while (updated) {
+            if (block.thread_rank() == 0) {
+                updated = false;
+            }
+            block.sync();
             // The field is split accross the threads of the block
             for (int currentCellId = block.thread_rank(); currentCellId < MAP_SIZE;
                  currentCellId += block.size()) {
                 if (currentCellId >= MAP_SIZE) {
                     return;
                 }
+
+                // Check if cell is reachable
+                if (map.sharedNetworks(currentCellId, target).data[0] == -1) {
+                    continue;
+                }
+
+                if (10 * iterations[currentCellId] > fieldBuffer[currentCellId] ||
+                    iterations[currentCellId] > 4096) {
+                    // This cell is done
+                    continue;
+                }
+                updated = true;
+                iterations[currentCellId]++;
+
                 int2 currentCellCoord = map.cellCoords(currentCellId);
                 uint32_t minDistance = fieldBuffer[currentCellId];
 
@@ -176,7 +207,7 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
                     int2 neighborDir = toVisit[idx];
                     int neighborId = map.idFromCoords(currentCellCoord + neighborDir);
                     if (neighborId == currentCellId || neighborId == -1 ||
-                        (neighborId != target && tileIds[neighborId] != ROAD)) {
+                        (neighborId != target && TileId(tileIds[neighborId]) != ROAD)) {
                         idx++;
                         continue;
                     }
@@ -235,7 +266,7 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
     grid.sync();
 
     // Extract the paths
-    processRange(min(pathfindingList.count, 2000), [&](int idx) {
+    processRange(pathfindingList.count, [&](int idx) {
         auto &info = pathfindingList.data[idx];
         if (cachedFlowfields[info.target].state == VALID) {
             entities.get(info.entityIdx).path = extractPath(map, info);
