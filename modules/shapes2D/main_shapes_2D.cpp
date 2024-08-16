@@ -46,6 +46,7 @@ bool printTimings = false;
 bool creativeMode = false;
 bool displayFlowfield = false;
 float timeMultiplier = 1.0f;
+unsigned int blockSize = 128;
 
 void initCuda() {
     cuInit(0);
@@ -53,18 +54,6 @@ void initCuda() {
     CUcontext context;
     cuDeviceGet(&cuDevice, 0);
     cuCtxCreate(&context, 0, cuDevice);
-}
-
-int maxOccupancy(CudaModularProgram *program, const char *kernel, int workgroupSize, int numSMs) {
-    int numGroups;
-    int resultcode = cuOccupancyMaxActiveBlocksPerMultiprocessor(
-        &numGroups, program->kernels[kernel], workgroupSize, 0);
-    numGroups *= numSMs;
-
-    // numGroups = 100;
-    //  make sure at least 10 workgroups are spawned)
-    numGroups = std::clamp(numGroups, 10, 100'000);
-    return numGroups;
 }
 
 void saveMap() {
@@ -176,7 +165,7 @@ void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
 
     void *args[] = {&gamedata};
 
-    cuda_update->launchCooperative("update", args, {.blocksize = 128});
+    cuda_update->launchCooperative("update", args, {.blocksize = blockSize});
 
     cuCtxSynchronize();
 }
@@ -240,7 +229,7 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
 
     void *args[] = {&gamedata, &output_surf};
 
-    cuda_program->launchCooperative("kernel", args, {.blocksize = 128});
+    cuda_program->launchCooperative("kernel", args, {.blocksize = blockSize});
 
     cuCtxSynchronize();
 
@@ -262,22 +251,52 @@ void initGameState() {
 
 void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> &img_ascii_32,
                      std::vector<uint8_t> &img_spritesheet) {
+    // kernel
+    cuda_program =
+        new CudaModularProgram({.modules =
+                                    {
+                                        "./modules/common/utils.cu",
+                                        "./modules/shapes2D/Rendering/rasterize.cu",
+                                        "./modules/shapes2D/Rendering/gui.cu",
+                                        "./modules/shapes2D/Rendering/sprite.cu",
+                                        "./modules/shapes2D/World/time.cu",
+                                        "./modules/shapes2D/World/Path/path.cu",
+                                        "./modules/shapes2D/World/direction.cu",
+                                    },
+                                .customIncludeDirs = {"./modules/shapes2D", " ./modules"}});
+
+    cuda_update =
+        new CudaModularProgram({.modules =
+                                    {
+                                        "./modules/common/utils.cu",
+                                        "./modules/shapes2D/World/update.cu",
+                                        "./modules/shapes2D/World/Path/path.cu",
+                                        "./modules/shapes2D/World/Path/pathfinding.cu",
+                                        "./modules/shapes2D/World/time.cu",
+                                        "./modules/shapes2D/World/Entities/entities.cu",
+                                        "./modules/shapes2D/World/Entities/movement.cu",
+                                        "./modules/shapes2D/World/direction.cu",
+                                    },
+                                .customIncludeDirs = {"./modules/shapes2D", " ./modules"}});
+
+    // Buffers
     cuMemAlloc(&cptr_buffer, 400'000'000);
     cuMemAlloc(&cptr_gameState, sizeof(GameState));
 
     initGameState();
 
     // Map
+    int maxOccupancy = cuda_program->maxOccupancy("kernel", blockSize);
     gridRows = MAPX;
     gridCols = MAPY;
     int numCells = gridRows * gridCols;
     cuMemAlloc(&cptr_grid, numCells * BYTES_PER_CELL);
     cuMemAlloc(&cptr_pathfinding, sizeof(Flowfield) * numCells);
-    cuMemAlloc(&cptr_savedFields, sizeof(IntegrationField) * 40);
+    cuMemAlloc(&cptr_savedFields, sizeof(IntegrationField) * maxOccupancy);
 
     std::vector<Cell> gridCells(numCells);
     std::vector<Flowfield> flowfields(numCells);
-    std::vector<IntegrationField> savedFields(40);
+    std::vector<IntegrationField> savedFields(maxOccupancy);
     for (int y = 0; y < gridRows; ++y) {
         for (int x = 0; x < gridCols; ++x) {
             int cellId = y * gridCols + x;
@@ -307,33 +326,6 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
     // Sprites
     cuMemAlloc(&cptr_spriteSheet, img_spritesheet.size());
     cuMemcpyHtoD(cptr_spriteSheet, img_spritesheet.data(), img_spritesheet.size());
-
-    cuda_program =
-        new CudaModularProgram({.modules =
-                                    {
-                                        "./modules/common/utils.cu",
-                                        "./modules/shapes2D/Rendering/rasterize.cu",
-                                        "./modules/shapes2D/Rendering/gui.cu",
-                                        "./modules/shapes2D/Rendering/sprite.cu",
-                                        "./modules/shapes2D/World/time.cu",
-                                        "./modules/shapes2D/World/Path/path.cu",
-                                        "./modules/shapes2D/World/direction.cu",
-                                    },
-                                .customIncludeDirs = {"./modules/shapes2D", " ./modules"}});
-
-    cuda_update =
-        new CudaModularProgram({.modules =
-                                    {
-                                        "./modules/common/utils.cu",
-                                        "./modules/shapes2D/World/update.cu",
-                                        "./modules/shapes2D/World/Path/path.cu",
-                                        "./modules/shapes2D/World/Path/pathfinding.cu",
-                                        "./modules/shapes2D/World/time.cu",
-                                        "./modules/shapes2D/World/Entities/entities.cu",
-                                        "./modules/shapes2D/World/Entities/movement.cu",
-                                        "./modules/shapes2D/World/direction.cu",
-                                    },
-                                .customIncludeDirs = {"./modules/shapes2D", " ./modules"}});
 
     cuEventCreate(&cevent_start, 0);
     cuEventCreate(&cevent_end, 0);

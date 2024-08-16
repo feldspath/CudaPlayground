@@ -459,20 +459,11 @@ struct CudaModularProgram {
         }
     }
 
-    void launchCooperative(string kernelName, void *args[],
-                           OptionalLaunchSettings launchArgs = {}) {
-
-        CUevent event_start = events_launch_start[kernelName];
-        CUevent event_end = events_launch_end[kernelName];
-
-        // cuEventRecord(event_start, 0);
-
+    int maxOccupancy(string kernelName, int blockSize) {
         CUdevice device;
         int numSMs;
         cuCtxGetDevice(&device);
         cuDeviceGetAttribute(&numSMs, CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT, device);
-
-        int blockSize = launchArgs.blocksize > 0 ? launchArgs.blocksize : 128;
 
         int numBlocks;
         CUresult resultcode = cuOccupancyMaxActiveBlocksPerMultiprocessor(
@@ -483,9 +474,22 @@ struct CudaModularProgram {
         //  make sure at least 10 workgroups are spawned)
         numBlocks = std::clamp(numBlocks, 10, 100'000);
 
+        return numBlocks;
+    }
+
+    void launchCooperative(string kernelName, void *args[],
+                           OptionalLaunchSettings launchArgs = {}) {
+
+        CUevent event_start = events_launch_start[kernelName];
+        CUevent event_end = events_launch_end[kernelName];
+
+        // cuEventRecord(event_start, 0);
+        int blockSize = launchArgs.blocksize > 0 ? launchArgs.blocksize : 128;
+
+        int numBlocks;
         auto kernel = this->kernels[kernelName];
-        auto res_launch =
-            cuLaunchCooperativeKernel(kernel, numBlocks, 1, 1, blockSize, 1, 1, 0, 0, args);
+        auto res_launch = cuLaunchCooperativeKernel(kernel, maxOccupancy(kernelName, blockSize), 1,
+                                                    1, blockSize, 1, 1, 0, 0, args);
 
         if (res_launch != CUDA_SUCCESS) {
             const char *str;

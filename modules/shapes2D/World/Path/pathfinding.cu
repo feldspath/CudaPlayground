@@ -105,7 +105,7 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
     grid.sync();
 
     uint32_t *flowfieldsToCompute =
-        allocator.alloc<uint32_t *>(sizeof(uint32_t) * MAX_FLOWFIELDS_PER_FRAME);
+        allocator.alloc<uint32_t *>(sizeof(uint32_t) * maxFlowfieldsPerFrame());
 
     // First, the saved integrations fields
     processRange(gridDim.x, [&](int idx) {
@@ -130,7 +130,7 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
 
         if (oldState == INVALID) {
             int flowfieldIdx = atomicAdd(&flowfieldsToComputeCount, 1);
-            if (flowfieldIdx >= MAX_FLOWFIELDS_PER_FRAME) {
+            if (flowfieldIdx >= maxFlowfieldsPerFrame()) {
                 return;
             }
             flowfieldsToCompute[flowfieldIdx] = info.target;
@@ -154,7 +154,7 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
                       [&](int cellId) { tilesBuffer[cellId] = uint8_t(map.getTileId(cellId)); });
 
     // Each block handles a flowfield
-    for_blockwise(min(flowfieldsToComputeCount, MAX_FLOWFIELDS_PER_FRAME), [&](int bufferIdx) {
+    for_blockwise(min(flowfieldsToComputeCount, maxFlowfieldsPerFrame()), [&](int bufferIdx) {
         uint32_t target = flowfieldsToCompute[bufferIdx];
 
         __shared__ int32_t savedFieldId;
@@ -176,14 +176,10 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
                 iterations[idx] = savedFields[savedFieldId].iterations[idx];
             });
             if (block.thread_rank() == 0) {
-                printf("loading field %d from previous frame\n", target);
                 savedFields[savedFieldId].ongoingComputation = false;
             }
         } else {
             // Init buffer
-            if (block.thread_rank() == 0) {
-                printf("computing field %d from scratch\n", target);
-            }
             processRangeBlock(MAP_SIZE, [&](int idx) {
                 if (idx == target) {
                     fieldBuffer[idx] = 0;
@@ -309,7 +305,6 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
 
             if (block.thread_rank() == 0) {
                 cachedFlowfields[target].state = VALID;
-                printf("flowfield %d is valid\n", target);
             }
         }
     });

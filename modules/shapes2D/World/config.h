@@ -33,5 +33,4 @@ static float REAL_SECONDS_PER_GAME_MIN = 300.0 / (60.0 * 24.0);
 // Let's assume we can have 10 times as much entities as we have cells (40k for now)
 static constexpr int MAX_ENTITY_COUNT = 10 * MAPX * MAPY;
 
-static constexpr int MAX_FLOWFIELDS_PER_FRAME = 40;
 static constexpr int MAX_PATHS_PER_FRAME = 10000;

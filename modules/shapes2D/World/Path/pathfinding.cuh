@@ -32,6 +32,8 @@ public:
         processRange(gridDim.x, [&](int idx) { savedFields[idx].ongoingComputation = false; });
     }
 
+    static int maxFlowfieldsPerFrame() { return gridDim.x; };
+
 private:
     PathfindingList locateLostEntities(Map &map, Entities &entities, Allocator &allocator) const;
     inline bool isNeighborValid(Map &map, uint32_t cellId, uint32_t neighborId, int2 dirCoords,
