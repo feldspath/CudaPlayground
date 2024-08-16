@@ -218,6 +218,13 @@ struct Flowfield {
     uint8_t directions[MAPX * MAPY];
 };
 
+struct IntegrationField {
+    uint32_t distances[MAP_SIZE];
+    uint32_t iterations[MAP_SIZE];
+    uint32_t target;
+    bool ongoingComputation;
+};
+
 struct GameData {
     Uniforms uniforms;    // Args passed form host to device every frame
     GameState *state;     // Managed only by device
@@ -227,6 +234,7 @@ struct GameData {
     char *cells;
     void *entitiesBuffer;
     void *pathfindingBuffer;
+    void *savedFieldsBuffer;
     uint32_t *img_ascii_16;
     uint32_t *img_spritesheet;
 };

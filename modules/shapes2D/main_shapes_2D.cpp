@@ -29,6 +29,7 @@ CUdeviceptr cptr_buffer;
 CUdeviceptr cptr_grid;
 CUdeviceptr cptr_entities;
 CUdeviceptr cptr_pathfinding;
+CUdeviceptr cptr_savedFields;
 CUdeviceptr cptr_gameState;
 CUdeviceptr cptr_spriteSheet;
 CUdeviceptr cptr_ascii_32;
@@ -169,6 +170,7 @@ void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
     gamedata.cells = (char *)cptr_grid;
     gamedata.entitiesBuffer = (void *)cptr_entities;
     gamedata.pathfindingBuffer = (void *)cptr_pathfinding;
+    gamedata.savedFieldsBuffer = (void *)cptr_savedFields;
     gamedata.img_ascii_16 = (uint32_t *)cptr_ascii_32;
     gamedata.img_spritesheet = (uint32_t *)cptr_spriteSheet;
 
@@ -271,9 +273,11 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
     int numCells = gridRows * gridCols;
     cuMemAlloc(&cptr_grid, numCells * BYTES_PER_CELL);
     cuMemAlloc(&cptr_pathfinding, sizeof(Flowfield) * numCells);
+    cuMemAlloc(&cptr_savedFields, sizeof(IntegrationField) * 40);
 
     std::vector<Cell> gridCells(numCells);
     std::vector<Flowfield> flowfields(numCells);
+    std::vector<IntegrationField> savedFields(40);
     for (int y = 0; y < gridRows; ++y) {
         for (int x = 0; x < gridCols; ++x) {
             int cellId = y * gridCols + x;
@@ -282,8 +286,14 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
             flowfields[cellId].state = INVALID;
         }
     }
+    for (auto &f : savedFields) {
+        f.ongoingComputation = false;
+    }
+
     cuMemcpyHtoD(cptr_grid, gridCells.data(), gridCells.size() * BYTES_PER_CELL);
     cuMemcpyHtoD(cptr_pathfinding, flowfields.data(), flowfields.size() * sizeof(Flowfield));
+    cuMemcpyHtoD(cptr_savedFields, savedFields.data(),
+                 savedFields.size() * sizeof(IntegrationField));
 
     // Entities
     cuMemAlloc(&cptr_entities, 2 * sizeof(uint32_t) + MAX_ENTITY_COUNT * BYTES_PER_ENTITY);

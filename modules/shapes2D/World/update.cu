@@ -743,7 +743,7 @@ extern "C" __global__ void update(GameData _gameData) {
     Allocator _allocator(gameData.buffer, 0);
     allocator = &_allocator;
 
-    PathfindingManager _pathfindingManager(gameData.pathfindingBuffer);
+    PathfindingManager _pathfindingManager(gameData.pathfindingBuffer, gameData.savedFieldsBuffer);
     pathfindingManager = &_pathfindingManager;
 
     curand_init(grid.thread_rank() + GameState::instance->currentTime_ms, 0, 0,

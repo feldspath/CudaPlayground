@@ -77,7 +77,7 @@ PathfindingList PathfindingManager::locateLostEntities(Map &map, Entities &entit
 #endif
 
 static int2 closeNeighbors[] = {int2{-1, 0}, int2{1, 0}, int2{0, -1}, int2{0, 1}};
-static int2 impactedNeighbors[] = {int2{0, 2}, int2{2, 3}, int2{0, 1}, int2{1, 3}};
+static int2 impactedNeighbors[] = {int2{0, 2}, int2{1, 3}, int2{0, 1}, int2{2, 3}};
 static int2 farNeighbors[] = {int2{-1, -1}, int2{1, -1}, int2{-1, 1}, int2{1, 1}};
 
 void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocator) {
@@ -90,21 +90,34 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
     //     printf("pathfindings to compute count: %d\n", pathfindingList.count);
     // }
 
-    // list all the flowfields that have to be computed this frame
-    uint32_t &flowfieldsToComputeCount = *allocator.alloc<uint32_t *>(sizeof(uint32_t));
-    if (grid.thread_rank() == 0) {
-        flowfieldsToComputeCount = 0;
-    }
-
+    // Remove remaning marks from the previous frame
     processRange(MAP_SIZE, [&](int idx) {
         if (cachedFlowfields[idx].state == MARKED) {
             cachedFlowfields[idx].state = INVALID;
         }
     });
+
+    // list all the flowfields that have to be computed this frame
+    uint32_t &flowfieldsToComputeCount = *allocator.alloc<uint32_t *>(sizeof(uint32_t));
+    if (grid.thread_rank() == 0) {
+        flowfieldsToComputeCount = 0;
+    }
     grid.sync();
 
     uint32_t *flowfieldsToCompute =
-        allocator.alloc<uint32_t *>(sizeof(uint32_t) * flowfieldsToComputeCount);
+        allocator.alloc<uint32_t *>(sizeof(uint32_t) * MAX_FLOWFIELDS_PER_FRAME);
+
+    // First, the saved integrations fields
+    processRange(gridDim.x, [&](int idx) {
+        if (savedFields[idx].ongoingComputation) {
+            int target = savedFields[idx].target;
+            cachedFlowfields[target].state = MARKED;
+            int flowfieldIdx = atomicAdd(&flowfieldsToComputeCount, 1);
+            flowfieldsToCompute[flowfieldIdx] = target;
+        }
+    });
+
+    grid.sync();
 
     processRange(pathfindingList.count, [&](int idx) {
         PathfindingInfo info = pathfindingList.data[idx];
@@ -144,24 +157,45 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
     for_blockwise(min(flowfieldsToComputeCount, MAX_FLOWFIELDS_PER_FRAME), [&](int bufferIdx) {
         uint32_t target = flowfieldsToCompute[bufferIdx];
 
-        // Init buffer
-        processRangeBlock(MAP_SIZE, [&](int idx) {
-            if (idx == target) {
-                fieldBuffer[idx] = 0;
-            } else {
-                fieldBuffer[idx] = uint32_t(Infinity);
+        __shared__ int32_t savedFieldId;
+        if (block.thread_rank() == 0) {
+            savedFieldId = -1;
+        }
+        block.sync();
+        processRangeBlock(gridDim.x, [&](int idx) {
+            if (savedFields[idx].target == target && savedFields[idx].ongoingComputation) {
+                savedFieldId = idx;
             }
-            iterations[idx] = 0;
         });
+        block.sync();
 
+        if (savedFieldId != -1) {
+            // Load saved field
+            processRangeBlock(MAP_SIZE, [&](int idx) {
+                fieldBuffer[idx] = savedFields[savedFieldId].distances[idx];
+                iterations[idx] = savedFields[savedFieldId].iterations[idx];
+            });
+            if (block.thread_rank() == 0) {
+                printf("loading field %d from previous frame\n", target);
+                savedFields[savedFieldId].ongoingComputation = false;
+            }
+        } else {
+            // Init buffer
+            if (block.thread_rank() == 0) {
+                printf("computing field %d from scratch\n", target);
+            }
+            processRangeBlock(MAP_SIZE, [&](int idx) {
+                if (idx == target) {
+                    fieldBuffer[idx] = 0;
+                } else {
+                    fieldBuffer[idx] = uint32_t(Infinity);
+                }
+                iterations[idx] = 0;
+            });
+        }
         block.sync();
 
         // Build integration field
-        // The first path found is the smallest in size but not necessarily the shortest, because
-        // there are different distance values. This condition ensures that it continues enough
-        // to ensure path optimality.
-
-        // simplifying the termination for now
         PROFILE_START();
         __shared__ bool updated;
         if (block.thread_rank() == 0) {
@@ -169,11 +203,13 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
         }
         block.sync();
 
-        while (updated) {
+        int threadIterations = 0;
+        while (updated && threadIterations < 64) {
             if (block.thread_rank() == 0) {
                 updated = false;
             }
             block.sync();
+            threadIterations++;
             // The field is split accross the threads of the block
             for (int currentCellId = block.thread_rank(); currentCellId < MAP_SIZE;
                  currentCellId += block.size()) {
@@ -186,8 +222,11 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
                     continue;
                 }
 
+                // The first path found is the smallest in size but not necessarily the shortest,
+                // because there are different distance values. This condition ensures that it
+                // continues enough to ensure path optimality.
                 if (10 * iterations[currentCellId] > fieldBuffer[currentCellId] ||
-                    iterations[currentCellId] > 4096) {
+                    iterations[currentCellId] > MAP_SIZE) {
                     // This cell is done
                     continue;
                 }
@@ -238,28 +277,40 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
         }
         PROFILE_END("integration field");
 
-        // Create flowfield from integration field
-        processRangeBlock(MAP_SIZE, [&](int cellId) {
-            uint32_t minDistance = uint32_t(Infinity);
-            Direction dir;
-            map.extendedNeighborCells(cellId).forEachDir([&](Direction neighborDir,
-                                                             int neighborId) {
-                if (!isNeighborValid(map, cellId, neighborId, coordFromEnum(neighborDir), target)) {
-                    return;
-                }
+        if (updated) {
+            // Integration field is not complete, save it to reuse it next frame
+            processRangeBlock(MAP_SIZE, [&](int idx) {
+                savedFields[bufferIdx].distances[idx] = fieldBuffer[idx];
+                savedFields[bufferIdx].iterations[idx] = iterations[idx];
+                savedFields[bufferIdx].target = target;
+                savedFields[bufferIdx].ongoingComputation = true;
+            });
+        } else {
+            // Integration field is complete, create flowfield
+            processRangeBlock(MAP_SIZE, [&](int cellId) {
+                uint32_t minDistance = uint32_t(Infinity);
+                Direction dir;
+                map.extendedNeighborCells(cellId).forEachDir(
+                    [&](Direction neighborDir, int neighborId) {
+                        if (!isNeighborValid(map, cellId, neighborId, coordFromEnum(neighborDir),
+                                             target)) {
+                            return;
+                        }
 
-                uint32_t distance = fieldBuffer[neighborId];
-                if (distance < minDistance) {
-                    minDistance = distance;
-                    dir = neighborDir;
-                }
+                        uint32_t distance = fieldBuffer[neighborId];
+                        if (distance < minDistance) {
+                            minDistance = distance;
+                            dir = neighborDir;
+                        }
+                    });
+
+                cachedFlowfields[target].directions[cellId] = uint8_t(dir);
             });
 
-            cachedFlowfields[target].directions[cellId] = uint8_t(dir);
-        });
-
-        if (block.thread_rank() == 0) {
-            cachedFlowfields[target].state = VALID;
+            if (block.thread_rank() == 0) {
+                cachedFlowfields[target].state = VALID;
+                printf("flowfield %d is valid\n", target);
+            }
         }
     });
 

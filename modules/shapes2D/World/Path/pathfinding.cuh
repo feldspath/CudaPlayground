@@ -16,16 +16,20 @@ struct PathfindingList {
 class PathfindingManager {
 private:
     Flowfield *cachedFlowfields;
+    IntegrationField *savedFields;
     uint8_t *tileIds;
 
 public:
-    PathfindingManager(void *buffer) : cachedFlowfields((Flowfield *)(buffer)) {}
+    PathfindingManager(void *buffer, void *savedFieldsBuffer)
+        : cachedFlowfields((Flowfield *)(buffer)),
+          savedFields((IntegrationField *)savedFieldsBuffer) {}
 
     // Perform pathfinding
     void update(Map &map, Entities &entities, Allocator &allocator);
 
     void invalidateCache() {
         processRange(MAPX * MAPY, [&](int cellId) { cachedFlowfields[cellId].state = INVALID; });
+        processRange(gridDim.x, [&](int idx) { savedFields[idx].ongoingComputation = false; });
     }
 
 private:
