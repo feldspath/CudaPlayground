@@ -1,10 +1,12 @@
 
 #pragma once
 
+#include "builtin_types.h"
+
 #include "World/Path/path.h"
 #include "World/cell.h"
+#include "World/chunk.h"
 #include "World/time.h"
-#include "builtin_types.h"
 
 struct mat4 {
     float4 rows[4];
@@ -114,19 +116,6 @@ struct GameState {
 
 static int BYTES_PER_CELL = sizeof(Cell);
 
-// ENTITIES
-
-enum EntityState {
-    Rest,
-    GoToWork,
-    WorkAtFactory,
-    WorkAtShop,
-    GoHome,
-    Shop,
-    GoShopping,
-    UpgradeHouse,
-};
-
 struct Uniforms {
     float width;
     float height;
@@ -145,6 +134,19 @@ struct Uniforms {
     double2 cursorPos;
     int mouseButtons;
     int modeId;
+};
+
+// ENTITIES
+
+enum EntityState {
+    Rest,
+    GoToWork,
+    WorkAtFactory,
+    WorkAtShop,
+    GoHome,
+    Shop,
+    GoShopping,
+    UpgradeHouse,
 };
 
 struct Entity {
@@ -180,11 +182,11 @@ public:
     // Waiting logic
     GameTime waitStop;
 
-    inline bool isLost() { return destination != -1 && !path.isValid(); }
+    __device__ inline bool isLost() { return destination != -1 && !path.isValid(); }
 
-    void resetStateStart() { stateStart = GameState::instance->gameTime; }
+    __device__ void resetStateStart() { stateStart = GameState::instance->gameTime; }
 
-    void changeState(EntityState newState) {
+    __device__ void changeState(EntityState newState) {
         path.reset();
         resetStateStart();
         destination = -1;
@@ -192,12 +194,12 @@ public:
         state = newState;
     }
 
-    void wait(uint32_t minutes) {
+    __device__ void wait(uint32_t minutes) {
         active = false;
         waitStop = GameState::instance->gameTime + GameTime::fromMinutes(minutes);
     }
 
-    void checkWaitStatus() {
+    __device__ void checkWaitStatus() {
         if (waitStop <= GameState::instance->gameTime) {
             active = true;
         }
@@ -206,34 +208,14 @@ public:
 
 static int BYTES_PER_ENTITY = sizeof(Entity);
 
-enum FlowfieldState {
-    VALID = 0,
-    INVALID = 1,
-    // marked for computation this frame
-    MARKED = 2,
-};
-
-struct Flowfield {
-    FlowfieldState state;
-    uint8_t directions[MAPX * MAPY];
-};
-
-struct IntegrationField {
-    uint32_t distances[MAP_SIZE];
-    uint32_t iterations[MAP_SIZE];
-    uint32_t target;
-    bool ongoingComputation;
-};
-
 struct GameData {
     Uniforms uniforms;    // Args passed form host to device every frame
     GameState *state;     // Managed only by device
     unsigned int *buffer; // Some buffer where we can allocate each frame
     uint32_t numRows;
     uint32_t numCols;
-    char *cells;
+    Chunk *chunks;
     void *entitiesBuffer;
-    void *pathfindingBuffer;
     void *savedFieldsBuffer;
     uint32_t *img_ascii_16;
     uint32_t *img_spritesheet;

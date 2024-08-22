@@ -1,8 +1,8 @@
 #pragma once
 
-static constexpr int MAPX = 64;
-static constexpr int MAPY = 64;
-static constexpr int MAP_SIZE = MAPX * MAPY;
+static constexpr int CHUNK_X = 64;
+static constexpr int CHUNK_Y = 64;
+static constexpr int CHUNK_SIZE = CHUNK_X * CHUNK_Y;
 
 static int FACTORY_CAPACITY = 40;
 static int SHOP_WORK_CAPACITY = 40;
@@ -15,7 +15,6 @@ static float ENTITY_RADIUS = 0.2f;
 static float ENTITY_SPEED = 10.0f;
 
 static float CELL_RADIUS = 0.5f;
-static float CELL_PADDING = 0.0f;
 
 static uint32_t SHOP_TIME_MIN = 60;
 
@@ -31,6 +30,6 @@ static unsigned int HOUSE_COST = 50;
 static float REAL_SECONDS_PER_GAME_MIN = 300.0 / (60.0 * 24.0);
 
 // Let's assume we can have 10 times as much entities as we have cells (40k for now)
-static constexpr int MAX_ENTITY_COUNT = 10 * MAPX * MAPY;
+static constexpr int MAX_ENTITY_COUNT = 10 * CHUNK_SIZE;
 
 static constexpr int MAX_PATHS_PER_FRAME = 10000;

@@ -4,6 +4,7 @@
 
 #include "HostDeviceInterface.h"
 #include "builtin_types.h"
+#include "cell_buffer.cuh"
 #include "config.h"
 #include "direction.h"
 
@@ -24,135 +25,165 @@ static unsigned int tileCost(TileId tile) {
     }
 }
 
+struct MapId {
+    uint32_t chunkId;
+    uint32_t cellId;
+
+    bool valid() const { return chunkId != -1 && cellId != -1; }
+};
+
 class Map {
 private:
-    Cell *cellsData;
+    Chunk *chunks;
     int rows;
     int cols;
     int count;
 
 public:
+    CellBuffer<MapId> shops;
+    CellBuffer<MapId> houses;
+    CellBuffer<MapId> factories;
+    CellBuffer<MapId> workplaces;
+
     inline int getCount() const { return count; }
 
-    Map(uint32_t numRows, uint32_t numCols, char *data) {
-        cellsData = (Cell *)data;
-        rows = numRows;
-        cols = numCols;
-        count = numRows * numCols;
+    Map(uint32_t numRows, uint32_t numCols, Chunk *chunks)
+        : chunks(chunks), rows(numRows), cols(numCols), count(numCols * numRows) {}
+
+    Chunk &getChunk(int chunkId) { return chunks[chunkId]; }
+    const Chunk &getChunk(int chunkId) const { return chunks[chunkId]; }
+
+    template <typename T> T &getTyped(MapId cell) {
+        return getChunk(cell.chunkId).getTyped<T>(cell.cellId);
     }
-
-    float2 getCellPosition(int cellId) {
-        int x = cellId % cols;
-        int y = cellId / cols;
-
-        float2 center = make_float2(x + CELL_RADIUS + CELL_PADDING, y + CELL_RADIUS + CELL_PADDING);
-        return center;
+    template <typename T> const T &getTyped(MapId cell) const {
+        return getChunk(cell.chunkId).getTyped<T>(cell.cellId);
     }
+    BaseCell &get(MapId cell) { return getChunk(cell.chunkId).get(cell.cellId); }
+    const BaseCell &get(MapId cell) const { return getChunk(cell.chunkId).get(cell.cellId); }
 
-    int cellAtPosition(float2 position) const {
-        int x = floor(position.x);
-        int y = floor(position.y);
+    int chunkIdFromWorldPos(float2 pos) const {
+        int row = floor(pos.x / (CHUNK_X * 2.0f * CELL_RADIUS));
+        int col = floor(pos.y / (CHUNK_Y * 2.0f * CELL_RADIUS));
 
-        if (x >= cols || x < 0 || y >= rows || y < 0) {
+        if (row < 0 || row >= rows || col < 0 || col >= cols) {
             return -1;
         }
 
-        return y * cols + x;
+        return row * cols + col;
     }
 
-    inline int2 cellCoords(int cellId) { return int2{cellId % cols, cellId / cols}; }
+    MapId cellAtPosition(float2 pos) const {
+        int chunkId = chunkIdFromWorldPos(pos);
+        if (chunkId == -1) {
+            return {-1, -1};
+        }
 
-    inline int idFromCoords(int x, int y) {
-        if (x >= cols || x < 0 || y >= rows || y < 0) {
+        int cellId = getChunk(chunkId).cellAtPosition(pos);
+
+        return {chunkId, cellId};
+    }
+
+    int2 cellCoords(MapId cell) const { return getChunk(cell.chunkId).cellCoords(cell.cellId); }
+    MapId cellFromCoords(int2 coords) const {
+        int row = coords.x / CHUNK_X;
+        int col = coords.y / CHUNK_Y;
+        int chunkId = row * cols + col;
+        int cellId = getChunk(chunkId).idFromCoords(coords);
+        return {chunkId, cellId};
+    }
+
+    template <typename Function> void processEachCell(Function &&f) {
+        // Each block handles a chunk
+        for_blockwise(count, [&](int chunkId) {
+            // Each thread in the block handles a cell
+            getChunk(chunkId).processEachCellBlock([&](int cellId) { f({chunkId, cellId}); });
+        });
+    }
+
+    // Buffers
+    // TODO: cells in order of chunkId
+    template <typename Function>
+    CellBuffer<MapId> selectCells(Allocator *allocator, Function &&filter) {
+        auto grid = cg::this_grid();
+
+        // count occurences
+        uint32_t &cellCount = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
+        if (grid.thread_rank() == 0) {
+            cellCount = 0;
+        }
+        grid.sync();
+
+        processEachCell([&](MapId cell) {
+            if (!filter(cell)) {
+                return;
+            }
+            atomicAdd(&cellCount, 1);
+        });
+
+        grid.sync();
+
+        if (cellCount == 0) {
+            return CellBuffer<MapId>();
+        }
+
+        // allocate buffer
+        MapId *cellIds = allocator->alloc<MapId *>(sizeof(MapId) * cellCount);
+        grid.sync();
+
+        // fill buffer
+        if (grid.thread_rank() == 0) {
+            cellCount = 0;
+        }
+        grid.sync();
+
+        processEachCell([&](MapId cell) {
+            if (!filter(cell)) {
+                return;
+            }
+            int idx = atomicAdd(&cellCount, 1);
+            cellIds[idx] = cell;
+        });
+
+        grid.sync();
+
+        return CellBuffer(cellIds, cellCount);
+    }
+
+    template <typename Function>
+    int32_t findClosestOnNetworkBlockwise(CellBuffer<MapId> &buffer, MapId cell,
+                                          Function &&filter) {
+        auto block = cg::this_thread_block();
+
+        __shared__ uint64_t targetCell;
+        if (block.thread_rank() == 0) {
+            targetCell = uint64_t(Infinity) << 32ull;
+        }
+
+        block.sync();
+
+        auto &chunk = getChunk(cell.chunkId);
+        auto cellNets = chunk.neighborNetworks(cell.cellId);
+        int2 cellCoords = chunk.cellCoords(cell.cellId);
+
+        buffer.processEachCellBlock([&](MapId other) {
+            auto targetNets = chunk.neighborNetworks(other.cellId);
+            if (chunk.sharedNetworks(cellNets, targetNets).data[0] != -1 && filter(other)) {
+                int2 targetCoords = chunk.cellCoords(other.cellId);
+                int2 diff = targetCoords - cellCoords;
+                uint32_t distance = abs(diff.x) + abs(diff.y);
+                uint64_t target = (uint64_t(distance) << 32ull) | uint64_t(other.cellId);
+                // keep the closest
+                atomicMin(&targetCell, target);
+            }
+        });
+
+        block.sync();
+
+        if (targetCell != uint64_t(Infinity) << 32ull) {
+            return targetCell & 0xffffffffull;
+        } else {
             return -1;
         }
-        return y * cols + x;
-    }
-    inline int idFromCoords(int2 coords) { return idFromCoords(coords.x, coords.y); }
-
-    TileId getTileId(int cellId) const { return cellsData[cellId].cell.tileId; }
-    void setTileId(int cellId, TileId tile) { cellsData[cellId].cell.tileId = tile; }
-
-    template <typename T> T &getTyped(int cellId) { return *((T *)&cellsData[cellId]); }
-    BaseCell &get(int cellId) { return cellsData[cellId].cell; }
-
-    // ROAD DATA
-    // We assume that the network is flattened
-    int32_t &roadNetworkRepr(int cellId) { return getTyped<RoadCell>(cellId).networkRepr; }
-    int32_t &roadNetworkId(int cellId) { return getTyped<RoadCell>(cellId).networkId; }
-
-    // HOUSE DATA
-    int32_t rentCost(int cellId) { return cellsData[cellId].cell.landValue / 20 + 10; }
-
-    // WORKPLACE DATA
-    bool isWorkplace(int cellId) const { return getTileId(cellId) & (SHOP | FACTORY); }
-    int32_t &workplaceCapacity(int cellId) {
-        return getTyped<WorkplaceCell>(cellId).workplaceCapacity;
-    }
-
-    // Network logic
-    Neighbors neighborNetworks(int cellId) {
-        auto neighbors = neighborCells(cellId);
-        return neighbors.apply([&](int neighborCellId) {
-            if (getTileId(neighborCellId) == ROAD) {
-                return roadNetworkRepr(neighborCellId);
-            } else {
-                return -1;
-            }
-        });
-    }
-
-    Neighbors sharedNetworks(Neighbors nets1, Neighbors nets2) {
-        Neighbors result;
-        int count = 0;
-        nets1.forEach([&](int network) {
-            if (nets2.contains(network)) {
-                result.data[count] = network;
-                count++;
-            }
-        });
-        return result;
-    }
-
-    Neighbors sharedNetworks(int cellId1, int cellId2) {
-        Neighbors nets1 = neighborNetworks(cellId1);
-        Neighbors nets2 = neighborNetworks(cellId2);
-        return sharedNetworks(nets1, nets2);
-    }
-
-    // Util functions
-    template <typename Function> void processEachCell(TileId filter, Function &&f) {
-        processRange(count, [&](int cellId) {
-            // use 0 (UNKNOWN) to disable filtering
-            if ((getTileId(cellId) & filter) || !filter) {
-                f(cellId);
-            }
-        });
-    }
-
-    Neighbors neighborCells(int cellId) {
-        int2 coords = cellCoords(cellId);
-        Neighbors result;
-        result.setDir([&](Direction dir) {
-            int2 dirCoord = coordFromEnum(dir);
-            return idFromCoords(coords.x + dirCoord.x, coords.y + dirCoord.y);
-        });
-        return result;
-    }
-
-    ExtendedNeighbors extendedNeighborCells(int cellId) {
-        int2 coords = cellCoords(cellId);
-        ExtendedNeighbors result;
-        result.setDir([&](Direction dir) {
-            int2 dirCoord = coordFromEnum(dir);
-            return idFromCoords(coords.x + dirCoord.x, coords.y + dirCoord.y);
-        });
-        return result;
-    }
-
-    int32_t neighborCell(int cellId, Direction dir) {
-        int2 coords = cellCoords(cellId);
-        int2 dirCoord = coordFromEnum(dir);
-        return idFromCoords(coords.x + dirCoord.x, coords.y + dirCoord.y);
     }
 };

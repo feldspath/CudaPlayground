@@ -27,9 +27,9 @@ class GUI {
 
 public:
     GUI(Framebuffer &framebuffer, TextRenderer &textRenderer, SpriteSheet &sprites, mat4 viewProj);
-    void render(Map *map, Entities *entities);
+    void render(const Map &map, Entities *entities);
 
 private:
     void renderDisplay(GUIBox box, char *displayString);
-    void renderInfoPanel(Map *map, Entities *entities);
+    void renderInfoPanel(const Map &map, Entities *entities);
 };

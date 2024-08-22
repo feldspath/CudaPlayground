@@ -3,13 +3,13 @@
 #include "common/helper_math.h"
 #include "movement.cuh"
 
-void fillCells(Map *map, Entities *entities) {
+void fillCells(Map &map, Entities &entities) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
     // Reset cell occupation
-    map->processEachCell(UNKNOWN, [&](int cellId) {
-        int32_t *cellEntities = map->get(cellId).entities;
+    map.processEachCell([&](MapId cell) {
+        int32_t *cellEntities = map.get(cell).entities;
         for (int i = 0; i < ENTITIES_PER_CELL; ++i) {
             cellEntities[i] = -1;
         }
@@ -17,15 +17,15 @@ void fillCells(Map *map, Entities *entities) {
 
     grid.sync();
 
-    entities->processAll([&](int entityIdx) {
-        Entity &entity = entities->get(entityIdx);
+    entities.processAll([&](int entityIdx) {
+        Entity &entity = entities.get(entityIdx);
         EntityState state = entity.state;
         if (state == Rest || state == WorkAtFactory) {
             return;
         }
 
-        int cell = map->cellAtPosition(entity.position);
-        int32_t *cellEntities = map->get(cell).entities;
+        auto cell = map.cellAtPosition(entity.position);
+        int32_t *cellEntities = map.get(cell).entities;
 
         for (int i = 0; i < ENTITIES_PER_CELL; ++i) {
             if (atomicCAS(&cellEntities[i], -1, entityIdx) == -1) {
@@ -37,7 +37,7 @@ void fillCells(Map *map, Entities *entities) {
     grid.sync();
 }
 
-void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) {
+void moveEntities(Map &map, Entities &entities, Allocator *allocator, float dt) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -57,8 +57,8 @@ void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) 
     grid.sync();
 
     // Count entities to move
-    entities->processAllActive([&](int entityIdx) {
-        Entity &entity = entities->get(entityIdx);
+    entities.processAllActive([&](int entityIdx) {
+        Entity &entity = entities.get(entityIdx);
         if (entity.path.isValid()) {
             atomicAdd(&entitiesToMoveCount, 1);
         }
@@ -72,8 +72,8 @@ void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) 
 
     // Allocate buffer and store entities to move
     uint32_t *entitiesToMove = allocator->alloc<uint32_t *>(sizeof(uint32_t) * entitiesToMoveCount);
-    entities->processAllActive([&](int entityIdx) {
-        Entity &entity = entities->get(entityIdx);
+    entities.processAllActive([&](int entityIdx) {
+        Entity &entity = entities.get(entityIdx);
         if (entity.path.isValid()) {
             int idx = atomicAdd(&bufferIdx, 1);
             entitiesToMove[idx] = entityIdx;
@@ -86,23 +86,23 @@ void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) 
 
     // Update velocities
     processRange(entitiesToMoveCount, [&](int idx) {
-        auto &entity = entities->get(entitiesToMove[idx]);
+        auto &entity = entities.get(entitiesToMove[idx]);
 
         float2 forces = {0.0f, 0.0f};
 
-        int cellId = map->cellAtPosition(entity.position);
-        int2 coords = map->cellCoords(cellId);
+        auto cellId = map.cellAtPosition(entity.position);
+        int2 coords = map.cellCoords(cellId);
 
         // Compute repulsive force of other entities
         for (int i = -1; i <= 1; ++i) {
             for (int j = -1; j <= 1; ++j) {
-                int neighborCellId = map->idFromCoords(coords.x + i, coords.y + j);
-                if (neighborCellId == -1) {
+                auto neighborCell = map.cellFromCoords({coords.x + i, coords.y + j});
+                if (!neighborCell.valid()) {
                     continue;
                 }
 
                 for (int k = 0; k < ENTITIES_PER_CELL; ++k) {
-                    int otherIdx = map->get(neighborCellId).entities[k];
+                    int otherIdx = map.get(neighborCell).entities[k];
                     if (otherIdx == -1) {
                         break;
                     }
@@ -110,7 +110,7 @@ void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) 
                         continue;
                     }
 
-                    Entity &other = entities->get(otherIdx);
+                    Entity &other = entities.get(otherIdx);
 
                     float2 diffVector = entity.position - other.position;
                     float norm = length(diffVector);
@@ -145,23 +145,24 @@ void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) 
     // Update positions
     processRange(entitiesToMoveCount, [&](int idx) {
         uint32_t entityId = entitiesToMove[idx];
-        auto &entity = entities->get(entityId);
+        auto &entity = entities.get(entityId);
 
         if (!entity.path.isValid()) {
             return;
         }
 
-        uint32_t previousCellId = map->cellAtPosition(entity.position);
-        float2 previousCellPosition = map->getCellPosition(previousCellId);
-        auto neighborCells = map->neighborCells(previousCellId);
+        auto previousCell = map.cellAtPosition(entity.position);
+        Chunk &chunk = map.getChunk(previousCell.chunkId);
+        float2 previousCellPosition = chunk.getCellPosition(previousCell.cellId);
+        auto neighborCells = chunk.neighborCells(previousCell.cellId);
         entity.position += entity.velocity * dt;
 
         // check each side of the entity for wall collision
         neighborCells.forEachDir([&](Direction direction, uint32_t cellId) {
             // no collision with roads, house, workplace, shops, and destination
-            TileId tile = map->getTileId(cellId);
-            if ((tile == ROAD && map->neighborNetworks(entity.destination)
-                                     .contains(map->roadNetworkRepr(cellId))) ||
+            TileId tile = chunk.get(cellId).tileId;
+            if ((tile == ROAD && chunk.neighborNetworks(entity.destination)
+                                     .contains(chunk.roadNetworkRepr(cellId))) ||
                 tile == SHOP || cellId == entity.workplaceId || cellId == entity.houseId ||
                 cellId == entity.destination) {
                 return;
@@ -175,8 +176,8 @@ void moveEntities(Map *map, Entities *entities, Allocator *allocator, float dt) 
                 max((dot(posToPreviousCellCenter, vectorDir) - CELL_RADIUS), 0.0f) * vectorDir;
         });
 
-        uint32_t newCellId = map->cellAtPosition(entity.position);
-        if (newCellId != previousCellId) {
+        uint32_t newCellId = chunk.cellAtPosition(entity.position);
+        if (newCellId != previousCell.cellId) {
             int dir = -1;
             neighborCells.forEachDir([&](Direction direction, uint32_t cellId) {
                 if (cellId == newCellId) {

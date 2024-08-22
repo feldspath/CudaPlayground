@@ -52,7 +52,7 @@ float3 colorFromId(uint32_t id) {
 // - <framebuffer> stores interleaved 32bit depth and color values
 // - The closest fragments are rendered via atomicMin on a combined 64bit depth&color integer
 //   atomicMin(&framebuffer[pixelIndex], (depth << 32 | color));
-void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffer framebuffer) {
+void rasterizeGrid(Map &map, Entities *entities, SpriteSheet sprites, Framebuffer framebuffer) {
 
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
@@ -65,12 +65,14 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
 
         float3 pos_W = unproject(pFrag, gameData.uniforms.invview * gameData.uniforms.invproj,
                                  gameData.uniforms.width, gameData.uniforms.height);
-        int sh_cellIndex = map->cellAtPosition(float2{pos_W.x, pos_W.y});
+
+        auto &chunk = map.getChunk(0);
+        int sh_cellIndex = chunk.cellAtPosition(float2{pos_W.x, pos_W.y});
         if (sh_cellIndex == -1) {
             return;
         }
 
-        float2 cellCenter = map->getCellPosition(sh_cellIndex);
+        float2 cellCenter = chunk.getCellPosition(sh_cellIndex);
         float2 diff = float2{pos_W.x - cellCenter.x, pos_W.y - cellCenter.y};
 
         float2 diffToCorner = diff + float2{CELL_RADIUS, CELL_RADIUS};
@@ -83,23 +85,23 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
 
         float3 color;
         if (gameData.uniforms.renderMode == RENDERMODE_DEFAULT) {
-            switch (map->getTileId(sh_cellIndex)) {
+            switch (chunk.get(sh_cellIndex).tileId) {
             case GRASS:
                 color = sprites.grass.sampleFloat(u, v);
                 break;
             case HOUSE:
-                if (map->getTyped<HouseCell>(sh_cellIndex).residentCount > 0) {
+                if (chunk.getTyped<HouseCell>(sh_cellIndex).residentCount > 0) {
                     color = sprites.house.sampleFloat(u, v);
                     break;
                 }
             default:
-                color = colorFromId(map->getTileId(sh_cellIndex));
+                color = colorFromId(chunk.get(sh_cellIndex).tileId);
                 break;
             }
             color *= GameState::instance->gameTime.timeOfDay().toFloat() * 0.5 + 0.5;
 
         } else if (gameData.uniforms.renderMode == RENDERMODE_NETWORK) {
-            TileId tileId = map->getTileId(sh_cellIndex);
+            TileId tileId = chunk.get(sh_cellIndex).tileId;
             if (tileId == GRASS || tileId == UNKNOWN) {
                 color = {0.0f, 0.0f, 0.0f};
             } else {
@@ -107,7 +109,7 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
                 if (tileId == HOUSE) {
                     colorId = 0;
                 } else if (tileId == ROAD) {
-                    colorId = map->roadNetworkRepr(sh_cellIndex);
+                    colorId = chunk.roadNetworkRepr(sh_cellIndex);
                 } else {
                     colorId = sh_cellIndex;
                 }
@@ -127,9 +129,7 @@ void rasterizeGrid(Map *map, Entities *entities, SpriteSheet sprites, Framebuffe
                 }
             }
         } else if (gameData.uniforms.renderMode == RENDERMODE_LANDVALUE) {
-            int value = map->get(sh_cellIndex).landValue;
-            float a = float(value) / 255.0f;
-            color = float3{0.0f, 1.0f, 0.0f} * a + float3{1.0f, 0.0f, 0.0f} * (1 - a);
+            color = float3{0.0f, 0.0f, 0.0f};
         }
 
         float3 pixelColor = color;
@@ -268,12 +268,12 @@ extern "C" __global__ void kernel(GameData _gameData, cudaSurfaceObject_t gl_col
 
     {
         Map *map = allocator->alloc<Map *>(sizeof(Map));
-        *map = Map(gameData.numRows, gameData.numCols, gameData.cells);
+        *map = Map(gameData.numRows, gameData.numCols, gameData.chunks);
 
         Entities *entities = allocator->alloc<Entities *>(sizeof(Entities));
         *entities = Entities(gameData.entitiesBuffer);
 
-        rasterizeGrid(map, entities, sprites, framebuffer);
+        rasterizeGrid(*map, entities, sprites, framebuffer);
         grid.sync();
         rasterizeEntities(entities, framebuffer);
         grid.sync();
@@ -285,7 +285,7 @@ extern "C" __global__ void kernel(GameData _gameData, cudaSurfaceObject_t gl_col
 
         GUI gui(framebuffer, textRenderer, sprites,
                 gameData.uniforms.proj * gameData.uniforms.view);
-        gui.render(map, entities);
+        gui.render(*map, entities);
     }
 
     grid.sync();

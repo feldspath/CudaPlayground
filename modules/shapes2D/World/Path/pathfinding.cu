@@ -4,7 +4,7 @@
 #include "pathfinding.cuh"
 
 // Locate all entities that required pathfinding
-PathfindingList PathfindingManager::locateLostEntities(Map &map, Entities &entities,
+PathfindingList PathfindingManager::locateLostEntities(Chunk &chunk, Entities &entities,
                                                        Allocator &allocator) const {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
@@ -29,11 +29,11 @@ PathfindingList PathfindingManager::locateLostEntities(Map &map, Entities &entit
         Entity &entity = entities.get(entityIndex);
         if (entity.isLost()) {
             uint32_t targetId = entity.destination;
-            int originId = map.cellAtPosition(entity.position);
-            if (map.sharedNetworks(originId, targetId).data[0] == -1) {
+            int originId = chunk.cellAtPosition(entity.position);
+            if (chunk.sharedNetworks(originId, targetId).data[0] == -1) {
                 printf("Error: entity %d cannot reach its destination. Placing it back at home.\n",
                        entityIndex);
-                entity.position = map.getCellPosition(entity.houseId);
+                entity.position = chunk.getCellPosition(entity.houseId);
                 return;
             }
             uint32_t id = atomicAdd(&lostCount, 1);
@@ -80,20 +80,20 @@ static int2 closeNeighbors[] = {int2{-1, 0}, int2{1, 0}, int2{0, -1}, int2{0, 1}
 static int2 impactedNeighbors[] = {int2{0, 2}, int2{1, 3}, int2{0, 1}, int2{2, 3}};
 static int2 farNeighbors[] = {int2{-1, -1}, int2{1, -1}, int2{-1, 1}, int2{1, 1}};
 
-void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocator) {
+void PathfindingManager::update(Chunk &chunk, Entities &entities, Allocator &allocator) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
-    PathfindingList pathfindingList = locateLostEntities(map, entities, allocator);
+    PathfindingList pathfindingList = locateLostEntities(chunk, entities, allocator);
 
     // if (grid.thread_rank() == 0 && pathfindingList.count > 0) {
     //     printf("pathfindings to compute count: %d\n", pathfindingList.count);
     // }
 
     // Remove remaning marks from the previous frame
-    processRange(MAP_SIZE, [&](int idx) {
-        if (cachedFlowfields[idx].state == MARKED) {
-            cachedFlowfields[idx].state = INVALID;
+    chunk.processEachCell([&](int idx) {
+        if (chunk.cachedFlowfields[idx].state == MARKED) {
+            chunk.cachedFlowfields[idx].state = INVALID;
         }
     });
 
@@ -111,7 +111,7 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
     processRange(gridDim.x, [&](int idx) {
         if (savedFields[idx].ongoingComputation) {
             int target = savedFields[idx].target;
-            cachedFlowfields[target].state = MARKED;
+            chunk.cachedFlowfields[target].state = MARKED;
             int flowfieldIdx = atomicAdd(&flowfieldsToComputeCount, 1);
             flowfieldsToCompute[flowfieldIdx] = target;
         }
@@ -121,12 +121,12 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
 
     processRange(pathfindingList.count, [&](int idx) {
         PathfindingInfo info = pathfindingList.data[idx];
-        if (cachedFlowfields[info.target].state == VALID) {
+        if (chunk.cachedFlowfields[info.target].state == VALID) {
             return;
         }
 
-        FlowfieldState oldState = FlowfieldState(
-            atomicCAS((int *)(&cachedFlowfields[info.target].state), int(INVALID), int(MARKED)));
+        FlowfieldState oldState = FlowfieldState(atomicCAS(
+            (int *)(&chunk.cachedFlowfields[info.target].state), int(INVALID), int(MARKED)));
 
         if (oldState == INVALID) {
             int flowfieldIdx = atomicAdd(&flowfieldsToComputeCount, 1);
@@ -144,14 +144,14 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
     // }
 
     // Compute the flowfields
-    __shared__ uint32_t fieldBuffer[MAP_SIZE];
-    __shared__ uint8_t tilesBuffer[MAP_SIZE];
-    __shared__ uint32_t iterations[MAP_SIZE];
+    __shared__ uint32_t fieldBuffer[CHUNK_SIZE];
+    __shared__ uint8_t tilesBuffer[CHUNK_SIZE];
+    __shared__ uint32_t iterations[CHUNK_SIZE];
 
     this->tileIds = tilesBuffer;
 
-    processRangeBlock(MAP_SIZE,
-                      [&](int cellId) { tilesBuffer[cellId] = uint8_t(map.getTileId(cellId)); });
+    chunk.processEachCellBlock(
+        [&](int cellId) { tilesBuffer[cellId] = uint8_t(chunk.get(cellId).tileId); });
 
     // Each block handles a flowfield
     for_blockwise(min(flowfieldsToComputeCount, maxFlowfieldsPerFrame()), [&](int bufferIdx) {
@@ -171,7 +171,7 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
 
         if (savedFieldId != -1) {
             // Load saved field
-            processRangeBlock(MAP_SIZE, [&](int idx) {
+            chunk.processEachCellBlock([&](int idx) {
                 fieldBuffer[idx] = savedFields[savedFieldId].distances[idx];
                 iterations[idx] = savedFields[savedFieldId].iterations[idx];
             });
@@ -180,7 +180,7 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
             }
         } else {
             // Init buffer
-            processRangeBlock(MAP_SIZE, [&](int idx) {
+            chunk.processEachCellBlock([&](int idx) {
                 if (idx == target) {
                     fieldBuffer[idx] = 0;
                 } else {
@@ -207,14 +207,14 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
             block.sync();
             threadIterations++;
             // The field is split accross the threads of the block
-            for (int currentCellId = block.thread_rank(); currentCellId < MAP_SIZE;
+            for (int currentCellId = block.thread_rank(); currentCellId < CHUNK_SIZE;
                  currentCellId += block.size()) {
-                if (currentCellId >= MAP_SIZE) {
+                if (currentCellId >= CHUNK_SIZE) {
                     return;
                 }
 
                 // Check if cell is reachable
-                if (map.sharedNetworks(currentCellId, target).data[0] == -1) {
+                if (chunk.sharedNetworks(currentCellId, target).data[0] == -1) {
                     continue;
                 }
 
@@ -222,14 +222,14 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
                 // because there are different distance values. This condition ensures that it
                 // continues enough to ensure path optimality.
                 if (10 * iterations[currentCellId] > fieldBuffer[currentCellId] ||
-                    iterations[currentCellId] > MAP_SIZE) {
+                    iterations[currentCellId] > CHUNK_SIZE) {
                     // This cell is done
                     continue;
                 }
                 updated = true;
                 iterations[currentCellId]++;
 
-                int2 currentCellCoord = map.cellCoords(currentCellId);
+                int2 currentCellCoord = chunk.cellCoords(currentCellId);
                 uint32_t minDistance = fieldBuffer[currentCellId];
 
                 int2 toVisit[] = {closeNeighbors[0], closeNeighbors[1], closeNeighbors[2],
@@ -240,7 +240,7 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
                 bool pushed[] = {false, false, false, false};
                 while (idx < size) {
                     int2 neighborDir = toVisit[idx];
-                    int neighborId = map.idFromCoords(currentCellCoord + neighborDir);
+                    int neighborId = chunk.idFromCoords(currentCellCoord + neighborDir);
                     if (neighborId == currentCellId || neighborId == -1 ||
                         (neighborId != target && TileId(tileIds[neighborId]) != ROAD)) {
                         idx++;
@@ -275,7 +275,7 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
 
         if (updated) {
             // Integration field is not complete, save it to reuse it next frame
-            processRangeBlock(MAP_SIZE, [&](int idx) {
+            chunk.processEachCell([&](int idx) {
                 savedFields[bufferIdx].distances[idx] = fieldBuffer[idx];
                 savedFields[bufferIdx].iterations[idx] = iterations[idx];
                 savedFields[bufferIdx].target = target;
@@ -283,12 +283,12 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
             });
         } else {
             // Integration field is complete, create flowfield
-            processRangeBlock(MAP_SIZE, [&](int cellId) {
+            chunk.processEachCell([&](int cellId) {
                 uint32_t minDistance = uint32_t(Infinity);
                 Direction dir;
-                map.extendedNeighborCells(cellId).forEachDir(
+                chunk.extendedNeighborCells(cellId).forEachDir(
                     [&](Direction neighborDir, int neighborId) {
-                        if (!isNeighborValid(map, cellId, neighborId, coordFromEnum(neighborDir),
+                        if (!isNeighborValid(chunk, cellId, neighborId, coordFromEnum(neighborDir),
                                              target)) {
                             return;
                         }
@@ -300,11 +300,11 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
                         }
                     });
 
-                cachedFlowfields[target].directions[cellId] = uint8_t(dir);
+                chunk.cachedFlowfields[target].directions[cellId] = uint8_t(dir);
             });
 
             if (block.thread_rank() == 0) {
-                cachedFlowfields[target].state = VALID;
+                chunk.cachedFlowfields[target].state = VALID;
             }
         }
     });
@@ -314,21 +314,21 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator &allocat
     // Extract the paths
     processRange(pathfindingList.count, [&](int idx) {
         auto &info = pathfindingList.data[idx];
-        if (cachedFlowfields[info.target].state == VALID) {
-            entities.get(info.entityIdx).path = extractPath(map, info);
+        if (chunk.cachedFlowfields[info.target].state == VALID) {
+            entities.get(info.entityIdx).path = extractPath(chunk, info);
         }
     });
 }
 
-Path PathfindingManager::extractPath(Map &map, const PathfindingInfo &info) const {
+Path PathfindingManager::extractPath(Chunk &chunk, const PathfindingInfo &info) const {
     int current = info.origin;
     bool reached = false;
     Path path;
 
     while (!reached && path.length() < Path::MAX_LENGTH) {
-        Direction dir = Direction(cachedFlowfields[info.target].directions[current]);
+        Direction dir = Direction(chunk.cachedFlowfields[info.target].directions[current]);
         path.append(dir);
-        current = map.neighborCell(current, dir);
+        current = chunk.neighborCell(current, dir);
         if (current == -1) {
             printf("pathfinding error\n");
             return Path();

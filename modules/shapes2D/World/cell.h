@@ -21,7 +21,6 @@ inline TileId operator|(TileId a, TileId b) {
 
 struct BaseCell {
     TileId tileId;
-    int32_t landValue;
     int32_t entities[ENTITIES_PER_CELL];
 };
 
@@ -50,7 +49,6 @@ struct HouseCell : public BaseCell {
 
 struct RoadCell : public BaseCell {
     int32_t networkRepr;
-    int32_t networkId;
 
     static TileId type() { return ROAD; }
 };

@@ -15,7 +15,7 @@ GUI::GUI(Framebuffer &framebuffer, TextRenderer &textRenderer, SpriteSheet &spri
       timeDisplay(framebuffer.width - 400, framebuffer.height - 300, 100, 30, sprites.timeDisplay) {
 }
 
-void GUI::render(Map *map, Entities *entities) {
+void GUI::render(const Map &map, Entities *entities) {
 
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
@@ -37,13 +37,13 @@ void GUI::render(Map *map, Entities *entities) {
     renderDisplay(timeDisplay, displayString);
 }
 
-void GUI::renderInfoPanel(Map *map, Entities *entities) {
+void GUI::renderInfoPanel(const Map &map, Entities *entities) {
     auto grid = cg::this_grid();
     GameState &gameState = *GameState::instance;
 
     int id = gameState.buildingDisplay;
     if (id != -1) {
-        float2 worldPos = map->getCellPosition(id);
+        float2 worldPos = map.getChunk(0).getCellPosition(id);
         float2 screenPos = projectPosToScreenPos(make_float3(worldPos, 0.0f), viewProj,
                                                  framebuffer.width, framebuffer.height);
         GUIBox infoPanel(int(screenPos.x), int(screenPos.y), sprites.infoPanel.width,
@@ -56,9 +56,9 @@ void GUI::renderInfoPanel(Map *map, Entities *entities) {
             textRenderer.newCursor(20.0f, infoPanel.x + 40.0f, infoPanel.y + 200.0f - 60.0f);
         char displayString[30];
 
-        switch (map->getTileId(id)) {
+        switch (map.getChunk(0).get(id).tileId) {
         case HOUSE: {
-            HouseCell &house = map->getTyped<HouseCell>(id);
+            const HouseCell &house = map.getChunk(0).getTyped<HouseCell>(id);
             textRenderer.drawText("House", cursor, framebuffer);
             cursor.newline();
 
@@ -94,12 +94,13 @@ void GUI::renderInfoPanel(Map *map, Entities *entities) {
 
             // worker count
             textRenderer.drawText("Employees: ", cursor, framebuffer);
-            itos(FACTORY_CAPACITY - map->workplaceCapacity(id), displayString);
+            itos(FACTORY_CAPACITY - map.getChunk(0).getTyped<WorkplaceCell>(id).workplaceCapacity,
+                 displayString);
             textRenderer.drawText(displayString, cursor, framebuffer);
             cursor.newline();
 
             textRenderer.drawText("Stock: ", cursor, framebuffer);
-            itos(map->getTyped<FactoryCell>(id).stockCount, displayString);
+            itos(map.getChunk(0).getTyped<FactoryCell>(id).stockCount, displayString);
             textRenderer.drawText(displayString, cursor, framebuffer);
             cursor.newline();
             break;
@@ -112,12 +113,13 @@ void GUI::renderInfoPanel(Map *map, Entities *entities) {
 
             // worker count
             textRenderer.drawText("Employees: ", cursor, framebuffer);
-            itos(SHOP_WORK_CAPACITY - map->workplaceCapacity(id), displayString);
+            itos(SHOP_WORK_CAPACITY - map.getChunk(0).getTyped<WorkplaceCell>(id).workplaceCapacity,
+                 displayString);
             textRenderer.drawText(displayString, cursor, framebuffer);
             cursor.newline();
 
             textRenderer.drawText("Wood Stock: ", cursor, framebuffer);
-            itos(map->getTyped<ShopCell>(id).woodCount, displayString);
+            itos(map.getChunk(0).getTyped<ShopCell>(id).woodCount, displayString);
             textRenderer.drawText(displayString, cursor, framebuffer);
             cursor.newline();
             break;

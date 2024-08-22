@@ -26,15 +26,14 @@ using std::shared_ptr;
 namespace fs = std::filesystem;
 
 CUdeviceptr cptr_buffer;
-CUdeviceptr cptr_grid;
+CUdeviceptr cptr_chunk;
 CUdeviceptr cptr_entities;
-CUdeviceptr cptr_pathfinding;
 CUdeviceptr cptr_savedFields;
 CUdeviceptr cptr_gameState;
 CUdeviceptr cptr_spriteSheet;
 CUdeviceptr cptr_ascii_32;
-uint32_t gridRows;
-uint32_t gridCols;
+uint32_t chunksRows;
+uint32_t chunksCols;
 
 CUgraphicsResource cugl_colorbuffer;
 CudaModularProgram *cuda_program = nullptr;
@@ -59,24 +58,24 @@ void initCuda() {
 void saveMap() {
 
     // assume map size is fixed, for now, so we dont store it in file
-    int numCells = gridRows * gridCols;
+    int numChunks = chunksRows * chunksCols;
 
-    Buffer gridCells(numCells * BYTES_PER_CELL);
-    cuMemcpyDtoH(gridCells.data, cptr_grid, gridCells.size);
+    Buffer chunks(numChunks * sizeof(Chunk));
+    cuMemcpyDtoH(chunks.data, cptr_chunk, chunks.size);
 
-    Buffer entities(sizeof(uint32_t) + numCells * (BYTES_PER_ENTITY));
+    Buffer entities(sizeof(uint32_t) + MAX_ENTITY_COUNT * (BYTES_PER_ENTITY));
     cuMemcpyDtoH(entities.data, cptr_entities, entities.size);
 
     GameState state;
     cuMemcpyDtoH(&state, cptr_gameState, sizeof(state));
 
-    Buffer buffer(gridCells.size + entities.size + sizeof(state));
+    Buffer buffer(chunks.size + entities.size + sizeof(state));
 
     int64_t offsetGridCells = 0;
-    int64_t offsetEntities = offsetGridCells + gridCells.size;
+    int64_t offsetEntities = offsetGridCells + chunks.size;
     int64_t offsetState = offsetEntities + entities.size;
 
-    memcpy(buffer.data_u8 + offsetGridCells, gridCells.data, gridCells.size);
+    memcpy(buffer.data_u8 + offsetGridCells, chunks.data, chunks.size);
     memcpy(buffer.data_u8 + offsetEntities, entities.data, entities.size);
     memcpy(buffer.data_u8 + offsetState, &state, sizeof(state));
 
@@ -91,17 +90,17 @@ void loadMap() {
     shared_ptr<Buffer> buffer = readBinaryFile("./savefile.save");
 
     // assume map size is fixed, for now, so we dont store it in file
-    int numCells = gridRows * gridCols;
+    int numChunks = chunksRows * chunksCols;
 
-    Buffer gridCells(numCells * BYTES_PER_CELL);
-    Buffer entities(sizeof(uint32_t) + numCells * (BYTES_PER_ENTITY));
+    Buffer chunks(numChunks * sizeof(Chunk));
+    Buffer entities(sizeof(uint32_t) + MAX_ENTITY_COUNT * (BYTES_PER_ENTITY));
     GameState state;
 
     int64_t offsetGridCells = 0;
-    int64_t offsetEntities = offsetGridCells + gridCells.size;
+    int64_t offsetEntities = offsetGridCells + chunks.size;
     int64_t offsetState = offsetEntities + entities.size;
 
-    memcpy(gridCells.data, buffer->data_u8 + offsetGridCells, gridCells.size);
+    memcpy(chunks.data, buffer->data_u8 + offsetGridCells, chunks.size);
     memcpy(entities.data, buffer->data_u8 + offsetEntities, entities.size);
     memcpy(&state, buffer->data_u8 + offsetState, sizeof(state));
 
@@ -110,7 +109,7 @@ void loadMap() {
 
     // memset(entities.data, 0, entities.size);
 
-    cuMemcpyHtoD(cptr_grid, gridCells.data, gridCells.size);
+    cuMemcpyHtoD(cptr_chunk, chunks.data, chunks.size);
     cuMemcpyHtoD(cptr_entities, entities.data, entities.size);
     cuMemcpyHtoD(cptr_gameState, &state, sizeof(GameState));
 }
@@ -154,11 +153,10 @@ void updateCUDA(std::shared_ptr<GLRenderer> renderer) {
     gamedata.uniforms = uniforms;
     gamedata.state = (GameState *)cptr_gameState;
     gamedata.buffer = (unsigned int *)cptr_buffer;
-    gamedata.numRows = gridRows;
-    gamedata.numCols = gridCols;
-    gamedata.cells = (char *)cptr_grid;
+    gamedata.numRows = chunksRows;
+    gamedata.numCols = chunksCols;
+    gamedata.chunks = (Chunk *)cptr_chunk;
     gamedata.entitiesBuffer = (void *)cptr_entities;
-    gamedata.pathfindingBuffer = (void *)cptr_pathfinding;
     gamedata.savedFieldsBuffer = (void *)cptr_savedFields;
     gamedata.img_ascii_16 = (uint32_t *)cptr_ascii_32;
     gamedata.img_spritesheet = (uint32_t *)cptr_spriteSheet;
@@ -220,9 +218,9 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
     gamedata.uniforms = uniforms;
     gamedata.state = (GameState *)cptr_gameState;
     gamedata.buffer = (unsigned int *)cptr_buffer;
-    gamedata.numRows = gridRows;
-    gamedata.numCols = gridCols;
-    gamedata.cells = (char *)cptr_grid;
+    gamedata.numRows = chunksRows;
+    gamedata.numCols = chunksCols;
+    gamedata.chunks = (Chunk *)cptr_chunk;
     gamedata.entitiesBuffer = (void *)cptr_entities;
     gamedata.img_ascii_16 = (uint32_t *)cptr_ascii_32;
     gamedata.img_spritesheet = (uint32_t *)cptr_spriteSheet;
@@ -262,6 +260,7 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
                                         "./modules/shapes2D/World/time.cu",
                                         "./modules/shapes2D/World/Path/path.cu",
                                         "./modules/shapes2D/World/direction.cu",
+                                        "./modules/shapes2D/World/chunk.cu",
                                     },
                                 .customIncludeDirs = {"./modules/shapes2D", " ./modules"}});
 
@@ -276,6 +275,7 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
                                         "./modules/shapes2D/World/Entities/entities.cu",
                                         "./modules/shapes2D/World/Entities/movement.cu",
                                         "./modules/shapes2D/World/direction.cu",
+                                        "./modules/shapes2D/World/chunk.cu",
                                     },
                                 .customIncludeDirs = {"./modules/shapes2D", " ./modules"}});
 
@@ -285,32 +285,30 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
 
     initGameState();
 
-    // Map
+    // Allocate a single chunk
     int maxOccupancy = cuda_program->maxOccupancy("kernel", blockSize);
-    gridRows = MAPX;
-    gridCols = MAPY;
-    int numCells = gridRows * gridCols;
-    cuMemAlloc(&cptr_grid, numCells * BYTES_PER_CELL);
-    cuMemAlloc(&cptr_pathfinding, sizeof(Flowfield) * numCells);
+    cuMemAlloc(&cptr_chunk, sizeof(Chunk));
     cuMemAlloc(&cptr_savedFields, sizeof(IntegrationField) * maxOccupancy);
 
-    std::vector<Cell> gridCells(numCells);
-    std::vector<Flowfield> flowfields(numCells);
+    auto chunk_ptr = std::make_unique<Chunk>();
+    auto &chunk = *chunk_ptr;
+    chunksRows = 1;
+    chunksCols = 1;
+
     std::vector<IntegrationField> savedFields(maxOccupancy);
-    for (int y = 0; y < gridRows; ++y) {
-        for (int x = 0; x < gridCols; ++x) {
-            int cellId = y * gridCols + x;
-            gridCells[cellId].cell.tileId = GRASS;
-            gridCells[cellId].cell.landValue = 255;
-            flowfields[cellId].state = INVALID;
+    for (int y = 0; y < CHUNK_X; ++y) {
+        for (int x = 0; x < CHUNK_Y; ++x) {
+            int cellId = y * CHUNK_X + x;
+            chunk.cells[cellId].cell.tileId = GRASS;
+            chunk.cachedFlowfields[cellId].state = INVALID;
+            chunk.offset = {0, 0};
         }
     }
     for (auto &f : savedFields) {
         f.ongoingComputation = false;
     }
 
-    cuMemcpyHtoD(cptr_grid, gridCells.data(), gridCells.size() * BYTES_PER_CELL);
-    cuMemcpyHtoD(cptr_pathfinding, flowfields.data(), flowfields.size() * sizeof(Flowfield));
+    cuMemcpyHtoD(cptr_chunk, &chunk, sizeof(Chunk));
     cuMemcpyHtoD(cptr_savedFields, savedFields.data(),
                  savedFields.size() * sizeof(IntegrationField));
 
