@@ -53,7 +53,6 @@ float3 colorFromId(uint32_t id) {
 // - The closest fragments are rendered via atomicMin on a combined 64bit depth&color integer
 //   atomicMin(&framebuffer[pixelIndex], (depth << 32 | color));
 void rasterizeGrid(Map &map, Entities *entities, SpriteSheet sprites, Framebuffer framebuffer) {
-
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -84,7 +83,8 @@ void rasterizeGrid(Map &map, Entities *entities, SpriteSheet sprites, Framebuffe
         }
 
         float3 color;
-        if (gameData.uniforms.renderMode == RENDERMODE_DEFAULT) {
+        if (gameData.uniforms.renderMode == RENDERMODE_DEFAULT ||
+            gameData.uniforms.renderMode == RENDERMODE_FLOWFIELD) {
             switch (chunk.get(sh_cellIndex).tileId) {
             case GRASS:
                 color = sprites.grass.sampleFloat(u, v);
@@ -128,10 +128,9 @@ void rasterizeGrid(Map &map, Entities *entities, SpriteSheet sprites, Framebuffe
                     color = float3{1.0f, 0.0f, 1.0f};
                 }
             }
-        } else if (gameData.uniforms.renderMode == RENDERMODE_LANDVALUE) {
+        } else {
             color = float3{0.0f, 0.0f, 0.0f};
         }
-
         float3 pixelColor = color;
 
         float depth = 1.0f;
@@ -198,7 +197,7 @@ void rasterizeEntities(Entities *entities, Framebuffer framebuffer) {
     });
 }
 
-void rasterizeFlowfield(Entities *entities, Framebuffer framebuffer) {
+void rasterizeEntitiesFlowfield(Entities *entities, Framebuffer framebuffer) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -232,6 +231,67 @@ void rasterizeFlowfield(Entities *entities, Framebuffer framebuffer) {
             }
 
             int pixelID = pixelCoords.x + pixelCoords.y * gameData.uniforms.width;
+            atomicMin(&framebuffer.data[pixelID], pixel);
+        }
+    });
+}
+
+void rasterizeFlowfield(Map &map, Framebuffer &framebuffer) {
+    auto grid = cg::this_grid();
+    auto block = cg::this_thread_block();
+
+    if (!(gameData.uniforms.cursorPos.x >= 0 &&
+          gameData.uniforms.cursorPos.x < gameData.uniforms.width &&
+          gameData.uniforms.cursorPos.y >= 0 &&
+          gameData.uniforms.cursorPos.y < gameData.uniforms.height)) {
+        return;
+    }
+
+    mat4 viewProj = gameData.uniforms.proj * gameData.uniforms.view;
+
+    float cellRadius =
+        length(projectVectorToScreenPos(float3{CELL_RADIUS, 0.0f, 0.0f}, viewProj,
+                                        gameData.uniforms.width, gameData.uniforms.height));
+    float2 px = float2{gameData.uniforms.cursorPos.x,
+                       gameData.uniforms.height - gameData.uniforms.cursorPos.y};
+    float3 pos_W = unproject(px, gameData.uniforms.invview * gameData.uniforms.invproj,
+                             gameData.uniforms.width, gameData.uniforms.height);
+    float2 worldPos = float2{pos_W.x, pos_W.y};
+
+    MapId flowfieldId = map.cellAtPosition(worldPos);
+    if (!flowfieldId.valid()) {
+        return;
+    }
+
+    Chunk &chunk = map.getChunk(flowfieldId.chunkId);
+
+    if (chunk.cachedFlowfields[flowfieldId.cellId].state != VALID) {
+        return;
+    }
+
+    chunk.processEachCell([&](int cellId) {
+        float2 dir = directionFromEnum(
+            Direction(chunk.cachedFlowfields[flowfieldId.cellId].directions[cellId]));
+
+        float2 cellCenter = chunk.getCellPosition(cellId);
+        float2 screenPos = projectPosToScreenPos(make_float3(cellCenter, 0.0f), viewProj,
+                                                 gameData.uniforms.width, gameData.uniforms.height);
+        for (int i = 0; i < int(cellRadius); ++i) {
+            float2 pFrag = screenPos + dir * i;
+            int2 pixelCoords = make_int2(pFrag.x, pFrag.y);
+            if (pixelCoords.x < 0 || pixelCoords.x >= framebuffer.width || pixelCoords.y < 0 ||
+                pixelCoords.y >= framebuffer.height) {
+                continue;
+            }
+
+            int pixelID = pixelCoords.x + pixelCoords.y * gameData.uniforms.width;
+
+            float3 color = make_float3(0.0f, 0.0f, 1.0f);
+
+            float depth = 0.85f;
+            uint64_t udepth = *((uint32_t *)&depth);
+            uint64_t pixel = (udepth << 32ull) | rgb8color(color);
+
             atomicMin(&framebuffer.data[pixelID], pixel);
         }
     });
@@ -277,9 +337,13 @@ extern "C" __global__ void kernel(GameData _gameData, cudaSurfaceObject_t gl_col
         grid.sync();
         rasterizeEntities(entities, framebuffer);
         grid.sync();
+        if (gameData.uniforms.renderMode == RENDERMODE_FLOWFIELD) {
+            rasterizeFlowfield(*map, framebuffer);
+            grid.sync();
+        }
 
         if (gameData.uniforms.displayFlowfield) {
-            rasterizeFlowfield(entities, framebuffer);
+            rasterizeEntitiesFlowfield(entities, framebuffer);
             grid.sync();
         }
 

@@ -200,6 +200,9 @@ void renderCUDA(std::shared_ptr<GLRenderer> renderer) {
     uniforms.timeMultiplier = timeMultiplier;
     uniforms.displayFlowfield = displayFlowfield;
 
+    memcpy(&uniforms.cursorPos, &runtime->mousePosition, sizeof(runtime->mousePosition));
+    uniforms.mouseButtons = Runtime::getInstance()->mouseButtons;
+
     glm::mat4 view = renderer->camera->viewMatrix();
     glm::mat4 proj = renderer->camera->projMatrix();
     // glm::mat4 proj = glm::ortho(0.0, 100.0, 0.0, 100.0 / renderer->camera->aspect);
@@ -398,6 +401,7 @@ int main() {
             ImGui::RadioButton("Default", &renderMode, RENDERMODE_DEFAULT);
             ImGui::RadioButton("Network", &renderMode, RENDERMODE_NETWORK);
             ImGui::RadioButton("Land value", &renderMode, RENDERMODE_LANDVALUE);
+            ImGui::RadioButton("Flowfield", &renderMode, RENDERMODE_FLOWFIELD);
 
             ImGui::Text("Options");
             ImGui::Checkbox("Pring Timings", &printTimings);
