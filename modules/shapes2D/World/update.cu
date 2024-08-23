@@ -189,7 +189,7 @@ void assignHouseToWorkplace(Chunk &chunk, Entities &entities, int32_t houseId,
     chunk.assignEntityToWorkplace(houseId, workplaceId);
 }
 
-void assignOneHouse(Map &map, Chunk &chunk, Entities &entities) {
+void assignOneHouse(Map &map, Entities &entities) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -231,7 +231,7 @@ void assignOneHouse(Map &map, Chunk &chunk, Entities &entities) {
     });
 }
 
-void assignOneCustomerToShop(Map &map, Chunk &chunk, Entities &entities) {
+void assignOneCustomerToShop(Map &map, Entities &entities) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -250,7 +250,7 @@ void assignOneCustomerToShop(Map &map, Chunk &chunk, Entities &entities) {
         }
 
         int32_t shopId = map.findClosestOnNetworkBlockwise(
-            map.shops, {0, chunk.cellAtPosition(entity.position)},
+            map.shops, map.cellAtPosition(entity.position),
             [&](MapId shop) { return map.getTyped<ShopCell>(shop).woodCount > 0; });
 
         if (block.thread_rank() == 0) {
@@ -264,7 +264,7 @@ void assignOneCustomerToShop(Map &map, Chunk &chunk, Entities &entities) {
     });
 }
 
-void assignShopWorkerToFactory(Map &map, Chunk &chunk, Entities &entities) {
+void assignShopWorkerToFactory(Map &map, Entities &entities) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -283,7 +283,7 @@ void assignShopWorkerToFactory(Map &map, Chunk &chunk, Entities &entities) {
         }
 
         int32_t factoryId = map.findClosestOnNetworkBlockwise(
-            map.factories, {0, chunk.cellAtPosition(entity.position)},
+            map.factories, map.cellAtPosition(entity.position),
             [&](MapId factory) { return map.getTyped<FactoryCell>(factory).stockCount > 0; });
 
         if (block.thread_rank() == 0) {
@@ -605,14 +605,13 @@ void updateGrid(Map &map, Entities &entities) {
     grid.sync();
     printDuration("fillCells                   ", [&]() { fillCells(map, entities); });
     grid.sync();
-    // printDuration("handleEvents                ", [&]() { handleEvents(map, entities); });
-    printDuration("assignOneHouse              ",
-                  [&]() { assignOneHouse(map, map.getChunk(0), entities); });
+    printDuration("handleEvents                ", [&]() { handleEvents(map, entities); });
+    printDuration("assignOneHouse              ", [&]() { assignOneHouse(map, entities); });
     grid.sync();
-    // printDuration("assignOneCustomerToShop     ",
-    //               [&]() { assignOneCustomerToShop(map, map.getChunk(0), entities); });
-    // printDuration("assignShopWorkerToFactory   ",
-    //               [&]() { assignShopWorkerToFactory(map, map.getChunk(0), entities); });
+    printDuration("assignOneCustomerToShop     ",
+                  [&]() { assignOneCustomerToShop(map, entities); });
+    printDuration("assignShopWorkerToFactory   ",
+                  [&]() { assignShopWorkerToFactory(map, entities); });
     printDuration("pathfinding                 ",
                   [&]() { pathfindingManager->update(map.getChunk(0), entities, *allocator); });
     grid.sync();

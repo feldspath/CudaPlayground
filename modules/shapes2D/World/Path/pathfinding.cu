@@ -30,6 +30,9 @@ PathfindingList PathfindingManager::locateLostEntities(Chunk &chunk, Entities &e
         if (entity.isLost()) {
             uint32_t targetId = entity.destination;
             int originId = chunk.cellAtPosition(entity.position);
+            if (originId == -1) {
+                return;
+            }
             if (chunk.sharedNetworks(originId, targetId).data[0] == -1) {
                 printf("Error: entity %d cannot reach its destination. Placing it back at home.\n",
                        entityIndex);

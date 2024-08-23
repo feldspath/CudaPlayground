@@ -2,6 +2,8 @@
 
 static constexpr int CHUNK_X = 64;
 static constexpr int CHUNK_Y = 64;
+static constexpr int N_CHUNK_X = 2;
+static constexpr int N_CHUNK_Y = 1;
 static constexpr int CHUNK_SIZE = CHUNK_X * CHUNK_Y;
 
 static int FACTORY_CAPACITY = 40;

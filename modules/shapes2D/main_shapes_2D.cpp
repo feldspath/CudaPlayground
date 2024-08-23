@@ -288,30 +288,35 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
 
     initGameState();
 
-    // Allocate a single chunk
+    // Allocate the chunks
+    chunksRows = N_CHUNK_X;
+    chunksCols = N_CHUNK_Y;
     int maxOccupancy = cuda_program->maxOccupancy("kernel", blockSize);
-    cuMemAlloc(&cptr_chunk, sizeof(Chunk));
+    cuMemAlloc(&cptr_chunk, sizeof(Chunk) * chunksRows * chunksCols);
     cuMemAlloc(&cptr_savedFields, sizeof(IntegrationField) * maxOccupancy);
 
-    auto chunk_ptr = std::make_unique<Chunk>();
-    auto &chunk = *chunk_ptr;
-    chunksRows = 1;
-    chunksCols = 1;
+    std::vector<Chunk> chunks(chunksRows * chunksCols);
 
-    std::vector<IntegrationField> savedFields(maxOccupancy);
-    for (int y = 0; y < CHUNK_X; ++y) {
-        for (int x = 0; x < CHUNK_Y; ++x) {
-            int cellId = y * CHUNK_X + x;
-            chunk.cells[cellId].cell.tileId = GRASS;
-            chunk.cachedFlowfields[cellId].state = INVALID;
-            chunk.offset = {0, 0};
+    for (int i = 0; i < chunksRows; i++) {
+        for (int j = 0; j < chunksCols; j++) {
+            auto &chunk = chunks[j * chunksCols + i];
+            for (int y = 0; y < CHUNK_X; ++y) {
+                for (int x = 0; x < CHUNK_Y; ++x) {
+                    int cellId = y * CHUNK_X + x;
+                    chunk.cells[cellId].cell.tileId = GRASS;
+                    chunk.cachedFlowfields[cellId].state = INVALID;
+                    chunk.offset = {i, j};
+                }
+            }
         }
     }
+
+    std::vector<IntegrationField> savedFields(maxOccupancy);
     for (auto &f : savedFields) {
         f.ongoingComputation = false;
     }
 
-    cuMemcpyHtoD(cptr_chunk, &chunk, sizeof(Chunk));
+    cuMemcpyHtoD(cptr_chunk, chunks.data(), sizeof(Chunk) * chunks.size());
     cuMemcpyHtoD(cptr_savedFields, savedFields.data(),
                  savedFields.size() * sizeof(IntegrationField));
 

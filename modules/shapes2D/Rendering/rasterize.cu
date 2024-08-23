@@ -65,11 +65,12 @@ void rasterizeGrid(Map &map, Entities *entities, SpriteSheet sprites, Framebuffe
         float3 pos_W = unproject(pFrag, gameData.uniforms.invview * gameData.uniforms.invproj,
                                  gameData.uniforms.width, gameData.uniforms.height);
 
-        auto &chunk = map.getChunk(0);
-        int sh_cellIndex = chunk.cellAtPosition(float2{pos_W.x, pos_W.y});
-        if (sh_cellIndex == -1) {
+        MapId cell = map.cellAtPosition(float2{pos_W.x, pos_W.y});
+        if (!cell.valid()) {
             return;
         }
+        auto &chunk = map.getChunk(cell.chunkId);
+        auto sh_cellIndex = cell.cellId;
 
         float2 cellCenter = chunk.getCellPosition(sh_cellIndex);
         float2 diff = float2{pos_W.x - cellCenter.x, pos_W.y - cellCenter.y};

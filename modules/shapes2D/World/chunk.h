@@ -71,7 +71,9 @@ struct Chunk {
         int x = cellId % CHUNK_X;
         int y = cellId / CHUNK_X;
 
-        float2 center = make_float2(x + CELL_RADIUS, y + CELL_RADIUS);
+        float2 center = 2.0f * CELL_RADIUS *
+                        (float2{float(x) + 0.5f + float(offset.x) * CHUNK_X,
+                                float(y) + 0.5f + float(offset.y) * CHUNK_Y});
         return center;
     }
 
@@ -83,8 +85,8 @@ struct Chunk {
         int x = floor(position.x / (CELL_RADIUS * 2.0f));
         int y = floor(position.y / (CELL_RADIUS * 2.0f));
 
-        int localX = x - offset.x;
-        int localY = y - offset.y;
+        int localX = x - offset.x * CHUNK_X;
+        int localY = y - offset.y * CHUNK_Y;
 
         if (!isCoordValid(localX, localY)) {
             return -1;
