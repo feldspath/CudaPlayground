@@ -275,7 +275,7 @@ void PathfindingManager::update(Chunk &chunk, Entities &entities, Allocator &all
 
         if (updated) {
             // Integration field is not complete, save it to reuse it next frame
-            chunk.processEachCell([&](int idx) {
+            chunk.processEachCellBlock([&](int idx) {
                 savedFields[bufferIdx].distances[idx] = fieldBuffer[idx];
                 savedFields[bufferIdx].iterations[idx] = iterations[idx];
                 savedFields[bufferIdx].target = target;
@@ -283,7 +283,7 @@ void PathfindingManager::update(Chunk &chunk, Entities &entities, Allocator &all
             });
         } else {
             // Integration field is complete, create flowfield
-            chunk.processEachCell([&](int cellId) {
+            chunk.processEachCellBlock([&](int cellId) {
                 uint32_t minDistance = uint32_t(Infinity);
                 Direction dir;
                 chunk.extendedNeighborCells(cellId).forEachDir(
