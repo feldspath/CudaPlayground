@@ -244,7 +244,7 @@ void initGameState() {
     GameState state;
     state.firstFrame = true;
     state.playerMoney = 2000;
-    state.buildingDisplay = -1;
+    state.buildingDisplay = MapId::invalidId();
     state.gameTime = GameTime();
 
     cuMemcpyHtoD(cptr_gameState, &state, sizeof(GameState));

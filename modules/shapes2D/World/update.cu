@@ -25,15 +25,17 @@ curandStateXORWOW_t thread_random_state;
 
 struct UpdateInfo {
     bool update;
-    int cellToUpdate;
+    MapId cellToUpdate;
     TileId newTileId;
 };
 
-void updateCell(Chunk &chunk, Entities &entities, UpdateInfo updateInfo) {
+void updateCell(Map &map, Entities &entities, UpdateInfo updateInfo) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
-    int cellId = updateInfo.cellToUpdate;
+    auto &cellToUpdate = updateInfo.cellToUpdate;
+    auto cellId = cellToUpdate.cellId;
+    auto &chunk = map.getChunk(cellToUpdate.chunkId);
 
     TileId newTile = updateInfo.newTileId;
     TileId oldTile = chunk.get(cellId).tileId;
@@ -124,9 +126,9 @@ void updateCell(Chunk &chunk, Entities &entities, UpdateInfo updateInfo) {
         case HOUSE: {
             // if it was a house, destroy the entities living there
             entities.processAll([&](int entityId) {
-                if (entities.get(entityId).houseId == cellId) {
-                    int workplaceId = entities.get(entityId).workplaceId;
-                    atomicAdd(&chunk.getTyped<WorkplaceCell>(workplaceId).workplaceCapacity, 1);
+                if (entities.get(entityId).house == cellToUpdate) {
+                    auto workplace = entities.get(entityId).workplace;
+                    atomicAdd(&map.getTyped<WorkplaceCell>(workplace).workplaceCapacity, 1);
                     entities.remove(entityId);
                 }
             });
@@ -136,8 +138,8 @@ void updateCell(Chunk &chunk, Entities &entities, UpdateInfo updateInfo) {
             // if the removed tile was a factory or shop, destroy the associated entities
             entities.processAll([&](int entityId) {
                 auto &entity = entities.get(entityId);
-                if (entity.workplaceId == cellId) {
-                    atomicSub(&chunk.getTyped<HouseCell>(entity.houseId).residentCount, 1);
+                if (entity.workplace == cellToUpdate) {
+                    atomicSub(&map.getTyped<HouseCell>(entity.house).residentCount, 1);
                     entities.remove(entityId);
                 }
             });
@@ -147,8 +149,8 @@ void updateCell(Chunk &chunk, Entities &entities, UpdateInfo updateInfo) {
             // if the removed tile was a factory or shop, destroy the associated entities
             entities.processAll([&](int entityId) {
                 auto &entity = entities.get(entityId);
-                if (entity.workplaceId == cellId) {
-                    chunk.getTyped<HouseCell>(entity.houseId) = HouseCell();
+                if (entity.workplace == cellToUpdate) {
+                    atomicSub(&map.getTyped<HouseCell>(entity.house).residentCount, 1);
                     entities.remove(entityId);
                 }
             });
@@ -183,10 +185,11 @@ void updateCell(Chunk &chunk, Entities &entities, UpdateInfo updateInfo) {
     }
 }
 
-void assignHouseToWorkplace(Chunk &chunk, Entities &entities, int32_t houseId,
-                            int32_t workplaceId) {
-    int32_t newEntity = entities.newEntity(chunk.getCellPosition(houseId), houseId, workplaceId);
-    chunk.assignEntityToWorkplace(houseId, workplaceId);
+void assignHouseToWorkplace(Map &map, Entities &entities, MapId house, MapId workplace) {
+    int32_t newEntity = entities.newEntity(map.getCellPosition(house), house, workplace);
+
+    // TODO: change this to be map wise
+    map.getChunk(house.chunkId).assignEntityToWorkplace(house.cellId, workplace.cellId);
 }
 
 void assignOneHouse(Map &map, Entities &entities) {
@@ -221,12 +224,11 @@ void assignOneHouse(Map &map, Entities &entities) {
         if (assigned) {
             return;
         }
-        int32_t workplaceId = map.findClosestOnNetworkBlockwise(
-            availableWorkplaces, house, [&](MapId workplace) { return true; });
+        auto workplace = map.findClosestOnNetworkBlockwise(availableWorkplaces, house,
+                                                           [&](MapId workplace) { return true; });
 
-        if (block.thread_rank() == 0 && workplaceId != -1 && !atomicAdd(&assigned, 1)) {
-            assignHouseToWorkplace(map.getChunk(house.chunkId), entities, house.cellId,
-                                   workplaceId);
+        if (block.thread_rank() == 0 && workplace.valid() && !atomicAdd(&assigned, 1)) {
+            assignHouseToWorkplace(map, entities, house, workplace);
         }
     });
 }
@@ -245,17 +247,17 @@ void assignOneCustomerToShop(Map &map, Entities &entities) {
             return;
         }
         Entity &entity = entities.get(entityIdx);
-        if (!entity.active || entity.state != GoShopping || entity.destination != -1) {
+        if (!entity.active || entity.state != GoShopping || entity.destination.valid()) {
             return;
         }
 
-        int32_t shopId = map.findClosestOnNetworkBlockwise(
+        auto shop = map.findClosestOnNetworkBlockwise(
             map.shops, map.cellAtPosition(entity.position),
             [&](MapId shop) { return map.getTyped<ShopCell>(shop).woodCount > 0; });
 
         if (block.thread_rank() == 0) {
-            if (shopId != -1) {
-                entity.destination = shopId;
+            if (shop.valid()) {
+                entity.destination = shop;
                 assigned = true;
             } else {
                 entity.changeState(GoHome);
@@ -278,19 +280,17 @@ void assignShopWorkerToFactory(Map &map, Entities &entities) {
             return;
         }
         Entity &entity = entities.get(entityIdx);
-        if (!entity.active || entity.state != WorkAtShop || entity.destination != -1) {
+        if (!entity.active || entity.state != WorkAtShop || entity.destination.valid()) {
             return;
         }
 
-        int32_t factoryId = map.findClosestOnNetworkBlockwise(
+        auto factory = map.findClosestOnNetworkBlockwise(
             map.factories, map.cellAtPosition(entity.position),
             [&](MapId factory) { return map.getTyped<FactoryCell>(factory).stockCount > 0; });
 
-        if (block.thread_rank() == 0) {
-            if (factoryId != -1) {
-                entity.destination = factoryId;
-                assigned = true;
-            }
+        if (block.thread_rank() == 0 && factory.valid()) {
+            entity.destination = factory;
+            assigned = true;
         }
         block.sync();
     });
@@ -301,8 +301,6 @@ uint32_t currentTime_ms() { return uint32_t((nanotime_start / (uint64_t)1e6) & 0
 void updateEntitiesState(Map &map, Entities &entities) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
-
-    auto &chunk = map.getChunk(0);
 
     auto gameTime = GameState::instance->gameTime;
 
@@ -316,11 +314,11 @@ void updateEntitiesState(Map &map, Entities &entities) {
         }
 
         bool destinationReached = false;
-        if (entity.destination != -1 &&
-            chunk.cellAtPosition(entity.position) == entity.destination) {
+        if (map.cellAtPosition(entity.position) == entity.destination) {
             destinationReached = true;
-            entity.position = chunk.getCellPosition(entity.destination);
+            entity.position = map.getCellPosition(entity.destination);
             entity.velocity = float2{0.0f, 0.0f};
+            entity.path.reset();
         }
 
         TimeInterval workHours = TimeInterval::workHours;
@@ -329,8 +327,8 @@ void updateEntitiesState(Map &map, Entities &entities) {
         case GoHome: {
             if (destinationReached) {
                 entity.changeState(Rest);
-            } else if (entity.destination == -1) {
-                entity.destination = entity.houseId;
+            } else if (!entity.destination.valid()) {
+                entity.destination = entity.house;
             }
             break;
         }
@@ -339,14 +337,14 @@ void updateEntitiesState(Map &map, Entities &entities) {
                 entity.changeState(GoShopping);
                 break;
             }
-            if (entity.destination == -1) {
-                entity.destination = entity.workplaceId;
+            if (!entity.destination.valid()) {
+                entity.destination = entity.workplace;
                 break;
             }
 
             if (destinationReached) {
-                atomicAdd(&chunk.getTyped<WorkplaceCell>(entity.workplaceId).currentWorkerCount, 1);
-                switch (chunk.get(entity.workplaceId).tileId) {
+                atomicAdd(&map.getTyped<WorkplaceCell>(entity.workplace).currentWorkerCount, 1);
+                switch (map.get(entity.workplace).tileId) {
                 case SHOP: {
                     entity.changeState(WorkAtShop);
                     break;
@@ -374,31 +372,28 @@ void updateEntitiesState(Map &map, Entities &entities) {
         case WorkAtFactory: {
             if (!workHours.contains(gameTime.timeOfDay())) {
                 entity.changeState(GoShopping);
-                atomicAdd(&chunk.getTyped<WorkplaceCell>(entity.workplaceId).currentWorkerCount,
-                          -1);
+                atomicAdd(&map.getTyped<WorkplaceCell>(entity.workplace).currentWorkerCount, -1);
                 break;
             }
-            atomicAdd(&chunk.getTyped<FactoryCell>(entity.workplaceId).stockCount, 1);
+            atomicAdd(&map.getTyped<FactoryCell>(entity.workplace).stockCount, 1);
             entity.wait(30);
             break;
         }
         case WorkAtShop: {
             if (!workHours.contains(gameTime.timeOfDay())) {
                 entity.changeState(GoShopping);
-                atomicAdd(&chunk.getTyped<WorkplaceCell>(entity.workplaceId).currentWorkerCount,
-                          -1);
+                atomicAdd(&map.getTyped<WorkplaceCell>(entity.workplace).currentWorkerCount, -1);
                 break;
             }
-            if (destinationReached && entity.destination == entity.workplaceId) {
-                atomicAdd(&chunk.getTyped<ShopCell>(entity.workplaceId).woodCount,
-                          entity.inventory);
+            if (destinationReached && entity.destination == entity.workplace) {
+                atomicAdd(&map.getTyped<ShopCell>(entity.workplace).woodCount, entity.inventory);
                 entity.inventory = 0;
-                entity.destination = -1;
+                entity.destination.reset();
                 entity.wait(10);
-            } else if (destinationReached && chunk.get(entity.destination).tileId == FACTORY) {
-                entity.inventory += min(chunk.getTyped<FactoryCell>(entity.destination).stockCount,
+            } else if (destinationReached && map.get(entity.destination).tileId == FACTORY) {
+                entity.inventory += min(map.getTyped<FactoryCell>(entity.destination).stockCount,
                                         SHOP_WORKER_INVENTORY_SIZE);
-                entity.destination = entity.workplaceId;
+                entity.destination = entity.workplace;
                 entity.wait(10);
             }
             break;
@@ -413,8 +408,8 @@ void updateEntitiesState(Map &map, Entities &entities) {
                 entity.changeState(GoHome);
             }
 
-            int shopId = chunk.cellAtPosition(entity.position);
-            int32_t &shopWood = chunk.getTyped<ShopCell>(shopId).woodCount;
+            auto shopId = map.cellAtPosition(entity.position);
+            int32_t &shopWood = map.getTyped<ShopCell>(shopId).woodCount;
 
             int stock = 5;
             int old = atomicSub(&shopWood, stock);
@@ -427,14 +422,14 @@ void updateEntitiesState(Map &map, Entities &entities) {
             if (stock > 0) {
                 entity.inventory += stock;
                 entity.changeState(UpgradeHouse);
-                entity.destination = entity.houseId;
+                entity.destination = entity.house;
                 entity.wait(10);
             }
             break;
         }
         case UpgradeHouse: {
             if (destinationReached) {
-                atomicAdd(&chunk.getTyped<HouseCell>(entity.houseId).woodCount, entity.inventory);
+                atomicAdd(&map.getTyped<HouseCell>(entity.house).woodCount, entity.inventory);
                 entity.inventory = 0;
                 entity.changeState(GoShopping);
             }
@@ -485,33 +480,30 @@ void handleInputs(Map &map, Entities &entities) {
         float3 pos_W = unproject(px, gameData.uniforms.invview * gameData.uniforms.invproj,
                                  gameData.uniforms.width, gameData.uniforms.height);
         float2 worldPos = float2{pos_W.x, pos_W.y};
-        int chunkId = map.chunkIdFromWorldPos(worldPos);
-        if (chunkId == -1) {
+        auto cell = map.cellAtPosition(worldPos);
+        if (!cell.valid()) {
             return;
         }
-        auto &chunk = map.getChunk(chunkId);
-        int id = chunk.cellAtPosition(worldPos);
 
         if (mouseClicked && (TileId)gameData.uniforms.modeId != GRASS) {
             if (grid.thread_rank() == 0) {
-                if (chunk.get(id).tileId & (HOUSE | FACTORY | SHOP)) {
-                    if (GameState::instance->buildingDisplay == id) {
-                        GameState::instance->buildingDisplay = -1;
+                if (map.get(cell).tileId & (HOUSE | FACTORY | SHOP)) {
+                    if (GameState::instance->buildingDisplay == cell) {
+                        GameState::instance->buildingDisplay = MapId::invalidId();
                     } else {
-                        GameState::instance->buildingDisplay = id;
+                        GameState::instance->buildingDisplay = cell;
                     }
                 }
             }
         } else if (mousePressed) {
-            if (id != -1 &&
-                (chunk.get(id).tileId == GRASS || (TileId)gameData.uniforms.modeId == GRASS)) {
+            if (map.get(cell).tileId == GRASS || (TileId)gameData.uniforms.modeId == GRASS) {
                 updateInfo.update = true;
-                updateInfo.cellToUpdate = id;
+                updateInfo.cellToUpdate = cell;
                 updateInfo.newTileId = (TileId)gameData.uniforms.modeId;
             }
         }
         if (updateInfo.update) {
-            updateCell(chunk, entities, updateInfo);
+            updateCell(map, entities, updateInfo);
         }
     }
 }

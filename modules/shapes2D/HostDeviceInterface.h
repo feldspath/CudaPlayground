@@ -110,7 +110,7 @@ struct GameState {
     // Game stuff
     unsigned int playerMoney;
     unsigned int population;
-    int32_t buildingDisplay;
+    MapId buildingDisplay;
 
     static GameState *instance;
 };
@@ -166,8 +166,8 @@ public:
     float2 velocity;
 
     // state logic
-    uint32_t houseId;
-    uint32_t workplaceId;
+    MapId house;
+    MapId workplace;
     EntityState state;
 
     GameTime stateStart;
@@ -176,21 +176,21 @@ public:
 
     // Path is a uint64_t
     Path path;
-    int32_t destination;
+    MapId destination;
 
     int32_t inventory;
 
     // Waiting logic
     GameTime waitStop;
 
-    __device__ inline bool isLost() { return destination != -1 && !path.isValid(); }
+    __device__ inline bool isLost() { return destination.valid() && !path.isValid(); }
 
     __device__ void resetStateStart() { stateStart = GameState::instance->gameTime; }
 
     __device__ void changeState(EntityState newState) {
         path.reset();
         resetStateStart();
-        destination = -1;
+        destination = {-1, -1};
         interaction = -1;
         state = newState;
     }

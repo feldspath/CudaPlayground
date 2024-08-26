@@ -54,7 +54,6 @@ void moveEntities(Map &map, Entities &entities, Allocator allocator, float dt) {
 
     grid.sync();
 
-    // Count entities to move
     entities.processAllActive([&](int entityIdx) {
         Entity &entity = entities.get(entityIdx);
         if (entity.path.isValid()) {
@@ -88,40 +87,33 @@ void moveEntities(Map &map, Entities &entities, Allocator allocator, float dt) {
 
         float2 forces = {0.0f, 0.0f};
 
-        auto cellId = map.cellAtPosition(entity.position);
-        int2 coords = map.cellCoords(cellId);
+        auto cell = map.cellAtPosition(entity.position);
 
         // Compute repulsive force of other entities
-        for (int i = -1; i <= 1; ++i) {
-            for (int j = -1; j <= 1; ++j) {
-                auto neighborCell = map.cellFromCoords({coords.x + i, coords.y + j});
-                if (!neighborCell.valid()) {
+        auto &chunk = map.getChunk(cell.chunkId);
+        chunk.extendedNeighborCells(cell.cellId).forEach([&](int neighborId) {
+            for (int k = 0; k < ENTITIES_PER_CELL; ++k) {
+                int otherIdx = chunk.get(neighborId).entities[k];
+                if (otherIdx == -1) {
+                    break;
+                }
+                if (otherIdx == idx) {
                     continue;
                 }
 
-                for (int k = 0; k < ENTITIES_PER_CELL; ++k) {
-                    int otherIdx = map.get(neighborCell).entities[k];
-                    if (otherIdx == -1) {
-                        break;
-                    }
-                    if (otherIdx == idx) {
-                        continue;
-                    }
+                Entity &other = entities.get(otherIdx);
 
-                    Entity &other = entities.get(otherIdx);
-
-                    float2 diffVector = entity.position - other.position;
-                    float norm = length(diffVector);
-                    if (norm < 1e-6) {
-                        continue;
-                    }
-                    if (norm < KERNEL_RADIUS) {
-                        forces += diffVector / norm * powf((KERNEL_RADIUS - norm), 3.0) *
-                                  REPULSIVE_STRENGTH * pressure_normalization;
-                    }
+                float2 diffVector = entity.position - other.position;
+                float norm = length(diffVector);
+                if (norm < 1e-12) {
+                    continue;
+                }
+                if (norm < KERNEL_RADIUS) {
+                    forces += diffVector / norm * powf((KERNEL_RADIUS - norm), 3.0) *
+                              REPULSIVE_STRENGTH * pressure_normalization;
                 }
             }
-        }
+        });
 
         // Stirring force
         Direction nextDir = entity.path.nextDir();
@@ -149,8 +141,8 @@ void moveEntities(Map &map, Entities &entities, Allocator allocator, float dt) {
             return;
         }
 
+        Chunk &chunk = map.getChunk(map.chunkIdFromWorldPos(entity.position));
         auto previousCell = map.cellAtPosition(entity.position);
-        Chunk &chunk = map.getChunk(previousCell.chunkId);
         float2 previousCellPosition = chunk.getCellPosition(previousCell.cellId);
         auto neighborCells = chunk.neighborCells(previousCell.cellId);
         entity.position += entity.velocity * dt;
@@ -158,11 +150,12 @@ void moveEntities(Map &map, Entities &entities, Allocator allocator, float dt) {
         // check each side of the entity for wall collision
         neighborCells.forEachDir([&](Direction direction, uint32_t cellId) {
             // no collision with roads, house, workplace, shops, and destination
+            MapId neighbor{previousCell.chunkId, cellId};
             TileId tile = chunk.get(cellId).tileId;
-            if ((tile == ROAD && chunk.neighborNetworks(entity.destination)
+            if ((tile == ROAD && chunk.neighborNetworks(entity.destination.cellId)
                                      .contains(chunk.roadNetworkRepr(cellId))) ||
-                tile == SHOP || cellId == entity.workplaceId || cellId == entity.houseId ||
-                cellId == entity.destination) {
+                tile == SHOP || neighbor == entity.workplace || neighbor == entity.house ||
+                neighbor == entity.destination) {
                 return;
             }
 

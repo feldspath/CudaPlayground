@@ -1,7 +1,7 @@
 #include "./../common/utils.cuh"
 #include "entities.cuh"
 
-uint32_t Entities::newEntity(float2 position, uint32_t house, uint32_t workplace) {
+uint32_t Entities::newEntity(float2 position, MapId house, MapId workplace) {
     int32_t id;
     if (*holesCount == 0) {
         id = getCount();
@@ -14,11 +14,11 @@ uint32_t Entities::newEntity(float2 position, uint32_t house, uint32_t workplace
     Entity &entity = get(id);
     entity.position = position;
     entity.velocity = {0.0f, 0.0f};
-    entity.houseId = house;
-    entity.workplaceId = workplace;
+    entity.house = house;
+    entity.workplace = workplace;
     entity.state = Rest;
     entity.path.reset();
-    entity.destination = -1;
+    entity.destination = MapId::invalidId();
     entity.interaction = -1;
     entity.active = true;
     entity.disabled = false;

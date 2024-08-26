@@ -28,16 +28,18 @@ PathfindingList PathfindingManager::locateLostEntities(Map &map, Entities &entit
 
         Entity &entity = entities.get(entityIndex);
         if (entity.isLost()) {
-            uint32_t targetId = entity.destination;
+            // TODO: support target and origin in different chunks
+            auto target = entity.destination;
             MapId origin = map.cellAtPosition(entity.position);
             if (!origin.valid()) {
                 return;
             }
-            if (map.getChunk(origin.chunkId).sharedNetworks(origin.cellId, targetId).data[0] ==
+            auto &chunk = map.getChunk(origin.chunkId);
+            if (map.getChunk(origin.chunkId).sharedNetworks(origin.cellId, target.cellId).data[0] ==
                 -1) {
                 printf("Error: entity %d cannot reach its destination. Placing it back at home.\n",
                        entityIndex);
-                entity.position = chunk.getCellPosition(entity.houseId);
+                entity.position = map.getCellPosition(entity.house);
                 return;
             }
             uint32_t id = atomicAdd(&lostCount, 1);
@@ -48,8 +50,8 @@ PathfindingList PathfindingManager::locateLostEntities(Map &map, Entities &entit
             PathfindingInfo info;
             info.chunk = origin.chunkId;
             info.entityIdx = entityIndex;
-            info.origin = originId;
-            info.target = origin.cellId;
+            info.origin = origin.cellId;
+            info.target = target.cellId;
             pathfindingList.data[id] = info;
         }
     });
@@ -95,13 +97,6 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator allocato
     //     printf("pathfindings to compute count: %d\n", pathfindingList.count);
     // }
 
-    // Remove remaning marks from the previous frame
-    chunk.processEachCell([&](int idx) {
-        if (chunk.cachedFlowfields[idx].state == MARKED) {
-            chunk.cachedFlowfields[idx].state = INVALID;
-        }
-    });
-
     // list all the flowfields that have to be computed this frame
     uint32_t &flowfieldsToComputeCount = *allocator.alloc<uint32_t *>(sizeof(uint32_t));
     if (grid.thread_rank() == 0) {
@@ -115,7 +110,7 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator allocato
     processRange(gridDim.x, [&](int idx) {
         if (savedFields[idx].ongoingComputation) {
             auto target = savedFields[idx].target;
-            chunk.cachedFlowfields[target].state = MARKED;
+            map.getChunk(target.chunkId).cachedFlowfields[target.cellId].state = MARKED;
             int flowfieldIdx = atomicAdd(&flowfieldsToComputeCount, 1);
             flowfieldsToCompute[flowfieldIdx] = target;
         }
@@ -136,6 +131,8 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator allocato
         if (oldState == INVALID) {
             int flowfieldIdx = atomicAdd(&flowfieldsToComputeCount, 1);
             if (flowfieldIdx >= maxFlowfieldsPerFrame()) {
+                atomicCAS((int *)(&chunk.cachedFlowfields[info.target].state), int(MARKED),
+                          int(INVALID));
                 return;
             }
             flowfieldsToCompute[flowfieldIdx] = {info.chunk, info.target};
@@ -155,13 +152,20 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator allocato
 
     this->tileIds = tilesBuffer;
 
-    processRangeBlock(CHUNK_SIZE,
-                      [&](int cellId) { tilesBuffer[cellId] = uint8_t(chunk.get(cellId).tileId); });
-
     // Each block handles a flowfield
+    int32_t previousChunk = -1;
     for_blockwise(min(flowfieldsToComputeCount, maxFlowfieldsPerFrame()), [&](int bufferIdx) {
         auto target = flowfieldsToCompute[bufferIdx];
-        auto &chunk = map.getChunk(target.chunk);
+        auto &chunk = map.getChunk(target.chunkId);
+
+        // Move the tile ids to shared memory
+        if (previousChunk != target.chunkId) {
+            processRangeBlock(CHUNK_SIZE, [&](int cellId) {
+                tilesBuffer[cellId] = uint8_t(chunk.get(cellId).tileId);
+            });
+            previousChunk = target.chunkId;
+        }
+        block.sync();
 
         __shared__ int32_t savedFieldId;
         if (block.thread_rank() == 0) {
@@ -320,7 +324,7 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator allocato
     // Extract the paths
     processRange(pathfindingList.count, [&](int idx) {
         auto &info = pathfindingList.data[idx];
-        auto &chunk = info.chunk;
+        auto &chunk = map.getChunk(info.chunk);
         if (chunk.cachedFlowfields[info.target].state == VALID) {
             entities.get(info.entityIdx).path = extractPath(chunk, info);
         }

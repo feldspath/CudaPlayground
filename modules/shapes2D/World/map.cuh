@@ -76,6 +76,9 @@ public:
 
         return {chunkId, cellId};
     }
+    float2 getCellPosition(MapId &cell) const {
+        return getChunk(cell.chunkId).getCellPosition(cell.cellId);
+    }
 
     int2 cellCoords(MapId cell) const { return getChunk(cell.chunkId).cellCoords(cell.cellId); }
     MapId cellFromCoords(int2 coords) const {
@@ -144,8 +147,7 @@ public:
     }
 
     template <typename Function>
-    int32_t findClosestOnNetworkBlockwise(CellBuffer<MapId> &buffer, MapId cell,
-                                          Function &&filter) {
+    MapId findClosestOnNetworkBlockwise(CellBuffer<MapId> &buffer, MapId cell, Function &&filter) {
         auto block = cg::this_thread_block();
 
         __shared__ uint64_t targetCell;
@@ -174,9 +176,9 @@ public:
         block.sync();
 
         if (targetCell != uint64_t(Infinity) << 32ull) {
-            return targetCell & 0xffffffffull;
+            return {cell.chunkId, targetCell & 0xffffffffull};
         } else {
-            return -1;
+            return MapId::invalidId();
         }
     }
 };

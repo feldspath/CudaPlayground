@@ -22,9 +22,15 @@ struct MapId {
     int32_t cellId;
 
     inline bool valid() const { return chunkId != -1 && cellId != -1; }
+    void reset() {
+        chunkId = -1;
+        cellId = -1;
+    }
+
+    static MapId invalidId() { return {-1, -1}; }
 };
 
-bool operator==(const MapId &lhs, const MapId &rhs) {
+inline bool operator==(const MapId &lhs, const MapId &rhs) {
     return lhs.chunkId == rhs.chunkId && lhs.cellId == rhs.cellId;
 }
 
@@ -88,10 +94,6 @@ struct Chunk {
         return center;
     }
 
-    inline bool isCoordValid(int x, int y) const {
-        return x >= 0 && x < CHUNK_X && y >= 0 && y < CHUNK_Y;
-    }
-
     int cellAtPosition(float2 position) const {
         int x = floor(position.x / (CELL_RADIUS * 2.0f));
         int y = floor(position.y / (CELL_RADIUS * 2.0f));
@@ -107,12 +109,13 @@ struct Chunk {
     }
 
     inline int2 cellCoords(int cellId) const {
-        return int2{cellId % CHUNK_X, cellId / CHUNK_X} + offset;
+        return int2{cellId % CHUNK_X, cellId / CHUNK_X} +
+               make_int2(offset.x * CHUNK_X, offset.y * CHUNK_Y);
     }
 
     inline int idFromCoords(int x, int y) const {
-        int localX = x - offset.x;
-        int localY = y - offset.y;
+        int localX = x - offset.x * CHUNK_X;
+        int localY = y - offset.y * CHUNK_Y;
         if (!isCoordValid(localX, localY)) {
             return -1;
         }
@@ -195,5 +198,10 @@ struct Chunk {
 
     // Game logic
     void assignEntityToWorkplace(int houseId, int workplaceCellId);
+
+private:
+    inline bool isCoordValid(int x, int y) const {
+        return x >= 0 && x < CHUNK_X && y >= 0 && y < CHUNK_Y;
+    }
 #endif
 };
