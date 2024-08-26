@@ -550,7 +550,7 @@ void handleEvents(Map &map, Entities &entities) {
     });
 }
 
-void moveEntitiesBetter(Map &map, Entities &entities, Allocator *allocator, float gameDt) {
+void moveEntitiesBetter(Map &map, Entities &entities, Allocator &allocator, float gameDt) {
     auto grid = cg::this_grid();
     float dt = min(0.01f, gameDt);
     float cumul = 0.0f;
@@ -613,10 +613,10 @@ void updateGrid(Map &map, Entities &entities) {
     printDuration("assignShopWorkerToFactory   ",
                   [&]() { assignShopWorkerToFactory(map, entities); });
     printDuration("pathfinding                 ",
-                  [&]() { pathfindingManager->update(map.getChunk(0), entities, *allocator); });
+                  [&]() { pathfindingManager->update(map, entities, *allocator); });
     grid.sync();
     printDuration("moveEntitiesBetter           ", [&]() {
-        moveEntitiesBetter(map, entities, allocator, GameState::instance->gameTime.getDt());
+        moveEntitiesBetter(map, entities, *allocator, GameState::instance->gameTime.getDt());
     });
     grid.sync();
     printDuration("updateEntitiesState         ", [&]() { updateEntitiesState(map, entities); });

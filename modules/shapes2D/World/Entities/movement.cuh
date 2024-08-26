@@ -4,4 +4,4 @@
 #include "World/map.cuh"
 
 void fillCells(Map &map, Entities &entities);
-void moveEntities(Map &map, Entities &entities, Allocator *allocator, float dt);
+void moveEntities(Map &map, Entities &entities, Allocator allocator, float dt);

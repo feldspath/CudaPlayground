@@ -25,13 +25,6 @@ static unsigned int tileCost(TileId tile) {
     }
 }
 
-struct MapId {
-    uint32_t chunkId;
-    uint32_t cellId;
-
-    bool valid() const { return chunkId != -1 && cellId != -1; }
-};
-
 class Map {
 private:
     Chunk *chunks;

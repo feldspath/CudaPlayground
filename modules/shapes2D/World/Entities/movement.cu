@@ -37,17 +37,15 @@ void fillCells(Map &map, Entities &entities) {
     grid.sync();
 }
 
-void moveEntities(Map &map, Entities &entities, Allocator *allocator, float dt) {
+void moveEntities(Map &map, Entities &entities, Allocator allocator, float dt) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
     grid.sync();
 
-    // Saving allocator offset
-    int64_t allocatorOffset = allocator->offset;
     // Count entities to move
-    uint32_t &entitiesToMoveCount = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
-    uint32_t &bufferIdx = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
+    uint32_t &entitiesToMoveCount = *allocator.alloc<uint32_t *>(sizeof(uint32_t));
+    uint32_t &bufferIdx = *allocator.alloc<uint32_t *>(sizeof(uint32_t));
 
     if (grid.thread_rank() == 0) {
         entitiesToMoveCount = 0;
@@ -71,7 +69,7 @@ void moveEntities(Map &map, Entities &entities, Allocator *allocator, float dt) 
     }
 
     // Allocate buffer and store entities to move
-    uint32_t *entitiesToMove = allocator->alloc<uint32_t *>(sizeof(uint32_t) * entitiesToMoveCount);
+    uint32_t *entitiesToMove = allocator.alloc<uint32_t *>(sizeof(uint32_t) * entitiesToMoveCount);
     entities.processAllActive([&](int entityIdx) {
         Entity &entity = entities.get(entityIdx);
         if (entity.path.isValid()) {
@@ -194,7 +192,4 @@ void moveEntities(Map &map, Entities &entities, Allocator *allocator, float dt) 
             }
         }
     });
-
-    // Reset allocator offset
-    allocator->offset = allocatorOffset;
 }

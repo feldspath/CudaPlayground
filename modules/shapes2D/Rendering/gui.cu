@@ -1,10 +1,8 @@
 #include "common/helper_math.h"
-#include "common/utils.cuh"
+#include "gui.cuh"
 
 #include "HostDeviceInterface.h"
-#include "World/Entities/entities.cuh"
 #include "common/matrix_math.h"
-#include "gui.cuh"
 
 GUI::GUI(Framebuffer &framebuffer, TextRenderer &textRenderer, SpriteSheet &sprites, mat4 viewProj)
     : textRenderer(textRenderer), framebuffer(framebuffer), sprites(sprites), viewProj(viewProj),

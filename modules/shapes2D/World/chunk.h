@@ -17,6 +17,17 @@ enum FlowfieldState {
     MARKED = 2,
 };
 
+struct MapId {
+    int32_t chunkId;
+    int32_t cellId;
+
+    inline bool valid() const { return chunkId != -1 && cellId != -1; }
+};
+
+bool operator==(const MapId &lhs, const MapId &rhs) {
+    return lhs.chunkId == rhs.chunkId && lhs.cellId == rhs.cellId;
+}
+
 struct Flowfield {
     FlowfieldState state;
     uint8_t directions[CHUNK_SIZE];
@@ -25,7 +36,7 @@ struct Flowfield {
 struct IntegrationField {
     uint32_t distances[CHUNK_SIZE];
     uint32_t iterations[CHUNK_SIZE];
-    uint32_t target;
+    MapId target;
     bool ongoingComputation;
 };
 

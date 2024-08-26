@@ -2,6 +2,7 @@
 
 #include "common/utils.cuh"
 
+#include "World/Entities/entities.cuh"
 #include "World/map.cuh"
 #include "framebuffer.cuh"
 #include "sprite.cuh"

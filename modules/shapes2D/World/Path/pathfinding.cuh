@@ -3,6 +3,7 @@
 #include "World/map.cuh"
 
 struct PathfindingInfo {
+    uint32_t chunk;
     uint32_t entityIdx;
     uint32_t origin;
     uint32_t target;
@@ -23,7 +24,8 @@ public:
         : savedFields((IntegrationField *)savedFieldsBuffer) {}
 
     // Perform pathfinding
-    void update(Chunk &chunk, Entities &entities, Allocator &allocator);
+    // Passing a copy of the allocator so that its state is reset after computation
+    void update(Map &map, Entities &entities, Allocator allocator);
 
     void invalidateCache(Chunk &chunk) {
         chunk.invalidateCachedFlowfields();
@@ -33,8 +35,7 @@ public:
     static int maxFlowfieldsPerFrame() { return gridDim.x; };
 
 private:
-    PathfindingList locateLostEntities(Chunk &chunk, Entities &entities,
-                                       Allocator &allocator) const;
+    PathfindingList locateLostEntities(Map &map, Entities &entities, Allocator &allocator) const;
     inline bool isNeighborValid(Chunk &chunk, uint32_t cellId, uint32_t neighborId, int2 dirCoords,
                                 uint32_t targetId) const {
         if (neighborId != targetId && TileId(tileIds[neighborId]) != ROAD) {
