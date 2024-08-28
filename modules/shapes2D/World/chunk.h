@@ -109,8 +109,7 @@ struct Chunk {
     }
 
     inline int2 cellCoords(int cellId) const {
-        return int2{cellId % CHUNK_X, cellId / CHUNK_X} +
-               make_int2(offset.x * CHUNK_X, offset.y * CHUNK_Y);
+        return int2{cellId % CHUNK_X, cellId / CHUNK_X} + offset * int2{CHUNK_X, CHUNK_Y};
     }
 
     inline int idFromCoords(int x, int y) const {

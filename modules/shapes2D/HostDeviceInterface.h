@@ -164,6 +164,7 @@ public:
     // movement
     float2 position;
     float2 velocity;
+    float mult;
 
     // state logic
     MapId house;
@@ -198,6 +199,11 @@ public:
     __device__ void wait(uint32_t minutes) {
         active = false;
         waitStop = GameState::instance->gameTime + GameTime::fromMinutes(minutes);
+    }
+
+    __device__ void wait_s(uint32_t seconds) {
+        active = false;
+        waitStop = GameState::instance->gameTime + GameTime::fromSeconds(seconds);
     }
 
     __device__ void checkWaitStatus() {

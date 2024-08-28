@@ -119,6 +119,9 @@ public:
     static GameTime fromMinutes(uint32_t minutes) {
         return GameTime(minutes * REAL_SECONDS_PER_GAME_MIN);
     }
+    static GameTime fromSeconds(uint32_t seconds) {
+        return GameTime(float(seconds / 60.0f) * REAL_SECONDS_PER_GAME_MIN);
+    }
 
     bool operator<(const GameTime &other) { return realTime_s < other.realTime_s; }
     bool operator<=(const GameTime &other) { return realTime_s <= other.realTime_s; }

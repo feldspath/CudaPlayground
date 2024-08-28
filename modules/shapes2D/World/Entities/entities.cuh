@@ -1,4 +1,5 @@
 #pragma once
+#include <curand_kernel.h>
 
 #include "HostDeviceInterface.h"
 #include "World/map.cuh"
@@ -19,7 +20,7 @@ public:
 
     uint32_t getCount() { return *count; }
     uint32_t holes() { return *holesCount; }
-    uint32_t newEntity(float2 position, MapId house, MapId workplace);
+    uint32_t newEntity(float2 position, MapId house, MapId workplace, curandStateXORWOW_t &rng);
     Entity &get(uint32_t entityId) { return buffer[entityId]; }
     void remove(uint32_t entityId) {
         *((uint32_t *)(&buffer[MAX_ENTITY_COUNT]) - 1 - *holesCount) = entityId;

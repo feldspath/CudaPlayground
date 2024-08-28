@@ -21,8 +21,6 @@ Allocator *allocator;
 PathfindingManager *pathfindingManager;
 uint64_t nanotime_start;
 
-curandStateXORWOW_t thread_random_state;
-
 struct UpdateInfo {
     bool update;
     MapId cellToUpdate;
@@ -185,14 +183,15 @@ void updateCell(Map &map, Entities &entities, UpdateInfo updateInfo) {
     }
 }
 
-void assignHouseToWorkplace(Map &map, Entities &entities, MapId house, MapId workplace) {
-    int32_t newEntity = entities.newEntity(map.getCellPosition(house), house, workplace);
+void assignHouseToWorkplace(Map &map, Entities &entities, MapId house, MapId workplace,
+                            curandStateXORWOW_t &rng) {
+    int32_t newEntity = entities.newEntity(map.getCellPosition(house), house, workplace, rng);
 
     // TODO: change this to be map wise
     map.getChunk(house.chunkId).assignEntityToWorkplace(house.cellId, workplace.cellId);
 }
 
-void assignOneHouse(Map &map, Entities &entities) {
+void assignOneHouse(Map &map, Entities &entities, curandStateXORWOW_t &rng) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -228,7 +227,7 @@ void assignOneHouse(Map &map, Entities &entities) {
                                                            [&](MapId workplace) { return true; });
 
         if (block.thread_rank() == 0 && workplace.valid() && !atomicAdd(&assigned, 1)) {
-            assignHouseToWorkplace(map, entities, house, workplace);
+            assignHouseToWorkplace(map, entities, house, workplace, rng);
         }
     });
 }
@@ -298,7 +297,7 @@ void assignShopWorkerToFactory(Map &map, Entities &entities) {
 
 uint32_t currentTime_ms() { return uint32_t((nanotime_start / (uint64_t)1e6) & 0xffffffff); }
 
-void updateEntitiesState(Map &map, Entities &entities) {
+void updateEntitiesState(Map &map, Entities &entities, curandStateXORWOW_t &rng) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -401,6 +400,8 @@ void updateEntitiesState(Map &map, Entities &entities) {
         case Rest:
             if (workHours.contains(gameTime.timeOfDay())) {
                 entity.changeState(GoToWork);
+                uint32_t w = uint32_t(curand_uniform(&rng) * 30 * 60);
+                entity.wait_s(w);
             }
             break;
         case Shop: {
@@ -542,13 +543,14 @@ void handleEvents(Map &map, Entities &entities) {
     });
 }
 
-void moveEntitiesBetter(Map &map, Entities &entities, Allocator &allocator, float gameDt) {
+void moveEntitiesBetter(Map &map, Entities &entities, Allocator &allocator, float gameDt,
+                        curandStateXORWOW_t &rng) {
     auto grid = cg::this_grid();
     float dt = min(0.01f, gameDt);
     float cumul = 0.0f;
     int iterations = 0;
     do {
-        moveEntities(map, entities, allocator, dt);
+        moveEntities(map, entities, allocator, dt, rng);
         grid.sync();
         cumul += dt;
         dt = min(0.01f, gameDt - cumul);
@@ -582,7 +584,7 @@ template <typename Function> void printDuration(char *name, Function &&f) {
     }
 }
 
-void updateGrid(Map &map, Entities &entities) {
+void updateGrid(Map &map, Entities &entities, curandStateXORWOW_t &rng) {
     auto grid = cg::this_grid();
 
     nanotime_start = nanotime();
@@ -597,8 +599,11 @@ void updateGrid(Map &map, Entities &entities) {
     grid.sync();
     printDuration("fillCells                   ", [&]() { fillCells(map, entities); });
     grid.sync();
+    printDuration("updateEntitiesState         ",
+                  [&]() { updateEntitiesState(map, entities, rng); });
+    grid.sync();
     printDuration("handleEvents                ", [&]() { handleEvents(map, entities); });
-    printDuration("assignOneHouse              ", [&]() { assignOneHouse(map, entities); });
+    printDuration("assignOneHouse              ", [&]() { assignOneHouse(map, entities, rng); });
     grid.sync();
     printDuration("assignOneCustomerToShop     ",
                   [&]() { assignOneCustomerToShop(map, entities); });
@@ -608,11 +613,10 @@ void updateGrid(Map &map, Entities &entities) {
                   [&]() { pathfindingManager->update(map, entities, *allocator); });
     grid.sync();
     printDuration("moveEntitiesBetter           ", [&]() {
-        moveEntitiesBetter(map, entities, *allocator, GameState::instance->gameTime.getDt());
+        moveEntities(map, entities, *allocator, GameState::instance->gameTime.getDt(), rng);
     });
     grid.sync();
-    printDuration("updateEntitiesState         ", [&]() { updateEntitiesState(map, entities); });
-    grid.sync();
+
     //// printDuration("entitiesInteractions        ", [&]() { entitiesInteractions(map, entities);
     //// });
     printDuration("updateGameState             ", [&]() { updateGameState(entities); });
@@ -631,8 +635,10 @@ extern "C" __global__ void update(GameData _gameData) {
     PathfindingManager _pathfindingManager(gameData.savedFieldsBuffer);
     pathfindingManager = &_pathfindingManager;
 
-    curand_init(grid.thread_rank() + GameState::instance->currentTime_ms, 0, 0,
-                &thread_random_state);
+    curandStateXORWOW_t thread_random_state;
+    curand_init(grid.thread_rank(), GameState::instance->currentTime_ms, 0, &thread_random_state);
+
+    skipahead(grid.thread_rank(), &thread_random_state);
 
     grid.sync();
 
@@ -643,6 +649,6 @@ extern "C" __global__ void update(GameData _gameData) {
         Entities *entities = allocator->alloc<Entities *>(sizeof(Entities));
         *entities = Entities(gameData.entitiesBuffer);
 
-        updateGrid(*map, *entities);
+        updateGrid(*map, *entities, thread_random_state);
     }
 }

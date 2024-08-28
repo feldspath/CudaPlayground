@@ -1,7 +1,8 @@
 #include "./../common/utils.cuh"
 #include "entities.cuh"
 
-uint32_t Entities::newEntity(float2 position, MapId house, MapId workplace) {
+uint32_t Entities::newEntity(float2 position, MapId house, MapId workplace,
+                             curandStateXORWOW_t &rng) {
     int32_t id;
     if (*holesCount == 0) {
         id = getCount();
@@ -23,6 +24,7 @@ uint32_t Entities::newEntity(float2 position, MapId house, MapId workplace) {
     entity.active = true;
     entity.disabled = false;
     entity.inventory = 0;
+    entity.mult = curand_uniform(&rng);
 
     return id;
 }

@@ -37,7 +37,8 @@ void fillCells(Map &map, Entities &entities) {
     grid.sync();
 }
 
-void moveEntities(Map &map, Entities &entities, Allocator allocator, float dt) {
+void moveEntities(Map &map, Entities &entities, Allocator allocator, float dt,
+                  curandStateXORWOW_t &rng) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -91,33 +92,47 @@ void moveEntities(Map &map, Entities &entities, Allocator allocator, float dt) {
 
         // Compute repulsive force of other entities
         auto &chunk = map.getChunk(cell.chunkId);
-        chunk.extendedNeighborCells(cell.cellId).forEach([&](int neighborId) {
-            for (int k = 0; k < ENTITIES_PER_CELL; ++k) {
-                int otherIdx = chunk.get(neighborId).entities[k];
-                if (otherIdx == -1) {
-                    break;
-                }
-                if (otherIdx == idx) {
+        int2 coords = chunk.cellCoords(cell.cellId);
+        for (int i = -1; i < 1; i++) {
+            for (int j = -1; j < 1; j++) {
+                auto neighborCell = chunk.idFromCoords({coords.x + i, coords.y + j});
+                if (neighborCell == -1) {
                     continue;
                 }
+                for (int k = 0; k < ENTITIES_PER_CELL; ++k) {
+                    int otherIdx = chunk.get(neighborCell).entities[k];
+                    if (otherIdx == -1) {
+                        break;
+                    }
+                    if (otherIdx == entitiesToMove[idx]) {
+                        continue;
+                    }
 
-                Entity &other = entities.get(otherIdx);
+                    Entity &other = entities.get(otherIdx);
 
-                float2 diffVector = entity.position - other.position;
-                float norm = length(diffVector);
-                if (norm < 1e-12) {
-                    continue;
-                }
-                if (norm < KERNEL_RADIUS) {
-                    forces += diffVector / norm * powf((KERNEL_RADIUS - norm), 3.0) *
-                              REPULSIVE_STRENGTH * pressure_normalization;
+                    float2 diffVector = entity.position - other.position;
+                    float norm = length(diffVector);
+                    if (norm < 1e-12) {
+                        continue;
+                    }
+                    if (norm < KERNEL_RADIUS) {
+                        float otherMult = 1.0f + 0.5f * (other.mult - 0.5f);
+                        forces += diffVector / norm * powf((KERNEL_RADIUS - norm), 3.0) *
+                                  REPULSIVE_STRENGTH * pressure_normalization * otherMult;
+                    }
                 }
             }
-        });
+        }
 
         // Stirring force
         Direction nextDir = entity.path.nextDir();
         float2 dirVector = directionFromEnum(nextDir);
+
+        float angle = (curand_uniform(&rng) - 0.5f) * 3.141592 / 4;
+        float c = cos(angle);
+        float s = sin(angle);
+        dirVector = {dirVector.x * c - dirVector.y * s, dirVector.x * s + dirVector.y * c};
+
         forces += normalize(dirVector) * STIR_STRENGTH;
         forces -= DAMPING_STRENGTH * entity.velocity;
 
@@ -125,8 +140,10 @@ void moveEntities(Map &map, Entities &entities, Allocator allocator, float dt) {
 
         // Clamp velocity
         float velocityNorm = length(entity.velocity);
-        if (velocityNorm > ENTITY_SPEED) {
-            entity.velocity = entity.velocity / velocityNorm * ENTITY_SPEED;
+        float mult = 1.0f + 0.3f * (entity.mult - 0.5f);
+        float maxSpeed = mult * ENTITY_SPEED;
+        if (velocityNorm > maxSpeed) {
+            entity.velocity = entity.velocity / velocityNorm * maxSpeed;
         }
     });
 
