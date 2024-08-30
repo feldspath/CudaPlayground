@@ -184,11 +184,12 @@ public:
     // Waiting logic
     GameTime waitStop;
 
-    __device__ inline bool isLost() { return destination.valid() && !path.isValid(); }
+#ifdef __CUDACC__
+    inline bool isLost() { return destination.valid() && !path.isValid(); }
 
-    __device__ void resetStateStart() { stateStart = GameState::instance->gameTime; }
+    void resetStateStart() { stateStart = GameState::instance->gameTime; }
 
-    __device__ void changeState(EntityState newState) {
+    void changeState(EntityState newState) {
         path.reset();
         resetStateStart();
         destination = {-1, -1};
@@ -196,24 +197,23 @@ public:
         state = newState;
     }
 
-    __device__ void wait(uint32_t minutes) {
+    void wait(uint32_t minutes) {
         active = false;
         waitStop = GameState::instance->gameTime + GameTime::fromMinutes(minutes);
     }
 
-    __device__ void wait_s(uint32_t seconds) {
+    void wait_s(uint32_t seconds) {
         active = false;
         waitStop = GameState::instance->gameTime + GameTime::fromSeconds(seconds);
     }
 
-    __device__ void checkWaitStatus() {
+    void checkWaitStatus() {
         if (waitStop <= GameState::instance->gameTime) {
             active = true;
         }
     }
+#endif
 };
-
-static int BYTES_PER_ENTITY = sizeof(Entity);
 
 struct GameData {
     Uniforms uniforms;    // Args passed form host to device every frame

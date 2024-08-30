@@ -63,7 +63,7 @@ void saveMap() {
     Buffer chunks(numChunks * sizeof(Chunk));
     cuMemcpyDtoH(chunks.data, cptr_chunk, chunks.size);
 
-    Buffer entities(sizeof(uint32_t) + MAX_ENTITY_COUNT * (BYTES_PER_ENTITY));
+    Buffer entities(sizeof(uint32_t) + MAX_ENTITY_COUNT * sizeof(Entity));
     cuMemcpyDtoH(entities.data, cptr_entities, entities.size);
 
     GameState state;
@@ -93,7 +93,7 @@ void loadMap() {
     int numChunks = chunksRows * chunksCols;
 
     Buffer chunks(numChunks * sizeof(Chunk));
-    Buffer entities(sizeof(uint32_t) + MAX_ENTITY_COUNT * (BYTES_PER_ENTITY));
+    Buffer entities(sizeof(uint32_t) + MAX_ENTITY_COUNT * sizeof(Entity));
     GameState state;
 
     int64_t offsetGridCells = 0;
@@ -321,7 +321,7 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
                  savedFields.size() * sizeof(IntegrationField));
 
     // Entities
-    cuMemAlloc(&cptr_entities, 2 * sizeof(uint32_t) + MAX_ENTITY_COUNT * BYTES_PER_ENTITY);
+    cuMemAlloc(&cptr_entities, 2 * sizeof(uint32_t) + MAX_ENTITY_COUNT * sizeof(Entity));
     uint32_t init[2] = {0, 0};
     cuMemcpyHtoD(cptr_entities, init, 2 * sizeof(uint32_t));
 
