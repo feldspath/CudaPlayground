@@ -166,23 +166,25 @@ public:
 
         block.sync();
 
-        // auto &chunk = getChunk(cell.chunkId);
-        // auto cellNets = chunk.neighborNetworks(cell.cellId);
-        // int2 cellCoords = chunk.cellCoords(cell.cellId);
+        auto cellNets = neighborNetworks(cell);
+        int2 originCoords = cellCoords(cell);
 
-        // buffer.processEachCellBlock([&](MapId other) {
-        //     auto targetNets = chunk.neighborNetworks(other.cellId);
-        //     if (chunk.sharedNetworks(cellNets, targetNets).data[0] != -1 && filter(other)) {
-        //         int2 targetCoords = chunk.cellCoords(other.cellId);
-        //         int2 diff = targetCoords - cellCoords;
-        //         uint32_t distance = abs(diff.x) + abs(diff.y);
-        //         uint64_t target = (uint64_t(distance) << 32ull) | uint64_t(other.cellId);
-        //         // keep the closest
-        //         atomicMin(&targetCell, target);
-        //     }
-        // });
+        buffer.processEachCellBlock([&](MapId other) {
+            if (other.chunkId != cell.chunkId || !filter(other)) {
+                return;
+            }
+            auto targetNets = neighborNetworks(other);
+            if (sharedNetworks(cellNets, targetNets).data[0] != -1) {
+                int2 targetCoords = cellCoords(other);
+                int2 diff = targetCoords - originCoords;
+                uint32_t distance = abs(diff.x) + abs(diff.y);
+                uint64_t target = (uint64_t(distance) << 32ull) | uint64_t(other.cellId);
+                // keep the closest
+                atomicMin(&targetCell, target);
+            }
+        });
 
-        // block.sync();
+        block.sync();
 
         if (targetCell != uint64_t(Infinity) << 32ull) {
             return MapId(cell.chunkId, int32_t(targetCell & 0xffffffffull));
@@ -226,7 +228,7 @@ public:
         return result;
     }
 
-    MapNeighbors sharedNetworks(MapId cell1, int cell2) {
+    MapNeighbors sharedNetworks(MapId cell1, MapId cell2) {
         MapNeighbors nets1 = neighborNetworks(cell1);
         MapNeighbors nets2 = neighborNetworks(cell2);
         return sharedNetworks(nets1, nets2);

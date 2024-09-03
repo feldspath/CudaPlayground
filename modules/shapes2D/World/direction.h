@@ -41,7 +41,7 @@ template <typename T, size_t SIZE> struct NeighborInfo {
 
     T getDir(Direction dir) const { return data[static_cast<int32_t>(dir)]; }
 
-    NeighborInfo() { set(-1); }
+    NeighborInfo() { set(T(-1)); }
 
     static constexpr size_t size() { return SIZE; }
 
@@ -49,7 +49,7 @@ template <typename T, size_t SIZE> struct NeighborInfo {
     template <typename Function> NeighborInfo<T, SIZE> apply(Function &&f) const {
         NeighborInfo<T, SIZE> result;
         for (int i = 0; i < SIZE; ++i) {
-            if (data[i] == -1) {
+            if (data[i] == T(-1)) {
                 continue;
             }
             result.data[i] = f(data[i]);
@@ -60,7 +60,7 @@ template <typename T, size_t SIZE> struct NeighborInfo {
     template <typename Function> NeighborInfo<T, SIZE> applyDir(Function &&f) const {
         NeighborInfo<T, SIZE> result;
         for (int i = 0; i < SIZE; ++i) {
-            if (data[i] == -1) {
+            if (data[i] == T(-1)) {
                 continue;
             }
             result.data[i] = f(Direction(i), data[i]);
@@ -71,7 +71,7 @@ template <typename T, size_t SIZE> struct NeighborInfo {
     // Run f to every value in data that is not -1
     template <typename Function> void forEach(Function &&f) const {
         for (int i = 0; i < SIZE; ++i) {
-            if (data[i] == -1) {
+            if (data[i] == T(-1)) {
                 continue;
             }
             f(data[i]);
@@ -80,7 +80,7 @@ template <typename T, size_t SIZE> struct NeighborInfo {
 
     template <typename Function> void forEachDir(Function &&f) const {
         for (int i = 0; i < SIZE; ++i) {
-            if (data[i] == -1) {
+            if (data[i] == T(-1)) {
                 continue;
             }
             f(Direction(i), data[i]);
@@ -90,7 +90,7 @@ template <typename T, size_t SIZE> struct NeighborInfo {
     template <typename U, typename Function> NeighborInfo<U, SIZE> convert(Function &&f) const {
         NeighborInfo<U, SIZE> result;
         for (int i = 0; i < SIZE; ++i) {
-            if (data[i] == -1) {
+            if (data[i] == T(-1)) {
                 continue;
             }
             result.data[i] = f(data[i]);
@@ -113,7 +113,7 @@ template <typename T, size_t SIZE> struct NeighborInfo {
     T min() {
         T minValue = T(Infinity);
         for (int i = 0; i < SIZE; ++i) {
-            if (data[i] == -1) {
+            if (data[i] == T(-1)) {
                 continue;
             }
             if (data[i] < minValue) {
@@ -125,7 +125,7 @@ template <typename T, size_t SIZE> struct NeighborInfo {
 
     template <typename Function> bool oneTrue(Function &&f) const {
         for (int i = 0; i < SIZE; ++i) {
-            if (data[i] == -1) {
+            if (data[i] == T(-1)) {
                 continue;
             }
             if (f(data[i])) {

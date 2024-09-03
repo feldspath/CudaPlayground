@@ -30,12 +30,12 @@ PathfindingList PathfindingManager::locateLostEntities(Map &map, Entities &entit
         if (entity.isLost()) {
             // TODO: support target and origin in different chunks
             auto target = entity.destination;
-            MapId origin = map.cellAtPosition(entity.position);
+            auto origin = map.cellAtPosition(entity.position);
             if (!origin.valid()) {
                 return;
             }
             auto &chunk = map.getChunk(origin.chunkId);
-            if (map.sharedNetworks(origin.cellId, target.cellId).data[0] == -1) {
+            if (!map.sharedNetworks(origin, target).data[0].valid()) {
                 printf("Error: entity %d cannot reach its destination. Placing it back at home.\n",
                        entityIndex);
                 entity.position = map.getCellPosition(entity.house);
@@ -218,12 +218,10 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator allocato
             // The field is split accross the threads of the block
             for (int currentCellId = block.thread_rank(); currentCellId < CHUNK_SIZE;
                  currentCellId += block.size()) {
-                if (currentCellId >= CHUNK_SIZE) {
-                    return;
-                }
-
                 // Check if cell is reachable
-                if (map.sharedNetworks(currentCellId, target.cellId).data[0] == -1) {
+                if (!map.sharedNetworks(MapId(target.chunkId, currentCellId), target)
+                         .data[0]
+                         .valid()) {
                     continue;
                 }
 

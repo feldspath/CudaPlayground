@@ -300,12 +300,12 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
     for (int i = 0; i < chunksRows; i++) {
         for (int j = 0; j < chunksCols; j++) {
             auto &chunk = chunks[j * chunksCols + i];
+            chunk.offset = {i, j};
             for (int y = 0; y < CHUNK_X; ++y) {
                 for (int x = 0; x < CHUNK_Y; ++x) {
                     int cellId = y * CHUNK_X + x;
                     chunk.cells[cellId].cell.tileId = GRASS;
                     chunk.cachedFlowfields[cellId].state = INVALID;
-                    chunk.offset = {i, j};
                 }
             }
         }

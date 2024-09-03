@@ -41,14 +41,14 @@ struct ALIGN(8) MapId {
         chunkId = -1;
         cellId = -1;
     }
-    MapId(int32_t chunkId, int32_t cellId = -1) {
+    MapId(int32_t chunkId) {
         if (chunkId == -1) {
             MapId();
         } else {
-            this->chunkId = chunkId;
-            this->cellId = cellId;
+            printf("Wrong use of MapId constructor");
         }
     }
+    MapId(int32_t chunkId, int32_t cellId) : chunkId(chunkId), cellId(cellId) {}
 
     int64_t &as_int64() { return *(int64_t *)(&chunkId); }
 
