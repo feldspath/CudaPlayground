@@ -1,13 +1,14 @@
 #include <cooperative_groups.h>
 #include <curand_kernel.h>
 
+#include "common/utils.cuh"
+
 #include "HostDeviceInterface.h"
 #include "World/Entities/entities.cuh"
 #include "World/map.cuh"
 #include "builtin_types.h"
 #include "common/helper_math.h"
 #include "common/matrix_math.h"
-#include "common/utils.cuh"
 #include "framebuffer.cuh"
 #include "gui.cuh"
 #include "sprite.cuh"
@@ -110,7 +111,7 @@ void rasterizeGrid(Map &map, Entities *entities, SpriteSheet sprites, Framebuffe
                 if (tileId == HOUSE) {
                     colorId = 0;
                 } else if (tileId == ROAD) {
-                    colorId = chunk.roadNetworkRepr(sh_cellIndex);
+                    colorId = map.getTyped<RoadCell>(cell).networkRepr.cellId;
                 } else {
                     colorId = sh_cellIndex;
                 }

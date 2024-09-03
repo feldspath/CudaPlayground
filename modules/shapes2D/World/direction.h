@@ -87,6 +87,17 @@ template <typename T, size_t SIZE> struct NeighborInfo {
         }
     }
 
+    template <typename U, typename Function> NeighborInfo<U, SIZE> convert(Function &&f) const {
+        NeighborInfo<U, SIZE> result;
+        for (int i = 0; i < SIZE; ++i) {
+            if (data[i] == -1) {
+                continue;
+            }
+            result.data[i] = f(data[i]);
+        }
+        return result;
+    }
+
     template <typename Function> void setDir(Function &&f) {
         for (int i = 0; i < SIZE; ++i) {
             data[i] = f(Direction(i));

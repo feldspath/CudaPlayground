@@ -97,6 +97,15 @@ public:
         });
     }
 
+    template <typename Function> void processEachCell(TileId filter, Function &&f) {
+        // Each block handles a chunk
+        for_blockwise(count, [&](int chunkId) {
+            // Each thread in the block handles a cell
+            getChunk(chunkId).processEachCellBlock(filter,
+                                                   [&](int cellId) { f(MapId(chunkId, cellId)); });
+        });
+    }
+
     // Buffers
     // TODO: cells in order of chunkId
     template <typename Function>
@@ -157,28 +166,157 @@ public:
 
         block.sync();
 
-        auto &chunk = getChunk(cell.chunkId);
-        auto cellNets = chunk.neighborNetworks(cell.cellId);
-        int2 cellCoords = chunk.cellCoords(cell.cellId);
+        // auto &chunk = getChunk(cell.chunkId);
+        // auto cellNets = chunk.neighborNetworks(cell.cellId);
+        // int2 cellCoords = chunk.cellCoords(cell.cellId);
 
-        buffer.processEachCellBlock([&](MapId other) {
-            auto targetNets = chunk.neighborNetworks(other.cellId);
-            if (chunk.sharedNetworks(cellNets, targetNets).data[0] != -1 && filter(other)) {
-                int2 targetCoords = chunk.cellCoords(other.cellId);
-                int2 diff = targetCoords - cellCoords;
-                uint32_t distance = abs(diff.x) + abs(diff.y);
-                uint64_t target = (uint64_t(distance) << 32ull) | uint64_t(other.cellId);
-                // keep the closest
-                atomicMin(&targetCell, target);
-            }
-        });
+        // buffer.processEachCellBlock([&](MapId other) {
+        //     auto targetNets = chunk.neighborNetworks(other.cellId);
+        //     if (chunk.sharedNetworks(cellNets, targetNets).data[0] != -1 && filter(other)) {
+        //         int2 targetCoords = chunk.cellCoords(other.cellId);
+        //         int2 diff = targetCoords - cellCoords;
+        //         uint32_t distance = abs(diff.x) + abs(diff.y);
+        //         uint64_t target = (uint64_t(distance) << 32ull) | uint64_t(other.cellId);
+        //         // keep the closest
+        //         atomicMin(&targetCell, target);
+        //     }
+        // });
 
-        block.sync();
+        // block.sync();
 
         if (targetCell != uint64_t(Infinity) << 32ull) {
-            return {cell.chunkId, targetCell & 0xffffffffull};
+            return MapId(cell.chunkId, int32_t(targetCell & 0xffffffffull));
         } else {
             return MapId::invalidId();
         }
+    }
+
+    // Util functions
+    MapNeighbors neighborCells(MapId cell) const {
+        int2 coords = cellCoords(cell);
+        MapNeighbors result;
+        result.setDir([&](Direction dir) {
+            int2 dirCoord = coordFromEnum(dir);
+            return cellFromCoords({coords.x + dirCoord.x, coords.y + dirCoord.y});
+        });
+        return result;
+    }
+
+    // Network functions
+    MapNeighbors neighborNetworks(MapId cell) {
+        auto neighbors = neighborCells(cell);
+        return neighbors.apply([&](MapId neighborCell) {
+            if (get(neighborCell).tileId == ROAD) {
+                return getTyped<RoadCell>(neighborCell).networkRepr;
+            } else {
+                return MapId::invalidId();
+            }
+        });
+    }
+
+    MapNeighbors sharedNetworks(MapNeighbors nets1, MapNeighbors nets2) {
+        MapNeighbors result;
+        int count = 0;
+        nets1.forEach([&](MapId networkRepr) {
+            if (nets2.contains(networkRepr)) {
+                result.data[count] = networkRepr;
+                count++;
+            }
+        });
+        return result;
+    }
+
+    MapNeighbors sharedNetworks(MapId cell1, int cell2) {
+        MapNeighbors nets1 = neighborNetworks(cell1);
+        MapNeighbors nets2 = neighborNetworks(cell2);
+        return sharedNetworks(nets1, nets2);
+    }
+
+    int flattenMapId(MapId mapId) { return mapId.chunkId * CHUNK_SIZE + mapId.cellId; }
+    MapId unflattenMapId(int flattenedId) {
+        return MapId(flattenedId / CHUNK_SIZE, flattenedId % CHUNK_SIZE);
+    }
+
+    void updateNetworkComponents(MapId invalidNetwork, Allocator allocator) {
+        auto grid = cg::this_grid();
+        auto block = cg::this_thread_block();
+
+        bool *validCells = allocator.alloc<bool *>(sizeof(bool) * CHUNK_SIZE * getCount());
+
+        // reset invalid network
+        processEachCell(ROAD, [&](MapId cell) {
+            auto &c = getTyped<RoadCell>(cell);
+            int id = flattenMapId(cell);
+            if (c.networkRepr == invalidNetwork) {
+                c.networkRepr = cell;
+                validCells[id] = false;
+            } else {
+                validCells[id] = true;
+            }
+        });
+        grid.sync();
+
+        if (grid.thread_rank() == 0) {
+            printf("so far so good\n");
+        }
+
+        grid.sync();
+
+        // recompute connected components
+        // https://largo.lip6.fr/~lacas/Publications/IPTA17.pdf
+        bool &changed = *allocator.alloc<bool *>(sizeof(bool));
+        for (int i = 0; i < 10; ++i) {
+            if (grid.thread_rank() == 0) {
+                changed = false;
+            }
+            grid.sync();
+            processEachCell(ROAD, [&](MapId cell) {
+                if (validCells[flattenMapId(cell)]) {
+                    return;
+                }
+
+                int64_t m = -1;
+                auto neighbors = neighborNetworks(cell);
+                for (int i = 0; i < 4; ++i) {
+                    if (!neighbors.data[i].valid()) {
+                        continue;
+                    }
+                    if (m == -1) {
+                        m = neighbors.data[i].as_int64();
+                    } else {
+                        m = min(neighbors.data[i].as_int64(), m);
+                    }
+                }
+                if (m == -1) {
+                    return;
+                }
+
+                auto &repr = getTyped<RoadCell>(cell).networkRepr;
+                int64_t old = atomicMin(&getTyped<RoadCell>(repr).networkRepr.as_int64(), m);
+                if (m < old) {
+                    changed = true;
+                }
+            });
+            grid.sync();
+            if (!changed) {
+                // if (grid.thread_rank() == 0) {
+                //     printf("ended in %d iterations\n", i);
+                // }
+                break;
+            }
+            processEachCell(ROAD, [&](MapId cell) {
+                if (validCells[flattenMapId(cell)]) {
+                    return;
+                }
+                auto &cellTile = getTyped<RoadCell>(cell);
+                auto &network = cellTile.networkRepr;
+                while (network != getTyped<RoadCell>(network).networkRepr) {
+                    network = getTyped<RoadCell>(network).networkRepr;
+                }
+                cellTile.networkRepr = network;
+            });
+        }
+
+        grid.sync();
     }
 };

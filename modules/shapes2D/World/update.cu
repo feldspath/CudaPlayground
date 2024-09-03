@@ -59,20 +59,21 @@ void updateCell(Map &map, Entities &entities, UpdateInfo updateInfo) {
         pathfindingManager->invalidateCache(chunk);
         entities.processAllActive([&](int entityId) { entities.get(entityId).path.reset(); });
 
-        int *neighborNetworks = allocator->alloc<int *>(sizeof(int) * Neighbors::size());
+        auto *neighborNetworks = allocator->alloc<MapId *>(sizeof(MapId) * Neighbors::size());
         if (grid.thread_rank() == 0) {
             // check nearby tiles.
-            auto neighbors = chunk.neighborCells(cellId);
+            auto neighbors = map.neighborCells(cellToUpdate);
 
             for (int i = 0; i < Neighbors::size(); i++) {
-                int nId = neighbors.data[i];
+                auto &neighbor = neighbors.data[i];
                 // if one tile is a road, update the connected components
-                if (nId != -1 && chunk.get(nId).tileId == ROAD) {
-                    int repr = chunk.roadNetworkRepr(nId);
+                if (neighbor.valid() && map.get(neighbor).tileId == ROAD) {
+                    auto &repr = map.getTyped<RoadCell>(neighbor).networkRepr;
+                    auto &reprRoad = map.getTyped<RoadCell>(repr);
                     // Skip the tile if it was already updated this frame
-                    if (chunk.roadNetworkRepr(repr) == repr) {
+                    if (reprRoad.networkRepr == repr) {
                         neighborNetworks[i] = repr;
-                        chunk.roadNetworkRepr(repr) = cellId;
+                        reprRoad.networkRepr = cellToUpdate;
                         continue;
                     }
                 }
@@ -80,17 +81,18 @@ void updateCell(Map &map, Entities &entities, UpdateInfo updateInfo) {
             }
 
             // Init the new road tile
-            chunk.roadNetworkRepr(cellId) = cellId;
+            map.getTyped<RoadCell>(cellToUpdate).networkRepr = cellToUpdate;
         }
 
         grid.sync();
 
         // Flatten network
-        chunk.processEachCell(ROAD, [&](int otherCellId) {
+        map.processEachCell(ROAD, [&](auto otherCellId) {
             int neighborId = -1;
+            auto &neighborCell = map.getTyped<RoadCell>(otherCellId);
             for (int i = 0; i < Neighbors::size(); ++i) {
-                int network = neighborNetworks[i];
-                if (chunk.roadNetworkRepr(otherCellId) == network || otherCellId == network) {
+                auto &network = neighborNetworks[i];
+                if (neighborCell.networkRepr == network || otherCellId == network) {
                     neighborId = i;
                     break;
                 }
@@ -99,7 +101,7 @@ void updateCell(Map &map, Entities &entities, UpdateInfo updateInfo) {
                 return;
             }
 
-            chunk.roadNetworkRepr(otherCellId) = cellId;
+            map.getTyped<RoadCell>(otherCellId).networkRepr = cellToUpdate;
         });
         break;
     }
@@ -156,17 +158,19 @@ void updateCell(Map &map, Entities &entities, UpdateInfo updateInfo) {
         }
         case ROAD: {
             // reset the entities path on this network
-            int invalidNetwork = chunk.roadNetworkRepr(cellId);
+            auto &invalidNetwork = map.getTyped<RoadCell>(cellToUpdate).networkRepr;
             entities.processAll([&](int entityId) {
                 auto &entity = entities.get(entityId);
-                if (chunk.roadNetworkRepr(chunk.cellAtPosition(entity.position)) ==
-                    invalidNetwork) {
+                auto entityCellId = map.cellAtPosition(entity.position);
+                auto &entityCell = map.get(entityCellId);
+                if (entityCell.tileId == ROAD &&
+                    map.getTyped<RoadCell>(entityCellId).networkRepr == invalidNetwork) {
                     entity.path.reset();
                 }
             });
 
             // recompute relevant network
-            chunk.updateNetworkComponents(invalidNetwork, *allocator);
+            map.updateNetworkComponents(invalidNetwork, *allocator);
 
             // invalidate pathfinding cache in this chunk
             pathfindingManager->invalidateCache(chunk);

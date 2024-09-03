@@ -167,10 +167,10 @@ void moveEntities(Map &map, Entities &entities, Allocator allocator, float dt,
         // check each side of the entity for wall collision
         neighborCells.forEachDir([&](Direction direction, uint32_t cellId) {
             // no collision with roads, house, workplace, shops, and destination
-            MapId neighbor{previousCell.chunkId, cellId};
+            MapId neighbor(previousCell.chunkId, cellId);
             TileId tile = chunk.get(cellId).tileId;
-            if ((tile == ROAD && chunk.neighborNetworks(entity.destination.cellId)
-                                     .contains(chunk.roadNetworkRepr(cellId))) ||
+            if ((tile == ROAD && map.neighborNetworks(entity.destination)
+                                     .contains(map.getTyped<RoadCell>(neighbor).networkRepr)) ||
                 tile == SHOP || neighbor == entity.workplace || neighbor == entity.house ||
                 neighbor == entity.destination) {
                 return;

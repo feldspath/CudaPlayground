@@ -35,8 +35,7 @@ PathfindingList PathfindingManager::locateLostEntities(Map &map, Entities &entit
                 return;
             }
             auto &chunk = map.getChunk(origin.chunkId);
-            if (map.getChunk(origin.chunkId).sharedNetworks(origin.cellId, target.cellId).data[0] ==
-                -1) {
+            if (map.sharedNetworks(origin.cellId, target.cellId).data[0] == -1) {
                 printf("Error: entity %d cannot reach its destination. Placing it back at home.\n",
                        entityIndex);
                 entity.position = map.getCellPosition(entity.house);
@@ -135,7 +134,7 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator allocato
                           int(INVALID));
                 return;
             }
-            flowfieldsToCompute[flowfieldIdx] = {info.chunk, info.target};
+            flowfieldsToCompute[flowfieldIdx] = MapId(info.chunk, info.target);
         }
     });
 
@@ -224,7 +223,7 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator allocato
                 }
 
                 // Check if cell is reachable
-                if (chunk.sharedNetworks(currentCellId, target.cellId).data[0] == -1) {
+                if (map.sharedNetworks(currentCellId, target.cellId).data[0] == -1) {
                     continue;
                 }
 

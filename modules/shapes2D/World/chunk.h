@@ -17,23 +17,6 @@ enum FlowfieldState {
     MARKED = 2,
 };
 
-struct MapId {
-    int32_t chunkId;
-    int32_t cellId;
-
-    inline bool valid() const { return chunkId != -1 && cellId != -1; }
-    void reset() {
-        chunkId = -1;
-        cellId = -1;
-    }
-
-    static MapId invalidId() { return {-1, -1}; }
-};
-
-inline bool operator==(const MapId &lhs, const MapId &rhs) {
-    return lhs.chunkId == rhs.chunkId && lhs.cellId == rhs.cellId;
-}
-
 struct Flowfield {
     FlowfieldState state;
     uint8_t directions[CHUNK_SIZE];
@@ -129,44 +112,11 @@ struct Chunk {
     BaseCell &get(int cellId) { return cells[cellId].cell; }
     const BaseCell &get(int cellId) const { return cells[cellId].cell; }
 
-    // ROAD DATA
-    // We assume that the network is flattened
-    int32_t &roadNetworkRepr(int cellId) { return getTyped<RoadCell>(cellId).networkRepr; }
-
     // WORKPLACE DATA
     bool isWorkplace(int cellId) const { return get(cellId).tileId & (SHOP | FACTORY); }
 
     // Network logic
     void updateNetworkComponents(int invalidNetwork, Allocator &allocator);
-
-    Neighbors neighborNetworks(int cellId) {
-        auto neighbors = neighborCells(cellId);
-        return neighbors.apply([&](int neighborCellId) {
-            if (get(neighborCellId).tileId == ROAD) {
-                return roadNetworkRepr(neighborCellId);
-            } else {
-                return -1;
-            }
-        });
-    }
-
-    Neighbors sharedNetworks(Neighbors nets1, Neighbors nets2) {
-        Neighbors result;
-        int count = 0;
-        nets1.forEach([&](int network) {
-            if (nets2.contains(network)) {
-                result.data[count] = network;
-                count++;
-            }
-        });
-        return result;
-    }
-
-    Neighbors sharedNetworks(int cellId1, int cellId2) {
-        Neighbors nets1 = neighborNetworks(cellId1);
-        Neighbors nets2 = neighborNetworks(cellId2);
-        return sharedNetworks(nets1, nets2);
-    }
 
     // Util functions
     Neighbors neighborCells(int cellId) {

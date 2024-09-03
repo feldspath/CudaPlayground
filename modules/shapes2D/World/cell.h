@@ -3,6 +3,17 @@
 #include "builtin_types.h"
 
 #include "config.h"
+#include "direction.h"
+
+#if defined(__CUDACC__) // NVCC
+#define ALIGN(n) __align__(n)
+#elif defined(__GNUC__) // GCC
+#define ALIGN(n) __attribute__((aligned(n)))
+#elif defined(_MSC_VER) // MSVC
+#define ALIGN(n) __declspec(align(n))
+#else
+#error "Please provide a definition for MY_ALIGN macro for your host compiler!"
+#endif
 
 #define ENTITIES_PER_CELL 8
 
@@ -17,6 +28,37 @@ enum TileId {
 
 inline TileId operator|(TileId a, TileId b) {
     return static_cast<TileId>(static_cast<int>(a) | static_cast<int>(b));
+}
+
+struct ALIGN(8) MapId {
+    int32_t chunkId = -1;
+    int32_t cellId = -1;
+
+    MapId() {}
+
+    inline bool valid() const { return chunkId != -1 && cellId != -1; }
+    void reset() {
+        chunkId = -1;
+        cellId = -1;
+    }
+    MapId(int32_t chunkId, int32_t cellId = -1) {
+        if (chunkId == -1) {
+            MapId();
+        } else {
+            this->chunkId = chunkId;
+            this->cellId = cellId;
+        }
+    }
+
+    int64_t &as_int64() { return *(int64_t *)(&chunkId); }
+
+    static MapId invalidId() { return {-1, -1}; }
+};
+
+typedef NeighborInfo<MapId, 4> MapNeighbors;
+
+inline bool operator==(const MapId &lhs, const MapId &rhs) {
+    return lhs.chunkId == rhs.chunkId && lhs.cellId == rhs.cellId;
 }
 
 struct BaseCell {
@@ -48,7 +90,7 @@ struct HouseCell : public BaseCell {
 };
 
 struct RoadCell : public BaseCell {
-    int32_t networkRepr;
+    MapId networkRepr;
 
     static TileId type() { return ROAD; }
 };
