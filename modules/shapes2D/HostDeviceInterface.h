@@ -92,8 +92,9 @@ struct mat4 {
 
 static int RENDERMODE_DEFAULT = 0;
 static int RENDERMODE_NETWORK = 1;
-static int RENDERMODE_LANDVALUE = 2;
-static int RENDERMODE_FLOWFIELD = 3;
+static int RENDERMODE_NETWORK_CHUNK = 2;
+static int RENDERMODE_LANDVALUE = 3;
+static int RENDERMODE_FLOWFIELD = 4;
 
 // DATA FORMATS
 

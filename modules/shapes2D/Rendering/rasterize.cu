@@ -102,7 +102,8 @@ void rasterizeGrid(Map &map, Entities *entities, SpriteSheet sprites, Framebuffe
             }
             color *= GameState::instance->gameTime.timeOfDay().toFloat() * 0.5 + 0.5;
 
-        } else if (gameData.uniforms.renderMode == RENDERMODE_NETWORK) {
+        } else if (gameData.uniforms.renderMode == RENDERMODE_NETWORK ||
+                   gameData.uniforms.renderMode == RENDERMODE_NETWORK_CHUNK) {
             TileId tileId = chunk.get(sh_cellIndex).tileId;
             if (tileId == GRASS || tileId == UNKNOWN) {
                 color = {0.0f, 0.0f, 0.0f};
@@ -111,7 +112,11 @@ void rasterizeGrid(Map &map, Entities *entities, SpriteSheet sprites, Framebuffe
                 if (tileId == HOUSE) {
                     colorId = 0;
                 } else if (tileId == ROAD) {
-                    colorId = map.getTyped<RoadCell>(cell).networkRepr.cellId;
+                    if (gameData.uniforms.renderMode == RENDERMODE_NETWORK) {
+                        colorId = map.getTyped<RoadCell>(cell).networkRepr.cellId;
+                    } else {
+                        colorId = map.getTyped<RoadCell>(cell).chunkNetworkRepr;
+                    }
                 } else {
                     colorId = sh_cellIndex;
                 }

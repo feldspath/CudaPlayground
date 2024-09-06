@@ -145,6 +145,35 @@ struct Chunk {
         return idFromCoords(coords.x + dirCoord.x, coords.y + dirCoord.y);
     }
 
+    Neighbors neighborNetworks(int32_t cell) {
+        auto neighbors = neighborCells(cell);
+        return neighbors.apply([&](int32_t neighborCell) {
+            if (get(neighborCell).tileId == ROAD) {
+                return getTyped<RoadCell>(neighborCell).chunkNetworkRepr;
+            } else {
+                return -1;
+            }
+        });
+    }
+
+    Neighbors sharedNetworks(Neighbors nets1, Neighbors nets2) {
+        Neighbors result;
+        int count = 0;
+        nets1.forEach([&](int networkRepr) {
+            if (nets2.contains(networkRepr)) {
+                result.data[count] = networkRepr;
+                count++;
+            }
+        });
+        return result;
+    }
+
+    Neighbors sharedNetworks(int cell1, int cell2) {
+        Neighbors nets1 = neighborNetworks(cell1);
+        Neighbors nets2 = neighborNetworks(cell2);
+        return sharedNetworks(nets1, nets2);
+    }
+
     // Game logic
     void assignEntityToWorkplace(int houseId, int workplaceCellId);
 

@@ -249,7 +249,7 @@ public:
         return MapId(flattenedId / CHUNK_SIZE, flattenedId % CHUNK_SIZE);
     }
 
-    void updateNetworkComponents(MapId invalidNetwork, Allocator allocator) {
+    void updateNetworkComponents(MapId invalidNetwork, int32_t invalidChunk, Allocator allocator) {
         auto grid = cg::this_grid();
         auto block = cg::this_thread_block();
 
@@ -259,11 +259,18 @@ public:
         processEachCell(ROAD, [&](MapId cell) {
             auto &c = getTyped<RoadCell>(cell);
             int id = flattenMapId(cell);
-            if (c.networkRepr == invalidNetwork) {
-                c.networkRepr = cell;
-                validCells[id] = false;
-            } else {
+            if (c.networkRepr != invalidNetwork) {
                 validCells[id] = true;
+                return;
+            }
+            validCells[id] = false;
+            if (cell.chunkId == invalidChunk) {
+                // Chunk is invalid, reset both networks
+                c.networkRepr = cell;
+                c.chunkNetworkRepr = cell.cellId;
+            } else {
+                // Chunk network is fine
+                c.networkRepr = MapId(cell.chunkId, c.chunkNetworkRepr);
             }
         });
 
@@ -271,7 +278,75 @@ public:
 
         // recompute connected components
         // https://largo.lip6.fr/~lacas/Publications/IPTA17.pdf
+
+        // Changed chunk first
+        auto &chunk = getChunk(invalidChunk);
         bool &changed = *allocator.alloc<bool *>(sizeof(bool));
+        for (int i = 0; i < 10; ++i) {
+            if (grid.thread_rank() == 0) {
+                changed = false;
+            }
+            grid.sync();
+            chunk.processEachCell(ROAD, [&](int cellId) {
+                if (validCells[flattenMapId(MapId(invalidChunk, cellId))]) {
+                    return;
+                }
+
+                int32_t m = -1;
+                auto neighbors = chunk.neighborNetworks(cellId);
+                for (int i = 0; i < 4; ++i) {
+                    if (neighbors.data[i] == -1) {
+                        continue;
+                    }
+                    if (m == -1) {
+                        m = neighbors.data[i];
+                    } else {
+                        m = min(neighbors.data[i], m);
+                    }
+                }
+                if (m == -1) {
+                    return;
+                }
+
+                int32_t repr = chunk.getTyped<RoadCell>(cellId).chunkNetworkRepr;
+                int32_t old = atomicMin(&chunk.getTyped<RoadCell>(repr).chunkNetworkRepr, m);
+                if (m < old) {
+                    changed = true;
+                }
+            });
+            grid.sync();
+            if (!changed) {
+                // if (grid.thread_rank() == 0) {
+                //     printf("ended in %d iterations\n", i);
+                // }
+                break;
+            }
+            chunk.processEachCell(ROAD, [&](int cellId) {
+                if (validCells[flattenMapId(MapId(invalidChunk, cellId))]) {
+                    return;
+                }
+                auto &cellTile = chunk.getTyped<RoadCell>(cellId);
+                auto &network = cellTile.chunkNetworkRepr;
+                while (network != chunk.getTyped<RoadCell>(network).chunkNetworkRepr) {
+                    network = chunk.getTyped<RoadCell>(network).chunkNetworkRepr;
+                }
+                cellTile.chunkNetworkRepr = network;
+            });
+        }
+        grid.sync();
+
+        chunk.processEachCell(ROAD, [&](int cellId) {
+            if (validCells[flattenMapId(MapId(invalidChunk, cellId))]) {
+                return;
+            }
+
+            auto &cell = chunk.getTyped<RoadCell>(cellId);
+            cell.networkRepr = MapId(invalidChunk, cell.chunkNetworkRepr);
+        });
+
+        grid.sync();
+
+        // Then the global network
         for (int i = 0; i < 10; ++i) {
             if (grid.thread_rank() == 0) {
                 changed = false;

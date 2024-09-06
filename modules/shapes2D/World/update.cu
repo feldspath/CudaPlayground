@@ -59,39 +59,36 @@ void updateCell(Map &map, Entities &entities, UpdateInfo updateInfo) {
         pathfindingManager->invalidateCache(chunk);
         entities.processAllActive([&](int entityId) { entities.get(entityId).path.reset(); });
 
-        auto &neighborNetworks = *allocator->alloc<MapNeighbors *>(sizeof(MapNeighbors));
         if (grid.thread_rank() == 0) {
-            // check nearby tiles.
-            neighborNetworks = map.neighborCells(cellToUpdate).apply([&](MapId neighbor) {
-                if (map.get(neighbor).tileId != ROAD) {
-                    return MapId::invalidId();
-                }
-
-                auto repr = map.getTyped<RoadCell>(neighbor).networkRepr;
-                auto &reprRoad = map.getTyped<RoadCell>(repr);
-                // Skip the tile if it was already updated this frame
-                if (reprRoad.networkRepr == repr) {
-                    reprRoad.networkRepr = cellToUpdate;
-                    return repr;
-                } else {
-                    return MapId::invalidId();
-                }
-            });
-
             // Init the new road tile
-            map.getTyped<RoadCell>(cellToUpdate).networkRepr = cellToUpdate;
+            auto &cell = chunk.getTyped<RoadCell>(cellId);
+            cell.chunkNetworkRepr = cellId;
+            cell.networkRepr = cellToUpdate;
         }
 
         grid.sync();
 
-        // Flatten network
+        // update global network
+        auto globalNetworks = map.neighborNetworks(cellToUpdate);
         map.processEachCell(ROAD, [&](MapId otherCellId) {
             auto &otherCell = map.getTyped<RoadCell>(otherCellId);
-            if (neighborNetworks.contains(otherCell.networkRepr) ||
-                neighborNetworks.contains(otherCellId)) {
+            if (globalNetworks.contains(otherCell.networkRepr)) {
                 otherCell.networkRepr = cellToUpdate;
             }
         });
+
+        grid.sync();
+
+        // update local network
+        auto localNetworks = chunk.neighborNetworks(cellId);
+        chunk.processEachCell(ROAD, [&](int otherCellId) {
+            auto &otherCell = chunk.getTyped<RoadCell>(otherCellId);
+            if (localNetworks.contains(otherCell.chunkNetworkRepr)) {
+                otherCell.chunkNetworkRepr = cellId;
+            }
+        });
+
+        grid.sync();
         break;
     }
     case FACTORY: {
@@ -159,7 +156,7 @@ void updateCell(Map &map, Entities &entities, UpdateInfo updateInfo) {
             });
 
             // recompute relevant network
-            map.updateNetworkComponents(invalidNetwork, *allocator);
+            map.updateNetworkComponents(invalidNetwork, cellToUpdate.chunkId, *allocator);
 
             // invalidate pathfinding cache in this chunk
             pathfindingManager->invalidateCache(chunk);

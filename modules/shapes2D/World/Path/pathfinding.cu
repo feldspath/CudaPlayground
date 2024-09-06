@@ -248,9 +248,7 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator allocato
             for (int currentCellId = block.thread_rank(); currentCellId < CHUNK_SIZE;
                  currentCellId += block.size()) {
                 // Check if cell is reachable
-                if (!map.sharedNetworks(MapId(target.chunkId, currentCellId), target)
-                         .data[0]
-                         .valid()) {
+                if (chunk.sharedNetworks(currentCellId, target.cellId).data[0] == -1) {
                     continue;
                 }
 

@@ -406,6 +406,7 @@ int main() {
             ImGui::Text("Render mode:");
             ImGui::RadioButton("Default", &renderMode, RENDERMODE_DEFAULT);
             ImGui::RadioButton("Network", &renderMode, RENDERMODE_NETWORK);
+            ImGui::RadioButton("Chunk Network", &renderMode, RENDERMODE_NETWORK_CHUNK);
             ImGui::RadioButton("Land value", &renderMode, RENDERMODE_LANDVALUE);
             ImGui::RadioButton("Flowfield", &renderMode, RENDERMODE_FLOWFIELD);
 
