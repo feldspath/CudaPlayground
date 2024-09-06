@@ -92,10 +92,6 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator allocato
 
     PathfindingList pathfindingList = locateLostEntities(map, entities, allocator);
 
-    // if (grid.thread_rank() == 0 && pathfindingList.count > 0) {
-    //     printf("pathfindings to compute count: %d\n", pathfindingList.count);
-    // }
-
     // list all the flowfields that have to be computed this frame
     uint32_t &flowfieldsToComputeCount = *allocator.alloc<uint32_t *>(sizeof(uint32_t));
     if (grid.thread_rank() == 0) {
@@ -104,6 +100,23 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator allocato
     grid.sync();
 
     auto flowfieldsToCompute = allocator.alloc<MapId *>(sizeof(MapId) * maxFlowfieldsPerFrame());
+
+    auto atomicAddFlowfield = [&](MapId destination) {
+        auto &chunk = map.getChunk(destination.chunkId);
+
+        FlowfieldState oldState = FlowfieldState(atomicCAS(
+            (int *)(&chunk.cachedFlowfields[destination.cellId].state), int(INVALID), int(MARKED)));
+
+        if (oldState == INVALID) {
+            int flowfieldIdx = atomicAdd(&flowfieldsToComputeCount, 1);
+            if (flowfieldIdx >= maxFlowfieldsPerFrame()) {
+                atomicCAS((int *)(&chunk.cachedFlowfields[destination.cellId].state), int(MARKED),
+                          int(INVALID));
+                return;
+            }
+            flowfieldsToCompute[flowfieldIdx] = MapId(destination.chunkId, destination.cellId);
+        }
+    };
 
     // First, the saved integrations fields
     processRange(gridDim.x, [&](int idx) {
@@ -117,25 +130,41 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator allocato
 
     grid.sync();
 
-    processRange(pathfindingList.count, [&](int idx) {
-        PathfindingInfo info = pathfindingList.data[idx];
-        auto &chunk = map.getChunk(info.chunk);
-        if (chunk.cachedFlowfields[info.target].state == VALID) {
+    // Then the workplaces
+    map.workplaces.processEachCell([&](MapId shop) {
+        if (map.getChunk(shop.chunkId).cachedFlowfields[shop.cellId].state != VALID) {
+            atomicAddFlowfield(shop);
+        }
+    });
+
+    // And the houses
+    map.houses.processEachCell([&](MapId house) {
+        if (map.getChunk(house.chunkId).cachedFlowfields[house.cellId].state == VALID) {
             return;
         }
+        atomicAddFlowfield(house);
+    });
 
-        FlowfieldState oldState = FlowfieldState(atomicCAS(
-            (int *)(&chunk.cachedFlowfields[info.target].state), int(INVALID), int(MARKED)));
+    static int2 startingPoints[] = {int2(CHUNK_X - 1, 0), int2(0, 0), int2(0, CHUNK_Y - 1),
+                                    int2(0, 0)};
+    static int2 dirs[] = {int2(0, 1), int2(0, 1), int2(1, 0), int2(1, 0)};
 
-        if (oldState == INVALID) {
-            int flowfieldIdx = atomicAdd(&flowfieldsToComputeCount, 1);
-            if (flowfieldIdx >= maxFlowfieldsPerFrame()) {
-                atomicCAS((int *)(&chunk.cachedFlowfields[info.target].state), int(MARKED),
-                          int(INVALID));
-                return;
+    // Finally, all the chunks borders
+    for_blockwise(map.getCount(), [&](int chunkId) {
+        processRangeBlock(CHUNK_X * 2 + CHUNK_Y * 2, [&](int borderId) {
+            // Compute local coords
+            // Assume that CHUNK_X == CHUNK_Y
+            int side = borderId / CHUNK_X;
+            int2 dirCoord = coordFromEnum(Direction(side));
+
+            int2 localCellCoord = startingPoints[side] + dirs[side] * (borderId % CHUNK_X);
+            MapId cell(chunkId, localCellCoord.y * CHUNK_X + localCellCoord.x);
+
+            if (map.get(cell).tileId == ROAD &&
+                map.get(map.cellFromCoords(map.cellCoords(cell) + dirCoord)).tileId == ROAD) {
+                atomicAddFlowfield(cell);
             }
-            flowfieldsToCompute[flowfieldIdx] = MapId(info.chunk, info.target);
-        }
+        });
     });
 
     grid.sync();
