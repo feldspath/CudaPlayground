@@ -289,18 +289,19 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
     initGameState();
 
     // Allocate the chunks
-    chunksRows = N_CHUNK_X;
-    chunksCols = N_CHUNK_Y;
+    chunksCols = N_CHUNK_X;
+    chunksRows = N_CHUNK_Y;
     int maxOccupancy = cuda_program->maxOccupancy("kernel", blockSize);
     cuMemAlloc(&cptr_chunk, sizeof(Chunk) * chunksRows * chunksCols);
     cuMemAlloc(&cptr_savedFields, sizeof(IntegrationField) * maxOccupancy);
 
     std::vector<Chunk> chunks(chunksRows * chunksCols);
 
-    for (int i = 0; i < chunksRows; i++) {
-        for (int j = 0; j < chunksCols; j++) {
+    for (int j = 0; j < chunksRows; j++) {
+        for (int i = 0; i < chunksCols; i++) {
             auto &chunk = chunks[j * chunksCols + i];
             chunk.offset = {i, j};
+            // std::cout << "offset:" << i << "," << j << "\n";
             for (int y = 0; y < CHUNK_X; ++y) {
                 for (int x = 0; x < CHUNK_Y; ++x) {
                     int cellId = y * CHUNK_X + x;

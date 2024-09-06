@@ -56,24 +56,31 @@ public:
     const BaseCell &get(MapId cell) const { return getChunk(cell.chunkId).get(cell.cellId); }
 
     int chunkIdFromWorldPos(float2 pos) const {
-        int row = floor(pos.x / (CHUNK_X * 2.0f * CELL_RADIUS));
-        int col = floor(pos.y / (CHUNK_Y * 2.0f * CELL_RADIUS));
-
-        if (row < 0 || row >= rows || col < 0 || col >= cols) {
+        int col = floor(pos.x / (CHUNK_X * 2.0f * CELL_RADIUS));
+        int row = floor(pos.y / (CHUNK_Y * 2.0f * CELL_RADIUS));
+        return chunkIdFromCoord(col, row);
+    }
+    int2 chunkCoord(int chunkId) const { return {chunkId % cols, chunkId / cols}; }
+    int chunkIdFromCoord(int chunkCol, int chunkRow) const {
+        if (chunkRow < 0 || chunkRow >= rows || chunkCol < 0 || chunkCol >= cols) {
             return -1;
         }
+        return chunkRow * cols + chunkCol;
+    }
 
-        return row * cols + col;
+    int neighborChunkId(int chunkId, Direction dir) const {
+        int2 dirCoord = coordFromEnum(dir);
+        int2 otherChunkCoord = chunkCoord(chunkId) + dirCoord;
+        return chunkIdFromCoord(otherChunkCoord.x, otherChunkCoord.y);
     }
 
     MapId cellAtPosition(float2 pos) const {
         int chunkId = chunkIdFromWorldPos(pos);
         if (chunkId == -1) {
-            return {-1, -1};
+            return MapId::invalidId();
         }
 
         int cellId = getChunk(chunkId).cellAtPosition(pos);
-
         return {chunkId, cellId};
     }
     float2 getCellPosition(MapId &cell) const {
@@ -82,9 +89,12 @@ public:
 
     int2 cellCoords(MapId cell) const { return getChunk(cell.chunkId).cellCoords(cell.cellId); }
     MapId cellFromCoords(int2 coords) const {
-        int row = coords.x / CHUNK_X;
-        int col = coords.y / CHUNK_Y;
-        int chunkId = row * cols + col;
+        int col = coords.x / CHUNK_X;
+        int row = coords.y / CHUNK_Y;
+        int chunkId = chunkIdFromCoord(col, row);
+        if (chunkId == -1) {
+            return MapId::invalidId();
+        }
         int cellId = getChunk(chunkId).idFromCoords(coords);
         return {chunkId, cellId};
     }
@@ -256,11 +266,6 @@ public:
                 validCells[id] = true;
             }
         });
-        grid.sync();
-
-        if (grid.thread_rank() == 0) {
-            printf("so far so good\n");
-        }
 
         grid.sync();
 

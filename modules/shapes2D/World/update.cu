@@ -59,26 +59,24 @@ void updateCell(Map &map, Entities &entities, UpdateInfo updateInfo) {
         pathfindingManager->invalidateCache(chunk);
         entities.processAllActive([&](int entityId) { entities.get(entityId).path.reset(); });
 
-        auto *neighborNetworks = allocator->alloc<MapId *>(sizeof(MapId) * Neighbors::size());
+        auto &neighborNetworks = *allocator->alloc<MapNeighbors *>(sizeof(MapNeighbors));
         if (grid.thread_rank() == 0) {
             // check nearby tiles.
-            auto neighbors = map.neighborCells(cellToUpdate);
-
-            for (int i = 0; i < Neighbors::size(); i++) {
-                auto &neighbor = neighbors.data[i];
-                // if one tile is a road, update the connected components
-                if (neighbor.valid() && map.get(neighbor).tileId == ROAD) {
-                    auto &repr = map.getTyped<RoadCell>(neighbor).networkRepr;
-                    auto &reprRoad = map.getTyped<RoadCell>(repr);
-                    // Skip the tile if it was already updated this frame
-                    if (reprRoad.networkRepr == repr) {
-                        neighborNetworks[i] = repr;
-                        reprRoad.networkRepr = cellToUpdate;
-                        continue;
-                    }
+            neighborNetworks = map.neighborCells(cellToUpdate).apply([&](MapId neighbor) {
+                if (map.get(neighbor).tileId != ROAD) {
+                    return MapId::invalidId();
                 }
-                neighborNetworks[i] = -1;
-            }
+
+                auto repr = map.getTyped<RoadCell>(neighbor).networkRepr;
+                auto &reprRoad = map.getTyped<RoadCell>(repr);
+                // Skip the tile if it was already updated this frame
+                if (reprRoad.networkRepr == repr) {
+                    reprRoad.networkRepr = cellToUpdate;
+                    return repr;
+                } else {
+                    return MapId::invalidId();
+                }
+            });
 
             // Init the new road tile
             map.getTyped<RoadCell>(cellToUpdate).networkRepr = cellToUpdate;
@@ -87,21 +85,12 @@ void updateCell(Map &map, Entities &entities, UpdateInfo updateInfo) {
         grid.sync();
 
         // Flatten network
-        map.processEachCell(ROAD, [&](auto otherCellId) {
-            int neighborId = -1;
-            auto &neighborCell = map.getTyped<RoadCell>(otherCellId);
-            for (int i = 0; i < Neighbors::size(); ++i) {
-                auto &network = neighborNetworks[i];
-                if (neighborCell.networkRepr == network || otherCellId == network) {
-                    neighborId = i;
-                    break;
-                }
+        map.processEachCell(ROAD, [&](MapId otherCellId) {
+            auto &otherCell = map.getTyped<RoadCell>(otherCellId);
+            if (neighborNetworks.contains(otherCell.networkRepr) ||
+                neighborNetworks.contains(otherCellId)) {
+                otherCell.networkRepr = cellToUpdate;
             }
-            if (neighborId == -1) {
-                return;
-            }
-
-            map.getTyped<RoadCell>(otherCellId).networkRepr = cellToUpdate;
         });
         break;
     }
