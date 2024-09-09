@@ -180,7 +180,7 @@ public:
         int2 originCoords = cellCoords(cell);
 
         buffer.processEachCellBlock([&](MapId other) {
-            if (other.chunkId != cell.chunkId || !filter(other)) {
+            if (!filter(other)) {
                 return;
             }
             auto targetNets = neighborNetworks(other);
@@ -188,7 +188,8 @@ public:
                 int2 targetCoords = cellCoords(other);
                 int2 diff = targetCoords - originCoords;
                 uint32_t distance = abs(diff.x) + abs(diff.y);
-                uint64_t target = (uint64_t(distance) << 32ull) | uint64_t(other.cellId);
+                uint64_t target = (uint64_t(distance) << 32ull) |
+                                  uint64_t(other.chunkId * CHUNK_SIZE + other.cellId);
                 // keep the closest
                 atomicMin(&targetCell, target);
             }
@@ -197,7 +198,8 @@ public:
         block.sync();
 
         if (targetCell != uint64_t(Infinity) << 32ull) {
-            return MapId(cell.chunkId, int32_t(targetCell & 0xffffffffull));
+            int32_t t = int32_t(targetCell & 0xffffffffull);
+            return MapId(t / CHUNK_SIZE, t % CHUNK_SIZE);
         } else {
             return MapId::invalidId();
         }

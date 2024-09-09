@@ -3,10 +3,9 @@
 #include "World/map.cuh"
 
 struct PathfindingInfo {
-    uint32_t chunk;
+    MapId origin;
+    MapId destination;
     uint32_t entityIdx;
-    uint32_t origin;
-    uint32_t target;
 };
 
 struct PathfindingList {
@@ -25,7 +24,8 @@ public:
 
     // Perform pathfinding
     // Passing a copy of the allocator so that its state is reset after computation
-    void update(Map &map, Entities &entities, Allocator allocator);
+    void update(Map &map, Allocator allocator);
+    void entitiesPathfinding(Map &map, Entities &entities, Allocator allocator);
 
     void invalidateCache(Chunk &chunk) {
         chunk.invalidateCachedFlowfields();
@@ -53,5 +53,5 @@ private:
                (id2 != -1 && TileId(tileIds[id2]) == ROAD);
     }
 
-    Path extractPath(Chunk &chunk, const PathfindingInfo &info) const;
+    Path extractPath(Chunk &chunk, uint32_t origin, uint32_t target) const;
 };

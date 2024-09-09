@@ -28,13 +28,11 @@ PathfindingList PathfindingManager::locateLostEntities(Map &map, Entities &entit
 
         Entity &entity = entities.get(entityIndex);
         if (entity.isLost()) {
-            // TODO: support target and origin in different chunks
             auto target = entity.destination;
             auto origin = map.cellAtPosition(entity.position);
             if (!origin.valid()) {
                 return;
             }
-            auto &chunk = map.getChunk(origin.chunkId);
             if (!map.sharedNetworks(origin, target).data[0].valid()) {
                 printf("Error: entity %d cannot reach its destination. Placing it back at home.\n",
                        entityIndex);
@@ -47,10 +45,9 @@ PathfindingList PathfindingManager::locateLostEntities(Map &map, Entities &entit
             }
 
             PathfindingInfo info;
-            info.chunk = origin.chunkId;
+            info.origin = origin;
             info.entityIdx = entityIndex;
-            info.origin = origin.cellId;
-            info.target = target.cellId;
+            info.destination = target;
             pathfindingList.data[id] = info;
         }
     });
@@ -86,11 +83,25 @@ static int2 closeNeighbors[] = {int2{-1, 0}, int2{1, 0}, int2{0, -1}, int2{0, 1}
 static int2 impactedNeighbors[] = {int2{0, 2}, int2{1, 3}, int2{0, 1}, int2{2, 3}};
 static int2 farNeighbors[] = {int2{-1, -1}, int2{1, -1}, int2{-1, 1}, int2{1, 1}};
 
-void PathfindingManager::update(Map &map, Entities &entities, Allocator allocator) {
+void PathfindingManager::entitiesPathfinding(Map &map, Entities &entities, Allocator allocator) {
+    PathfindingList pathfindingList = locateLostEntities(map, entities, allocator);
+
+    // Extract the paths
+    processRange(pathfindingList.count, [&](int idx) {
+        auto &info = pathfindingList.data[idx];
+        if (info.destination.chunkId == info.origin.chunkId) {
+            auto &chunk = map.getChunk(info.destination.chunkId);
+            if (chunk.cachedFlowfields[info.destination.cellId].state == VALID) {
+                entities.get(info.entityIdx).path =
+                    extractPath(chunk, info.origin.cellId, info.destination.cellId);
+            }
+        }
+    });
+}
+
+void PathfindingManager::update(Map &map, Allocator allocator) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
-
-    PathfindingList pathfindingList = locateLostEntities(map, entities, allocator);
 
     // list all the flowfields that have to be computed this frame
     uint32_t &flowfieldsToComputeCount = *allocator.alloc<uint32_t *>(sizeof(uint32_t));
@@ -344,24 +355,15 @@ void PathfindingManager::update(Map &map, Entities &entities, Allocator allocato
     });
 
     grid.sync();
-
-    // Extract the paths
-    processRange(pathfindingList.count, [&](int idx) {
-        auto &info = pathfindingList.data[idx];
-        auto &chunk = map.getChunk(info.chunk);
-        if (chunk.cachedFlowfields[info.target].state == VALID) {
-            entities.get(info.entityIdx).path = extractPath(chunk, info);
-        }
-    });
 }
 
-Path PathfindingManager::extractPath(Chunk &chunk, const PathfindingInfo &info) const {
-    int current = info.origin;
+Path PathfindingManager::extractPath(Chunk &chunk, uint32_t origin, uint32_t target) const {
+    int current = origin;
     bool reached = false;
     Path path;
 
     while (!reached && path.length() < Path::MAX_LENGTH) {
-        Direction dir = Direction(chunk.cachedFlowfields[info.target].directions[current]);
+        Direction dir = Direction(chunk.cachedFlowfields[target].directions[current]);
         path.append(dir);
         current = chunk.neighborCell(current, dir);
         if (current == -1) {

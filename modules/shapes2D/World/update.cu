@@ -599,8 +599,11 @@ void updateGrid(Map &map, Entities &entities, curandStateXORWOW_t &rng) {
                   [&]() { assignOneCustomerToShop(map, entities); });
     printDuration("assignShopWorkerToFactory   ",
                   [&]() { assignShopWorkerToFactory(map, entities); });
-    printDuration("pathfinding                 ",
-                  [&]() { pathfindingManager->update(map, entities, *allocator); });
+    printDuration("pathfinding update          ",
+                  [&]() { pathfindingManager->update(map, *allocator); });
+    grid.sync();
+    printDuration("pathfinding solve           ",
+                  [&]() { pathfindingManager->entitiesPathfinding(map, entities, *allocator); });
     grid.sync();
     printDuration("moveEntitiesBetter           ", [&]() {
         moveEntities(map, entities, *allocator, GameState::instance->gameTime.getDt(), rng);
