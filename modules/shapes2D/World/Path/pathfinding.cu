@@ -3,6 +3,10 @@
 
 #include "pathfinding.cuh"
 
+static int2 bordersStartingPoints[] = {int2(CHUNK_X - 1, 0), int2(0, 0), int2(0, CHUNK_Y - 1),
+                                       int2(0, 0)};
+static int2 borderDirs[] = {int2(0, 1), int2(0, 1), int2(1, 0), int2(1, 0)};
+
 // Locate all entities that required pathfinding
 PathfindingList PathfindingManager::locateLostEntities(Map &map, Entities &entities,
                                                        Allocator &allocator) const {
@@ -95,6 +99,40 @@ void PathfindingManager::entitiesPathfinding(Map &map, Entities &entities, Alloc
                 entities.get(info.entityIdx).path =
                     extractPath(chunk, info.origin.cellId, info.destination.cellId);
             }
+        } else {
+            int2 chunkDestCoords = map.chunkCoord(info.destination.chunkId);
+            int2 chunkOrCoords = map.chunkCoord(info.origin.chunkId);
+            int2 diff = chunkDestCoords - chunkOrCoords;
+
+            if (abs(diff.x) + abs(diff.y) == 1) {
+                Direction dir = enumFromCoord(diff);
+                int side = int(dir);
+
+                for (int i = 0; i < CHUNK_X; ++i) {
+                    int2 localCellCoord = bordersStartingPoints[side] + borderDirs[side] * i;
+                    MapId cell(info.origin.chunkId, localCellCoord.y * CHUNK_X + localCellCoord.x);
+
+                    MapId otherSide = map.cellFromCoords(map.cellCoords(cell) + diff);
+                    if (map.getChunk(otherSide.chunkId)
+                            .sharedNetworks(otherSide.cellId, info.destination.cellId)
+                            .data[0] == -1) {
+                        continue;
+                    }
+                    if (map.get(cell).tileId == ROAD && map.get(otherSide).tileId == ROAD) {
+                        // We found one path, let's go there
+                        Path path;
+                        auto &chunk = map.getChunk(info.origin.chunkId);
+                        if (chunk.cachedFlowfields[cell.cellId].state == VALID) {
+                            path = extractPath(chunk, info.origin.cellId, cell.cellId);
+                        }
+                        if (path.length() < Path::MAX_LENGTH) {
+                            path.append(dir);
+                        }
+                        entities.get(info.entityIdx).path = path;
+                        return;
+                    }
+                }
+            }
         }
     });
 }
@@ -156,10 +194,6 @@ void PathfindingManager::update(Map &map, Allocator allocator) {
         atomicAddFlowfield(house);
     });
 
-    static int2 startingPoints[] = {int2(CHUNK_X - 1, 0), int2(0, 0), int2(0, CHUNK_Y - 1),
-                                    int2(0, 0)};
-    static int2 dirs[] = {int2(0, 1), int2(0, 1), int2(1, 0), int2(1, 0)};
-
     // Finally, all the chunks borders
     for_blockwise(map.getCount(), [&](int chunkId) {
         processRangeBlock(CHUNK_X * 2 + CHUNK_Y * 2, [&](int borderId) {
@@ -168,7 +202,8 @@ void PathfindingManager::update(Map &map, Allocator allocator) {
             int side = borderId / CHUNK_X;
             int2 dirCoord = coordFromEnum(Direction(side));
 
-            int2 localCellCoord = startingPoints[side] + dirs[side] * (borderId % CHUNK_X);
+            int2 localCellCoord =
+                bordersStartingPoints[side] + borderDirs[side] * (borderId % CHUNK_X);
             MapId cell(chunkId, localCellCoord.y * CHUNK_X + localCellCoord.x);
 
             if (map.get(cell).tileId == ROAD &&
@@ -362,7 +397,7 @@ Path PathfindingManager::extractPath(Chunk &chunk, uint32_t origin, uint32_t tar
     bool reached = false;
     Path path;
 
-    while (!reached && path.length() < Path::MAX_LENGTH) {
+    while (current != targetd && path.length() < Path::MAX_LENGTH) {
         Direction dir = Direction(chunk.cachedFlowfields[target].directions[current]);
         path.append(dir);
         current = chunk.neighborCell(current, dir);
