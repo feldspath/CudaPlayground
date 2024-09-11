@@ -115,9 +115,6 @@ struct Chunk {
     // WORKPLACE DATA
     bool isWorkplace(int cellId) const { return get(cellId).tileId & (SHOP | FACTORY); }
 
-    // Network logic
-    void updateNetworkComponents(int invalidNetwork, Allocator &allocator);
-
     // Util functions
     Neighbors neighborCells(int cellId) {
         int2 coords = cellCoords(cellId);

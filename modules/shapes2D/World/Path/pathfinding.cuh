@@ -54,4 +54,5 @@ private:
     }
 
     Path extractPath(Chunk &chunk, uint32_t origin, uint32_t target) const;
+    int pathLength(Chunk &chunk, uint32_t origin, uint32_t target) const;
 };

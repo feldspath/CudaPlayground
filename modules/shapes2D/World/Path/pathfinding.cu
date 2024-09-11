@@ -108,6 +108,9 @@ void PathfindingManager::entitiesPathfinding(Map &map, Entities &entities, Alloc
                 Direction dir = enumFromCoord(diff);
                 int side = int(dir);
 
+                int minDist = uint32_t(Infinity);
+                MapId bestCell = MapId::invalidId();
+
                 for (int i = 0; i < CHUNK_X; ++i) {
                     int2 localCellCoord = bordersStartingPoints[side] + borderDirs[side] * i;
                     MapId cell(info.origin.chunkId, localCellCoord.y * CHUNK_X + localCellCoord.x);
@@ -119,19 +122,34 @@ void PathfindingManager::entitiesPathfinding(Map &map, Entities &entities, Alloc
                         continue;
                     }
                     if (map.get(cell).tileId == ROAD && map.get(otherSide).tileId == ROAD) {
-                        // We found one path, let's go there
-                        Path path;
-                        auto &chunk = map.getChunk(info.origin.chunkId);
-                        if (chunk.cachedFlowfields[cell.cellId].state == VALID) {
-                            path = extractPath(chunk, info.origin.cellId, cell.cellId);
+                        // We found one path, compute its length
+                        int dist = pathLength(map.getChunk(cell.chunkId), info.origin.cellId,
+                                              cell.cellId) +
+                                   pathLength(map.getChunk(otherSide.chunkId),
+                                              info.destination.cellId, otherSide.cellId);
+                        if (dist < minDist) {
+                            minDist = dist;
+                            bestCell = cell;
                         }
-                        if (path.length() < Path::MAX_LENGTH) {
-                            path.append(dir);
-                        }
-                        entities.get(info.entityIdx).path = path;
-                        return;
                     }
                 }
+
+                if (!bestCell.valid()) {
+                    printf("Error: entity %d cannot reach its destination.\n", info.entityIdx);
+                    return;
+                }
+
+                Path path;
+                auto &chunk = map.getChunk(info.origin.chunkId);
+                if (chunk.cachedFlowfields[bestCell.cellId].state != VALID) {
+                    return;
+                }
+                path = extractPath(chunk, info.origin.cellId, bestCell.cellId);
+                if (path.length() < Path::MAX_LENGTH) {
+                    path.append(dir);
+                }
+                entities.get(info.entityIdx).path = path;
+                return;
             }
         }
     });
@@ -397,7 +415,7 @@ Path PathfindingManager::extractPath(Chunk &chunk, uint32_t origin, uint32_t tar
     bool reached = false;
     Path path;
 
-    while (current != targetd && path.length() < Path::MAX_LENGTH) {
+    while (current != target && path.length() < Path::MAX_LENGTH) {
         Direction dir = Direction(chunk.cachedFlowfields[target].directions[current]);
         path.append(dir);
         current = chunk.neighborCell(current, dir);
@@ -407,4 +425,24 @@ Path PathfindingManager::extractPath(Chunk &chunk, uint32_t origin, uint32_t tar
         }
     }
     return path;
+}
+
+int PathfindingManager::pathLength(Chunk &chunk, uint32_t origin, uint32_t target) const {
+    if (chunk.sharedNetworks(origin, target).data[0] == -1) {
+        return int(Infinity);
+    }
+    int current = origin;
+    bool reached = false;
+    int length = 0;
+
+    while (current != target) {
+        Direction dir = Direction(chunk.cachedFlowfields[target].directions[current]);
+        length++;
+        current = chunk.neighborCell(current, dir);
+        if (current == -1) {
+            printf("path length pathfinding error\n");
+            return -1;
+        }
+    }
+    return length;
 }
