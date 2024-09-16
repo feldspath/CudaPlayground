@@ -25,6 +25,11 @@ void fillCells(Map &map, Entities &entities) {
         }
 
         auto cell = map.cellAtPosition(entity.position);
+        if (!cell.valid()) {
+            printf("Error: entity %d is not on a valid tile, placing it back at home\n", entityIdx);
+            entity.position = map.getCellPosition(entity.house);
+            return;
+        }
         int32_t *cellEntities = map.get(cell).entities;
 
         for (int i = 0; i < ENTITIES_PER_CELL; ++i) {
@@ -91,16 +96,15 @@ void moveEntities(Map &map, Entities &entities, Allocator allocator, float dt,
         auto cell = map.cellAtPosition(entity.position);
 
         // Compute repulsive force of other entities
-        auto &chunk = map.getChunk(cell.chunkId);
-        int2 coords = chunk.cellCoords(cell.cellId);
+        int2 coords = map.cellCoords(cell);
         for (int i = -1; i < 1; i++) {
             for (int j = -1; j < 1; j++) {
-                auto neighborCell = chunk.idFromCoords({coords.x + i, coords.y + j});
-                if (neighborCell == -1) {
+                auto neighborCell = map.cellFromCoords({coords.x + i, coords.y + j});
+                if (!neighborCell.valid()) {
                     continue;
                 }
                 for (int k = 0; k < ENTITIES_PER_CELL; ++k) {
-                    int otherIdx = chunk.get(neighborCell).entities[k];
+                    int otherIdx = map.get(neighborCell).entities[k];
                     if (otherIdx == -1) {
                         break;
                     }
@@ -158,17 +162,15 @@ void moveEntities(Map &map, Entities &entities, Allocator allocator, float dt,
             return;
         }
 
-        Chunk &chunk = map.getChunk(map.chunkIdFromWorldPos(entity.position));
         auto previousCell = map.cellAtPosition(entity.position);
-        float2 previousCellPosition = chunk.getCellPosition(previousCell.cellId);
-        auto neighborCells = chunk.neighborCells(previousCell.cellId);
+        float2 previousCellPosition = map.getCellPosition(previousCell);
+        auto neighborCells = map.neighborCells(previousCell);
         entity.position += entity.velocity * dt;
 
         // check each side of the entity for wall collision
-        neighborCells.forEachDir([&](Direction direction, uint32_t cellId) {
+        neighborCells.forEachDir([&](Direction direction, MapId neighbor) {
             // no collision with roads, house, workplace, shops, and destination
-            MapId neighbor(previousCell.chunkId, cellId);
-            TileId tile = chunk.get(cellId).tileId;
+            TileId tile = map.get(neighbor).tileId;
             if ((tile == ROAD && map.neighborNetworks(entity.destination)
                                      .contains(map.getTyped<RoadCell>(neighbor).networkRepr)) ||
                 tile == SHOP || neighbor == entity.workplace || neighbor == entity.house ||
@@ -184,11 +186,11 @@ void moveEntities(Map &map, Entities &entities, Allocator allocator, float dt,
                 max((dot(posToPreviousCellCenter, vectorDir) - CELL_RADIUS), 0.0f) * vectorDir;
         });
 
-        uint32_t newCellId = chunk.cellAtPosition(entity.position);
-        if (newCellId != previousCell.cellId) {
+        auto newCell = map.cellAtPosition(entity.position);
+        if (newCell != previousCell) {
             int dir = -1;
-            neighborCells.forEachDir([&](Direction direction, uint32_t cellId) {
-                if (cellId == newCellId) {
+            neighborCells.forEachDir([&](Direction direction, MapId cell) {
+                if (cell == newCell) {
                     dir = int(direction);
                 }
             });

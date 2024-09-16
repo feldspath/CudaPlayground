@@ -263,7 +263,6 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
                                         "./modules/shapes2D/World/time.cu",
                                         "./modules/shapes2D/World/Path/path.cu",
                                         "./modules/shapes2D/World/direction.cu",
-                                        "./modules/shapes2D/World/chunk.cu",
                                     },
                                 .customIncludeDirs = {"./modules/shapes2D", " ./modules"}});
 
@@ -278,7 +277,6 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
                                         "./modules/shapes2D/World/Entities/entities.cu",
                                         "./modules/shapes2D/World/Entities/movement.cu",
                                         "./modules/shapes2D/World/direction.cu",
-                                        "./modules/shapes2D/World/chunk.cu",
                                     },
                                 .customIncludeDirs = {"./modules/shapes2D", " ./modules"}});
 

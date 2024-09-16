@@ -437,7 +437,7 @@ int PathfindingManager::pathLength(Chunk &chunk, uint32_t origin, uint32_t targe
 
     while (current != target) {
         Direction dir = Direction(chunk.cachedFlowfields[target].directions[current]);
-        length++;
+        length += int(dir) < 4 ? 10 : 14;
         current = chunk.neighborCell(current, dir);
         if (current == -1) {
             printf("path length pathfinding error\n");

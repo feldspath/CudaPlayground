@@ -61,6 +61,10 @@ inline bool operator==(const MapId &lhs, const MapId &rhs) {
     return lhs.chunkId == rhs.chunkId && lhs.cellId == rhs.cellId;
 }
 
+inline bool operator!=(const MapId &lhs, const MapId &rhs) {
+    return lhs.chunkId != rhs.chunkId || lhs.cellId != rhs.cellId;
+}
+
 struct BaseCell {
     TileId tileId;
     int32_t entities[ENTITIES_PER_CELL];

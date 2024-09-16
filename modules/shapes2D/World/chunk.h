@@ -171,9 +171,6 @@ struct Chunk {
         return sharedNetworks(nets1, nets2);
     }
 
-    // Game logic
-    void assignEntityToWorkplace(int houseId, int workplaceCellId);
-
 private:
     inline bool isCoordValid(int x, int y) const {
         return x >= 0 && x < CHUNK_X && y >= 0 && y < CHUNK_Y;

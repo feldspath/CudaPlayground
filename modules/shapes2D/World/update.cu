@@ -176,9 +176,7 @@ void updateCell(Map &map, Entities &entities, UpdateInfo updateInfo) {
 void assignHouseToWorkplace(Map &map, Entities &entities, MapId house, MapId workplace,
                             curandStateXORWOW_t &rng) {
     int32_t newEntity = entities.newEntity(map.getCellPosition(house), house, workplace, rng);
-
-    // TODO: change this to be map wise
-    map.getChunk(house.chunkId).assignEntityToWorkplace(house.cellId, workplace.cellId);
+    map.assignEntityToWorkplace(house, workplace);
 }
 
 void assignOneHouse(Map &map, Entities &entities, curandStateXORWOW_t &rng) {

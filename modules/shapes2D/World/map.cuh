@@ -403,4 +403,9 @@ public:
 
         grid.sync();
     }
+
+    void assignEntityToWorkplace(MapId house, MapId workplace) {
+        getTyped<HouseCell>(house).residentCount = getTyped<HouseCell>(house).residentCount + 1;
+        getTyped<WorkplaceCell>(workplace).workplaceCapacity -= 1;
+    }
 };
