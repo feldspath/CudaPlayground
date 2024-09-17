@@ -220,24 +220,45 @@ void assignOneHouse(Map &map, Entities &entities, curandStateXORWOW_t &rng) {
     });
 }
 
-void assignOneCustomerToShop(Map &map, Entities &entities) {
+void assignOneCustomerToShop(Map &map, Entities &entities, Allocator allocator) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
+    if (entities.getCount() == 0) {
+        return;
+    }
+
+    // Look for relevant entities
+    uint32_t *entitiesIdxToProcess =
+        allocator.alloc<uint32_t *>(sizeof(uint32_t) * entities.getCount());
+    uint32_t &entitiesToProcessCount = *allocator.alloc<uint32_t *>(sizeof(uint32_t));
+    if (grid.thread_rank() == 0) {
+        entitiesToProcessCount = 0;
+    }
+    grid.sync();
+
+    entities.processAllActive([&](int entityIdx) {
+        Entity &entity = entities.get(entityIdx);
+        if (entity.state != GoShopping || entity.destination.valid()) {
+            return;
+        }
+        uint32_t idx = atomicAdd(&entitiesToProcessCount, 1);
+        entitiesIdxToProcess[idx] = entityIdx;
+    });
+    grid.sync();
+
+    // Assign one entity per block
     __shared__ bool assigned;
     if (block.thread_rank() == 0) {
         assigned = false;
     }
-    for_blockwise(entities.getCount(), [&](int entityIdx) {
+    for_blockwise(entitiesToProcessCount, [&](int idx) {
         block.sync();
         if (assigned) {
             return;
         }
+        int entityIdx = entitiesIdxToProcess[idx];
         Entity &entity = entities.get(entityIdx);
-        if (!entity.active || entity.state != GoShopping || entity.destination.valid()) {
-            return;
-        }
-
         auto shop = map.findClosestOnNetworkBlockwise(
             map.shops, map.cellAtPosition(entity.position),
             [&](MapId shop) { return map.getTyped<ShopCell>(shop).woodCount > 0; });
@@ -253,24 +274,45 @@ void assignOneCustomerToShop(Map &map, Entities &entities) {
     });
 }
 
-void assignShopWorkerToFactory(Map &map, Entities &entities) {
+void assignShopWorkerToFactory(Map &map, Entities &entities, Allocator allocator) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
+    if (entities.getCount() == 0) {
+        return;
+    }
+
+    // Look for relevant entities
+    uint32_t *entitiesIdxToProcess =
+        allocator.alloc<uint32_t *>(sizeof(uint32_t) * entities.getCount());
+    uint32_t &entitiesToProcessCount = *allocator.alloc<uint32_t *>(sizeof(uint32_t));
+    if (grid.thread_rank() == 0) {
+        entitiesToProcessCount = 0;
+    }
+    grid.sync();
+
+    entities.processAllActive([&](int entityIdx) {
+        Entity &entity = entities.get(entityIdx);
+        if (entity.state != WorkAtShop || entity.destination.valid()) {
+            return;
+        }
+        uint32_t idx = atomicAdd(&entitiesToProcessCount, 1);
+        entitiesIdxToProcess[idx] = entityIdx;
+    });
+    grid.sync();
+
+    // Assign one entity per block
     __shared__ bool assigned;
     if (block.thread_rank() == 0) {
         assigned = false;
     }
     block.sync();
-    for_blockwise(entities.getCount(), [&](int entityIdx) {
+    for_blockwise(entitiesToProcessCount, [&](int idx) {
         if (assigned) {
             return;
         }
+        int entityIdx = entitiesIdxToProcess[idx];
         Entity &entity = entities.get(entityIdx);
-        if (!entity.active || entity.state != WorkAtShop || entity.destination.valid()) {
-            return;
-        }
-
         auto factory = map.findClosestOnNetworkBlockwise(
             map.factories, map.cellAtPosition(entity.position),
             [&](MapId factory) { return map.getTyped<FactoryCell>(factory).stockCount > 0; });
@@ -594,9 +636,9 @@ void updateGrid(Map &map, Entities &entities, curandStateXORWOW_t &rng) {
     printDuration("assignOneHouse              ", [&]() { assignOneHouse(map, entities, rng); });
     grid.sync();
     printDuration("assignOneCustomerToShop     ",
-                  [&]() { assignOneCustomerToShop(map, entities); });
+                  [&]() { assignOneCustomerToShop(map, entities, *allocator); });
     printDuration("assignShopWorkerToFactory   ",
-                  [&]() { assignShopWorkerToFactory(map, entities); });
+                  [&]() { assignShopWorkerToFactory(map, entities, *allocator); });
     printDuration("pathfinding update          ",
                   [&]() { pathfindingManager->update(map, *allocator); });
     grid.sync();

@@ -20,6 +20,7 @@ enum FlowfieldState {
 struct Flowfield {
     FlowfieldState state;
     uint8_t directions[CHUNK_SIZE];
+    uint8_t distances[CHUNK_SIZE];
 };
 
 struct IntegrationField {

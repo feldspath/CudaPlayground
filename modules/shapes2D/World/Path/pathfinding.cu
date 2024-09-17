@@ -123,10 +123,8 @@ void PathfindingManager::entitiesPathfinding(Map &map, Entities &entities, Alloc
                     }
                     if (map.get(cell).tileId == ROAD && map.get(otherSide).tileId == ROAD) {
                         // We found one path, compute its length
-                        int dist = pathLength(map.getChunk(cell.chunkId), info.origin.cellId,
-                                              cell.cellId) +
-                                   pathLength(map.getChunk(otherSide.chunkId),
-                                              info.destination.cellId, otherSide.cellId);
+                        int dist =
+                            pathLength(map.getChunk(cell.chunkId), info.origin.cellId, cell.cellId);
                         if (dist < minDist) {
                             minDist = dist;
                             bestCell = cell;
@@ -397,8 +395,9 @@ void PathfindingManager::update(Map &map, Allocator allocator) {
                             dir = neighborDir;
                         }
                     });
-
+                uint8_t approxDist = uint8_t(13 * (log2(float(minDistance)) - 3.32192809489f));
                 chunk.cachedFlowfields[target.cellId].directions[cellId] = uint8_t(dir);
+                chunk.cachedFlowfields[target.cellId].distances[cellId] = approxDist;
             });
 
             if (block.thread_rank() == 0) {
@@ -431,18 +430,23 @@ int PathfindingManager::pathLength(Chunk &chunk, uint32_t origin, uint32_t targe
     if (chunk.sharedNetworks(origin, target).data[0] == -1) {
         return int(Infinity);
     }
-    int current = origin;
-    bool reached = false;
-    int length = 0;
 
-    while (current != target) {
-        Direction dir = Direction(chunk.cachedFlowfields[target].directions[current]);
-        length += int(dir) < 4 ? 10 : 14;
-        current = chunk.neighborCell(current, dir);
-        if (current == -1) {
-            printf("path length pathfinding error\n");
-            return -1;
-        }
-    }
-    return length;
+    uint8_t approx = chunk.cachedFlowfields[target].distances[origin];
+    // uint_8 approxDist = uint_8(13 * (log2(float(minDistance)) - 3.32192809489f));
+    return pow(2.0, double(approx) / 13 + 3.32192809489f);
+
+    // int current = origin;
+    // bool reached = false;
+    // int length = 0;
+
+    // while (current != target) {
+    //     Direction dir = Direction(chunk.cachedFlowfields[target].directions[current]);
+    //     length += int(dir) < 4 ? 10 : 14;
+    //     current = chunk.neighborCell(current, dir);
+    //     if (current == -1) {
+    //         printf("path length pathfinding error\n");
+    //         return -1;
+    //     }
+    // }
+    // return length;
 }

@@ -97,8 +97,8 @@ void moveEntities(Map &map, Entities &entities, Allocator allocator, float dt,
 
         // Compute repulsive force of other entities
         int2 coords = map.cellCoords(cell);
-        for (int i = -1; i < 1; i++) {
-            for (int j = -1; j < 1; j++) {
+        for (int i = -1; i <= 1; i++) {
+            for (int j = -1; j <= 1; j++) {
                 auto neighborCell = map.cellFromCoords({coords.x + i, coords.y + j});
                 if (!neighborCell.valid()) {
                     continue;
