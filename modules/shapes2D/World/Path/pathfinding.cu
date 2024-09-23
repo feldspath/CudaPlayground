@@ -88,7 +88,67 @@ static int2 impactedNeighbors[] = {int2{0, 2}, int2{1, 3}, int2{0, 1}, int2{2, 3
 static int2 farNeighbors[] = {int2{-1, -1}, int2{1, -1}, int2{-1, 1}, int2{1, 1}};
 
 void PathfindingManager::entitiesPathfinding(Map &map, Entities &entities, Allocator allocator) {
+    auto grid = cg::this_grid();
+    auto block = cg::this_thread_block();
+
     PathfindingList pathfindingList = locateLostEntities(map, entities, allocator);
+
+    // Compute graph matrix
+    int networkCount = networkGraph.getNetworkCount();
+    int *matrix = allocator.alloc<int *>(sizeof(int) * networkCount * networkCount);
+
+    if (grid.block_rank() == 0) {
+        processRangeBlock(networkCount * networkCount, [&](int idx) {
+            int source = idx % networkCount;
+            int dest = idx / networkCount;
+
+            if (source == dest) {
+                matrix[idx] = 0;
+                return;
+            }
+
+            if (networkGraph.networksConnected(source, dest)) {
+                matrix[idx] = 1;
+            } else {
+                matrix[idx] = int(Infinity / 2);
+            }
+        });
+
+        block.sync();
+
+        processRangeBlock(networkCount * networkCount, [&](int idx) {
+            int srcIdx = idx % networkCount;
+            int dstIdx = idx / networkCount;
+            auto &sourceNode = networkGraph.getNode(srcIdx);
+
+            // iterations
+            for (int i = 0; i < networkCount; i++) {
+
+                int minVal = int(Infinity / 2);
+                for (int j = 0; j < networkCount; j++) {
+                    int val = matrix[srcIdx + j * networkCount] + matrix[j + dstIdx * networkCount];
+                    minVal = min(minVal, val);
+                }
+                block.sync();
+                matrix[idx] = min(matrix[idx], minVal);
+                block.sync();
+            }
+        });
+    }
+
+    // if (grid.thread_rank() == 0) {
+    //     for (int i = 0; i < networkCount; i++) {
+    //         for (int j = 0; j < networkCount; j++) {
+    //             int val = matrix[i + networkCount * j];
+    //             if (val == int(Infinity / 2)) {
+    //                 val = -1;
+    //             }
+    //             printf("%d ", val);
+    //         }
+    //         printf("\n");
+    //     }
+    //     printf("\n");
+    // }
 
     // Extract the paths
     processRange(pathfindingList.count, [&](int idx) {
