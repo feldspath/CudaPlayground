@@ -6,6 +6,7 @@
 #include "World/Path/path.h"
 #include "World/cell.h"
 #include "World/chunk.h"
+#include "World/graph.h"
 #include "World/time.h"
 
 struct mat4 {
@@ -112,6 +113,7 @@ struct GameState {
     unsigned int playerMoney;
     unsigned int population;
     MapId buildingDisplay;
+    int uniqueNetworksCount;
 
     static GameState *instance;
 };
@@ -225,6 +227,7 @@ struct GameData {
     Chunk *chunks;
     void *entitiesBuffer;
     void *savedFieldsBuffer;
+    NetworkNode *graphNetworkBuffer;
     uint32_t *img_ascii_16;
     uint32_t *img_spritesheet;
 };

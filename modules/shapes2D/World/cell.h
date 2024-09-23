@@ -96,6 +96,8 @@ struct HouseCell : public BaseCell {
 struct RoadCell : public BaseCell {
     MapId networkRepr;
     int chunkNetworkRepr;
+    // unique network id between 0 and num local network - 1
+    int networkId;
 
     static TileId type() { return ROAD; }
 };

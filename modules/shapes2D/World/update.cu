@@ -80,6 +80,43 @@ void updateCell(Map &map, Entities &entities, UpdateInfo updateInfo) {
         grid.sync();
 
         // update local network
+        if (grid.thread_rank() == 0) {
+            int uniqueCount = 0;
+            Neighbors networksToMerge;
+            chunk.neighborCells(cellToUpdate.cellId).forEach([&](int otherCellId) {
+                if (chunk.get(otherCellId).tileId != ROAD) {
+                    return;
+                }
+                int networkId =
+                    chunk.getTyped<RoadCell>(chunk.getTyped<RoadCell>(otherCellId).chunkNetworkRepr)
+                        .networkId;
+                if (!networksToMerge.contains(networkId)) {
+                    networksToMerge.data[uniqueCount] = networkId;
+                    uniqueCount++;
+                }
+            });
+
+            pathfindingManager->networkGraph.updateNetwork(networksToMerge, cellToUpdate, map);
+            int newNetworkId = map.getTyped<RoadCell>(cellToUpdate).networkId;
+
+            globalNetworks.forEach([&](MapId otherCell) {
+                if (otherCell.chunkId != cellToUpdate.chunkId &&
+                    map.get(otherCell).tileId == ROAD) {
+                    MapId networkRepr(otherCell.chunkId,
+                                      map.getTyped<RoadCell>(otherCell).chunkNetworkRepr);
+                    int neighborNetworkId = map.getTyped<RoadCell>(networkRepr).networkId;
+                    pathfindingManager->networkGraph.addNeighborIfMissing(newNetworkId,
+                                                                          neighborNetworkId);
+                    pathfindingManager->networkGraph.addNeighborIfMissing(neighborNetworkId,
+                                                                          newNetworkId);
+                }
+            });
+
+            // pathfindingManager->networkGraph.print();
+        }
+
+        grid.sync();
+
         auto localNetworks = chunk.neighborNetworks(cellId);
         chunk.processEachCell(ROAD, [&](int otherCellId) {
             auto &otherCell = chunk.getTyped<RoadCell>(otherCellId);
@@ -475,12 +512,14 @@ void updateEntitiesState(Map &map, Entities &entities, curandStateXORWOW_t &rng)
 void updateGameState(Entities &entities) {
     auto grid = cg::this_grid();
     if (grid.thread_rank() == 0) {
+        auto gameState = GameState::instance;
         float dt = ((float)(nanotime_start - GameState::instance->previousFrameTime_ns)) / 1e9;
-        GameState::instance->previousFrameTime_ns = nanotime_start;
-        GameState::instance->currentTime_ms = currentTime_ms();
-        GameState::instance->population = entities.getCount();
-        GameState::instance->previousMouseButtons = gameData.uniforms.mouseButtons;
-        GameState::instance->previousGameTime = GameState::instance->gameTime;
+        gameState->previousFrameTime_ns = nanotime_start;
+        gameState->currentTime_ms = currentTime_ms();
+        gameState->population = entities.getCount();
+        gameState->previousMouseButtons = gameData.uniforms.mouseButtons;
+        gameState->previousGameTime = GameState::instance->gameTime;
+        gameState->uniqueNetworksCount = pathfindingManager->networkGraph.getNetworkCount();
 
         if (GameState::instance->firstFrame) {
             GameState::instance->firstFrame = false;
@@ -665,7 +704,8 @@ extern "C" __global__ void update(GameData _gameData) {
     Allocator _allocator(gameData.buffer, 0);
     allocator = &_allocator;
 
-    PathfindingManager _pathfindingManager(gameData.savedFieldsBuffer);
+    PathfindingManager _pathfindingManager(gameData.savedFieldsBuffer, gameData.graphNetworkBuffer,
+                                           gameData.state->uniqueNetworksCount);
     pathfindingManager = &_pathfindingManager;
 
     curandStateXORWOW_t thread_random_state;
