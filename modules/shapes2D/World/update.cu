@@ -663,6 +663,14 @@ void updateGrid(Map &map, Entities &entities, curandStateXORWOW_t &rng) {
         printf("================================\n");
     }
 
+    if (GameState::instance->firstFrame) {
+        map.recomputeNetworkComponents(*allocator);
+        pathfindingManager->networkGraph.recompute(map, *allocator);
+        for (int i = 0; i < map.getCount(); i++) {
+            pathfindingManager->invalidateCache(map.getChunk(i));
+        }
+    }
+
     printDuration("handleInputs                ", [&]() { handleInputs(map, entities); });
     grid.sync();
     printDuration("fillCellBuffers             ", [&]() { fillCellBuffers(map); });
