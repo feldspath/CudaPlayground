@@ -99,12 +99,10 @@ void updateCell(Map &map, Entities &entities, UpdateInfo updateInfo) {
             pathfindingManager->networkGraph.updateNetwork(networksToMerge, cellToUpdate, map);
             int newNetworkId = map.getTyped<RoadCell>(cellToUpdate).networkId;
 
-            globalNetworks.forEach([&](MapId otherCell) {
+            map.neighborCells(cellToUpdate).forEach([&](MapId otherCell) {
                 if (otherCell.chunkId != cellToUpdate.chunkId &&
                     map.get(otherCell).tileId == ROAD) {
-                    MapId networkRepr(otherCell.chunkId,
-                                      map.getTyped<RoadCell>(otherCell).chunkNetworkRepr);
-                    int neighborNetworkId = map.getTyped<RoadCell>(networkRepr).networkId;
+                    int neighborNetworkId = map.roadNetworkId(otherCell);
                     pathfindingManager->networkGraph.addNeighborIfMissing(newNetworkId,
                                                                           neighborNetworkId);
                     pathfindingManager->networkGraph.addNeighborIfMissing(neighborNetworkId,
@@ -194,6 +192,9 @@ void updateCell(Map &map, Entities &entities, UpdateInfo updateInfo) {
 
             // recompute relevant network
             map.updateNetworkComponents(invalidNetwork, cellToUpdate.chunkId, *allocator);
+
+            // recompute the entire graph network
+            pathfindingManager->networkGraph.recompute(map, *allocator);
 
             // invalidate pathfinding cache in this chunk
             pathfindingManager->invalidateCache(chunk);

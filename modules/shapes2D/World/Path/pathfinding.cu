@@ -197,10 +197,7 @@ void PathfindingManager::entitiesPathfinding(Map &map, Entities &entities, Alloc
                 if (map.get(cell).tileId != ROAD || map.get(otherSide).tileId != ROAD) {
                     continue;
                 }
-                if (map
-                        .getTyped<RoadCell>(MapId(
-                            otherSide.chunkId, map.getTyped<RoadCell>(otherSide).chunkNetworkRepr))
-                        .networkId != best) {
+                if (map.roadNetworkId(otherSide) != best) {
                     continue;
                 }
                 // We found one path, compute its length

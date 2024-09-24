@@ -246,6 +246,12 @@ public:
         return sharedNetworks(nets1, nets2);
     }
 
+    int roadNetworkId(MapId roadCell) {
+        return getTyped<RoadCell>(
+                   MapId(roadCell.chunkId, getTyped<RoadCell>(roadCell).chunkNetworkRepr))
+            .networkId;
+    }
+
     int flattenMapId(MapId mapId) { return mapId.chunkId * CHUNK_SIZE + mapId.cellId; }
     MapId unflattenMapId(int flattenedId) {
         return MapId(flattenedId / CHUNK_SIZE, flattenedId % CHUNK_SIZE);

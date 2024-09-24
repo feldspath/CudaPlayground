@@ -173,6 +173,74 @@ public:
         changeNetworkRepr(mergeNet, cellToUpdate);
     }
 
+    void recompute(Map &map, Allocator allocator) {
+        auto grid = cg::this_grid();
+        auto block = cg::this_thread_block();
+
+        int &networkCount = *allocator.alloc<int *>(sizeof(int));
+
+        if (grid.thread_rank() == 0) {
+            networkCount = 0;
+        }
+        grid.sync();
+
+        // networkId assigment
+        map.processEachCell(ROAD, [&](MapId cell) {
+            auto &road = map.getTyped<RoadCell>(cell);
+            if (road.chunkNetworkRepr == cell.cellId) {
+                road.networkId = atomicAdd(&networkCount, 1);
+                networks[road.networkId].networkRepr = cell;
+            }
+        });
+
+        grid.sync();
+
+        // Neighbor matrix
+        GameState::instance->uniqueNetworksCount = networkCount;
+        bool *neighborMatrix = allocator.alloc<bool *>(sizeof(bool) * networkCount * networkCount);
+
+        // init matrix
+        processRange(networkCount * networkCount, [&](int idx) { neighborMatrix[idx] = false; });
+        grid.sync();
+
+        // fill matrix
+        map.processEachCell(ROAD, [&](MapId cell) {
+            map.neighborCells(cell).forEach([&](MapId neighbor) {
+                if (cell.chunkId != neighbor.chunkId && map.get(neighbor).tileId == ROAD) {
+                    int network1 = map.roadNetworkId(cell);
+                    int network2 = map.roadNetworkId(neighbor);
+                    neighborMatrix[network1 + network2 * networkCount] = true;
+                }
+            });
+        });
+
+        grid.sync();
+
+        // Reset graph
+        if (grid.thread_rank() == 0) {
+            reset(networkCount);
+        }
+        grid.sync();
+
+        // Fill neighbors
+        processRange(networkCount, [&](int networkId) {
+            for (int i = 0; i < networkCount; i++) {
+                if (neighborMatrix[networkId + networkCount * i]) {
+                    addNeighbor(networkId, i);
+                }
+            }
+        });
+
+        grid.sync();
+    }
+
+    void reset(int newSize) {
+        numNetworks = newSize;
+        for (int i = 0; i < newSize; i++) {
+            networks[i].numNeighbors = 0;
+        }
+    }
+
     void print() {
         for (int i = 0; i < numNetworks; i++) {
             auto &node = getNode(i);

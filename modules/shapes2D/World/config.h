@@ -2,8 +2,8 @@
 
 static constexpr int CHUNK_X = 64;
 static constexpr int CHUNK_Y = 64;
-static constexpr int N_CHUNK_X = 2;
-static constexpr int N_CHUNK_Y = 1;
+static constexpr int N_CHUNK_X = 4;
+static constexpr int N_CHUNK_Y = 4;
 static constexpr int CHUNK_SIZE = CHUNK_X * CHUNK_Y;
 
 static int FACTORY_CAPACITY = 40;
@@ -31,7 +31,7 @@ static unsigned int HOUSE_COST = 50;
 
 static float REAL_SECONDS_PER_GAME_MIN = 300.0 / (60.0 * 24.0);
 
-// Let's assume we can have 10 times as much entities as we have cells (40k for now)
-static constexpr int MAX_ENTITY_COUNT = 20 * CHUNK_SIZE;
+// Target entity count
+static constexpr int MAX_ENTITY_COUNT = 1'000'000;
 
 static constexpr int MAX_PATHS_PER_FRAME = 10000;

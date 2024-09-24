@@ -125,6 +125,11 @@ void rasterizeGrid(Map &map, Entities *entities, SpriteSheet sprites, Framebuffe
                 float g = (float)(colorId % 11) / 11.0;
                 float b = (float)(colorId % 37) / 37.0;
                 color = float3{r, g, b};
+                auto &road = map.getTyped<RoadCell>(cell);
+                if (road.chunkNetworkRepr == cell.cellId &&
+                    gameData.uniforms.renderMode == RENDERMODE_NETWORK_CHUNK) {
+                    color = float3{1.0f, 1.0f, 1.0f};
+                }
 
                 // if (tileId == ROAD) {
                 //     color *= (float)(map->roadNetworkId(sh_cellIndex)) /
