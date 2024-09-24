@@ -172,6 +172,11 @@ struct Chunk {
         return sharedNetworks(nets1, nets2);
     }
 
+    Neighbors neighborNetworkIds(int cell) {
+        return neighborNetworks(cell).apply(
+            [&](int networkRepr) { return getTyped<RoadCell>(networkRepr).networkId; });
+    }
+
 private:
     inline bool isCoordValid(int x, int y) const {
         return x >= 0 && x < CHUNK_X && y >= 0 && y < CHUNK_Y;

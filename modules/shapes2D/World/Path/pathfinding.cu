@@ -153,62 +153,80 @@ void PathfindingManager::entitiesPathfinding(Map &map, Entities &entities, Alloc
     // Extract the paths
     processRange(pathfindingList.count, [&](int idx) {
         auto &info = pathfindingList.data[idx];
-        if (info.destination.chunkId == info.origin.chunkId) {
-            auto &chunk = map.getChunk(info.destination.chunkId);
-            if (chunk.cachedFlowfields[info.destination.cellId].state == VALID) {
+        auto &currentChunk = map.getChunk(info.origin.chunkId);
+        auto &destChunk = map.getChunk(info.destination.chunkId);
+        auto destNetworkIds = destChunk.neighborNetworkIds(info.destination.cellId);
+        auto origNetworkIds = currentChunk.neighborNetworkIds(info.origin.cellId);
+
+        if (destNetworkIds.oneTrue([&](int dest) { return origNetworkIds.contains(dest); })) {
+            if (currentChunk.cachedFlowfields[info.destination.cellId].state == VALID) {
                 entities.get(info.entityIdx).path =
-                    extractPath(chunk, info.origin.cellId, info.destination.cellId);
+                    extractPath(currentChunk, info.origin.cellId, info.destination.cellId);
             }
         } else {
-            int2 chunkDestCoords = map.chunkCoord(info.destination.chunkId);
+            int minVal = int(Infinity);
+            int best = -1;
+            origNetworkIds.forEach([&](int networkId) {
+                auto &node = networkGraph.getNode(networkId);
+                for (int i = 0; i < node.numNeighbors; i++) {
+                    destNetworkIds.forEach([&](int destNetwork) {
+                        int dst = matrix[node.neighborIds[i] + networkCount * destNetwork];
+                        if (dst < minVal) {
+                            minVal = dst;
+                            best = node.neighborIds[i];
+                        }
+                    });
+                }
+            });
+
+            int2 chunkDestCoords = map.chunkCoord(networkGraph.getNode(best).networkRepr.chunkId);
             int2 chunkOrCoords = map.chunkCoord(info.origin.chunkId);
             int2 diff = chunkDestCoords - chunkOrCoords;
 
-            if (abs(diff.x) + abs(diff.y) == 1) {
-                Direction dir = enumFromCoord(diff);
-                int side = int(dir);
+            Direction dir = enumFromCoord(diff);
+            int side = int(dir);
 
-                int minDist = uint32_t(Infinity);
-                MapId bestCell = MapId::invalidId();
+            int minDist = uint32_t(Infinity);
+            MapId bestCell = MapId::invalidId();
 
-                for (int i = 0; i < CHUNK_X; ++i) {
-                    int2 localCellCoord = bordersStartingPoints[side] + borderDirs[side] * i;
-                    MapId cell(info.origin.chunkId, localCellCoord.y * CHUNK_X + localCellCoord.x);
+            for (int i = 0; i < CHUNK_X; ++i) {
+                int2 localCellCoord = bordersStartingPoints[side] + borderDirs[side] * i;
+                MapId cell(info.origin.chunkId, localCellCoord.y * CHUNK_X + localCellCoord.x);
 
-                    MapId otherSide = map.cellFromCoords(map.cellCoords(cell) + diff);
-                    if (map.getChunk(otherSide.chunkId)
-                            .sharedNetworks(otherSide.cellId, info.destination.cellId)
-                            .data[0] == -1) {
-                        continue;
-                    }
-                    if (map.get(cell).tileId == ROAD && map.get(otherSide).tileId == ROAD) {
-                        // We found one path, compute its length
-                        int dist =
-                            pathLength(map.getChunk(cell.chunkId), info.origin.cellId, cell.cellId);
-                        if (dist < minDist) {
-                            minDist = dist;
-                            bestCell = cell;
-                        }
-                    }
+                MapId otherSide = map.cellFromCoords(map.cellCoords(cell) + diff);
+                if (map.get(cell).tileId != ROAD || map.get(otherSide).tileId != ROAD) {
+                    continue;
                 }
+                if (map
+                        .getTyped<RoadCell>(MapId(
+                            otherSide.chunkId, map.getTyped<RoadCell>(otherSide).chunkNetworkRepr))
+                        .networkId != best) {
+                    continue;
+                }
+                // We found one path, compute its length
+                int dist = pathLength(map.getChunk(cell.chunkId), info.origin.cellId, cell.cellId);
+                if (dist < minDist) {
+                    minDist = dist;
+                    bestCell = cell;
+                }
+            }
 
-                if (!bestCell.valid()) {
-                    printf("Error: entity %d cannot reach its destination.\n", info.entityIdx);
-                    return;
-                }
-
-                Path path;
-                auto &chunk = map.getChunk(info.origin.chunkId);
-                if (chunk.cachedFlowfields[bestCell.cellId].state != VALID) {
-                    return;
-                }
-                path = extractPath(chunk, info.origin.cellId, bestCell.cellId);
-                if (path.length() < Path::MAX_LENGTH) {
-                    path.append(dir);
-                }
-                entities.get(info.entityIdx).path = path;
+            if (!bestCell.valid()) {
+                printf("Error: entity %d cannot reach its destination.\n", info.entityIdx);
                 return;
             }
+
+            Path path;
+            auto &chunk = map.getChunk(info.origin.chunkId);
+            if (chunk.cachedFlowfields[bestCell.cellId].state != VALID) {
+                return;
+            }
+            path = extractPath(chunk, info.origin.cellId, bestCell.cellId);
+            if (path.length() < Path::MAX_LENGTH) {
+                path.append(dir);
+            }
+            entities.get(info.entityIdx).path = path;
+            return;
         }
     });
 }
