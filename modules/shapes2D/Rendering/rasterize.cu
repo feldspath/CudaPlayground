@@ -220,7 +220,7 @@ void rasterizeEntitiesFlowfield(Entities *entities, Framebuffer framebuffer) {
                                         gameData.uniforms.width, gameData.uniforms.height));
     // sphereRadius = 5.0f;
     //  Each thread grabs an entity
-    entities->processAll([&](int entityIndex) {
+    entities->processAllActive([&](int entityIndex) {
         auto &entity = entities->get(entityIndex);
         if (!entity.path.isValid()) {
             return;

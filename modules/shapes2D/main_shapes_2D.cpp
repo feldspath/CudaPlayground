@@ -249,7 +249,6 @@ void initGameState() {
     state.playerMoney = 2000;
     state.buildingDisplay = MapId::invalidId();
     state.gameTime = GameTime();
-    state.uniqueNetworksCount = 0;
 
     cuMemcpyHtoD(cptr_gameState, &state, sizeof(GameState));
 }
@@ -324,7 +323,7 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
                  savedFields.size() * sizeof(IntegrationField));
 
     // Graph
-    cuMemAlloc(&cptr_graphNetwork, sizeof(NetworkNode) * MAX_NETWORK_NODES);
+    cuMemAlloc(&cptr_graphNetwork, 2 * sizeof(uint32_t) + MAX_NETWORK_NODES * sizeof(NetworkNode));
 
     // Entities
     cuMemAlloc(&cptr_entities, 2 * sizeof(uint32_t) + MAX_ENTITY_COUNT * sizeof(Entity));

@@ -17,7 +17,6 @@
 namespace cg = cooperative_groups;
 
 GameData gameData;
-Allocator *allocator;
 PathfindingManager *pathfindingManager;
 uint64_t nanotime_start;
 
@@ -27,7 +26,7 @@ struct UpdateInfo {
     TileId newTileId;
 };
 
-void updateCell(Map &map, Entities &entities, UpdateInfo updateInfo) {
+void updateCell(Map &map, Entities &entities, UpdateInfo updateInfo, Allocator &allocator) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -191,10 +190,10 @@ void updateCell(Map &map, Entities &entities, UpdateInfo updateInfo) {
             });
 
             // recompute relevant network
-            map.updateNetworkComponents(invalidNetwork, cellToUpdate.chunkId, *allocator);
+            map.updateNetworkComponents(invalidNetwork, cellToUpdate.chunkId, allocator);
 
             // recompute the entire graph network
-            pathfindingManager->networkGraph.recompute(map, *allocator);
+            pathfindingManager->networkGraph.recompute(map, allocator);
 
             // invalidate pathfinding cache in this chunk
             pathfindingManager->invalidateCache(chunk);
@@ -217,12 +216,12 @@ void assignHouseToWorkplace(Map &map, Entities &entities, MapId house, MapId wor
     map.assignEntityToWorkplace(house, workplace);
 }
 
-void assignOneHouse(Map &map, Entities &entities, curandStateXORWOW_t &rng) {
+void assignOneHouse(Map &map, Entities &entities, curandStateXORWOW_t &rng, Allocator allocator) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
     grid.sync();
-    int32_t &assigned = *allocator->alloc<int32_t *>(sizeof(int32_t));
+    int32_t &assigned = *allocator.alloc<int32_t *>(sizeof(int32_t));
     if (grid.thread_rank() == 0) {
         assigned = 0;
     }
@@ -520,7 +519,6 @@ void updateGameState(Entities &entities) {
         gameState->population = entities.getCount();
         gameState->previousMouseButtons = gameData.uniforms.mouseButtons;
         gameState->previousGameTime = GameState::instance->gameTime;
-        gameState->uniqueNetworksCount = pathfindingManager->networkGraph.getNetworkCount();
 
         if (GameState::instance->firstFrame) {
             GameState::instance->firstFrame = false;
@@ -531,7 +529,7 @@ void updateGameState(Entities &entities) {
     }
 }
 
-void handleInputs(Map &map, Entities &entities) {
+void handleInputs(Map &map, Entities &entities, Allocator &allocator) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -574,12 +572,12 @@ void handleInputs(Map &map, Entities &entities) {
             }
         }
         if (updateInfo.update) {
-            updateCell(map, entities, updateInfo);
+            updateCell(map, entities, updateInfo, allocator);
         }
     }
 }
 
-void fillCellBuffers(Map &map) {
+void fillCellBuffers(Map &map, Allocator &allocator) {
     auto grid = cg::this_grid();
     map.workplaces = map.selectCells(
         allocator, [&](MapId cell) { return map.getChunk(cell.chunkId).isWorkplace(cell.cellId); });
@@ -654,26 +652,34 @@ template <typename Function> void printDuration(char *name, Function &&f) {
     }
 }
 
-void updateGrid(Map &map, Entities &entities, curandStateXORWOW_t &rng) {
+void updateGrid(Map &map, Entities &entities, curandStateXORWOW_t &rng, Allocator &allocator) {
     auto grid = cg::this_grid();
 
     nanotime_start = nanotime();
+
+    grid.sync();
 
     if (gameData.uniforms.printTimings && cg::this_grid().thread_rank() == 0) {
         printf("================================\n");
     }
 
     if (GameState::instance->firstFrame) {
-        map.recomputeNetworkComponents(*allocator);
-        pathfindingManager->networkGraph.recompute(map, *allocator);
+        map.recomputeNetworkComponents(allocator);
+        pathfindingManager->networkGraph.recompute(map, allocator);
         for (int i = 0; i < map.getCount(); i++) {
             pathfindingManager->invalidateCache(map.getChunk(i));
         }
+        entities.processAllActive([&](int idx) {
+            auto &entity = entities.get(idx);
+            entity.path.reset();
+        });
+        grid.sync();
     }
 
-    printDuration("handleInputs                ", [&]() { handleInputs(map, entities); });
+    printDuration("handleInputs                ",
+                  [&]() { handleInputs(map, entities, allocator); });
     grid.sync();
-    printDuration("fillCellBuffers             ", [&]() { fillCellBuffers(map); });
+    printDuration("fillCellBuffers             ", [&]() { fillCellBuffers(map, allocator); });
     grid.sync();
     printDuration("fillCells                   ", [&]() { fillCells(map, entities); });
     grid.sync();
@@ -681,20 +687,24 @@ void updateGrid(Map &map, Entities &entities, curandStateXORWOW_t &rng) {
                   [&]() { updateEntitiesState(map, entities, rng); });
     grid.sync();
     printDuration("handleEvents                ", [&]() { handleEvents(map, entities); });
-    printDuration("assignOneHouse              ", [&]() { assignOneHouse(map, entities, rng); });
+    grid.sync();
+    printDuration("assignOneHouse              ",
+                  [&]() { assignOneHouse(map, entities, rng, allocator); });
     grid.sync();
     printDuration("assignOneCustomerToShop     ",
-                  [&]() { assignOneCustomerToShop(map, entities, *allocator); });
+                  [&]() { assignOneCustomerToShop(map, entities, allocator); });
+    grid.sync();
     printDuration("assignShopWorkerToFactory   ",
-                  [&]() { assignShopWorkerToFactory(map, entities, *allocator); });
+                  [&]() { assignShopWorkerToFactory(map, entities, allocator); });
+    grid.sync();
     printDuration("pathfinding update          ",
-                  [&]() { pathfindingManager->update(map, *allocator); });
+                  [&]() { pathfindingManager->update(map, allocator); });
     grid.sync();
     printDuration("pathfinding solve           ",
-                  [&]() { pathfindingManager->entitiesPathfinding(map, entities, *allocator); });
+                  [&]() { pathfindingManager->entitiesPathfinding(map, entities, allocator); });
     grid.sync();
-    printDuration("moveEntitiesBetter           ", [&]() {
-        moveEntities(map, entities, *allocator, GameState::instance->gameTime.getDt(), rng);
+    printDuration("moveEntities                ", [&]() {
+        moveEntities(map, entities, allocator, GameState::instance->gameTime.getDt(), rng);
     });
     grid.sync();
 
@@ -710,11 +720,9 @@ extern "C" __global__ void update(GameData _gameData) {
     gameData = _gameData;
     GameState::instance = gameData.state;
 
-    Allocator _allocator(gameData.buffer, 0);
-    allocator = &_allocator;
+    Allocator allocator(gameData.buffer, 0);
 
-    PathfindingManager _pathfindingManager(gameData.savedFieldsBuffer, gameData.graphNetworkBuffer,
-                                           gameData.state->uniqueNetworksCount);
+    PathfindingManager _pathfindingManager(gameData.savedFieldsBuffer, gameData.graphNetworkBuffer);
     pathfindingManager = &_pathfindingManager;
 
     curandStateXORWOW_t thread_random_state;
@@ -725,12 +733,12 @@ extern "C" __global__ void update(GameData _gameData) {
     grid.sync();
 
     {
-        Map *map = allocator->alloc<Map *>(sizeof(Map));
+        Map *map = allocator.alloc<Map *>(sizeof(Map));
         *map = Map(gameData.numRows, gameData.numCols, gameData.chunks);
 
-        Entities *entities = allocator->alloc<Entities *>(sizeof(Entities));
+        Entities *entities = allocator.alloc<Entities *>(sizeof(Entities));
         *entities = Entities(gameData.entitiesBuffer);
 
-        updateGrid(*map, *entities, thread_random_state);
+        updateGrid(*map, *entities, thread_random_state, allocator);
     }
 }

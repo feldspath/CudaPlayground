@@ -16,20 +16,21 @@ struct PathfindingList {
 
 class NetworkGraph {
 private:
-    int numNetworks;
+    int *numNetworks;
     NetworkNode *networks;
 
 public:
-    NetworkGraph(NetworkNode *networkBuffer, int numNetworks)
-        : networks(networkBuffer), numNetworks(numNetworks) {}
-    NetworkGraph() : numNetworks(0) {}
+    NetworkGraph(void *networkBuffer) {
+        networks = (NetworkNode *)((int *)networkBuffer + 2);
+        numNetworks = (int *)networkBuffer;
+    }
 
-    int getNetworkCount() const { return numNetworks; }
+    int getNetworkCount() const { return *numNetworks; }
 
     int addNetwork(MapId network) {
-        networks[numNetworks] = NetworkNode(network);
-        int newId = numNetworks;
-        numNetworks++;
+        networks[*numNetworks] = NetworkNode(network);
+        int newId = *numNetworks;
+        *numNetworks = (*numNetworks) + 1;
         return newId;
     }
 
@@ -92,8 +93,8 @@ public:
     const NetworkNode &getNode(int networkId) const { return networks[networkId]; }
 
     void eraseNetwork(int networkId, Map &map) {
-        numNetworks--;
-        int oldNetworkId = numNetworks;
+        *numNetworks = (*numNetworks) - 1;
+        int oldNetworkId = *numNetworks;
         if (networkId != oldNetworkId) {
             // Copying the last network to the erased network position
             // TODO: check performance
@@ -196,7 +197,6 @@ public:
         grid.sync();
 
         // Neighbor matrix
-        GameState::instance->uniqueNetworksCount = networkCount;
         bool *neighborMatrix = allocator.alloc<bool *>(sizeof(bool) * networkCount * networkCount);
 
         // init matrix
@@ -235,14 +235,14 @@ public:
     }
 
     void reset(int newSize) {
-        numNetworks = newSize;
+        *numNetworks = newSize;
         for (int i = 0; i < newSize; i++) {
             networks[i].numNeighbors = 0;
         }
     }
 
     void print() {
-        for (int i = 0; i < numNetworks; i++) {
+        for (int i = 0; i < *numNetworks; i++) {
             auto &node = getNode(i);
             printf("node %d:\n", i);
             for (int j = 0; j < node.numNeighbors; j++) {
@@ -261,9 +261,8 @@ private:
 public:
     NetworkGraph networkGraph;
 
-    PathfindingManager(void *savedFieldsBuffer, NetworkNode *networkBuffer, int networksCount)
-        : savedFields((IntegrationField *)savedFieldsBuffer),
-          networkGraph(networkBuffer, networksCount) {}
+    PathfindingManager(void *savedFieldsBuffer, void *networkBuffer)
+        : savedFields((IntegrationField *)savedFieldsBuffer), networkGraph(networkBuffer) {}
 
     // Perform pathfinding
     // Passing a copy of the allocator so that its state is reset after computation

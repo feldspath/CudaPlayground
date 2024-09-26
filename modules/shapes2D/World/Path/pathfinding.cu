@@ -119,7 +119,6 @@ void PathfindingManager::entitiesPathfinding(Map &map, Entities &entities, Alloc
         processRangeBlock(networkCount * networkCount, [&](int idx) {
             int srcIdx = idx % networkCount;
             int dstIdx = idx / networkCount;
-            auto &sourceNode = networkGraph.getNode(srcIdx);
 
             // iterations
             for (int i = 0; i < networkCount; i++) {
@@ -129,12 +128,11 @@ void PathfindingManager::entitiesPathfinding(Map &map, Entities &entities, Alloc
                     int val = matrix[srcIdx + j * networkCount] + matrix[j + dstIdx * networkCount];
                     minVal = min(minVal, val);
                 }
-                block.sync();
-                matrix[idx] = min(matrix[idx], minVal);
-                block.sync();
+                atomicMin(&matrix[idx], minVal);
             }
         });
     }
+    grid.sync();
 
     // if (grid.thread_rank() == 0) {
     //     for (int i = 0; i < networkCount; i++) {

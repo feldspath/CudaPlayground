@@ -113,7 +113,6 @@ struct GameState {
     unsigned int playerMoney;
     unsigned int population;
     MapId buildingDisplay;
-    int uniqueNetworksCount;
 
     static GameState *instance;
 };
@@ -227,7 +226,7 @@ struct GameData {
     Chunk *chunks;
     void *entitiesBuffer;
     void *savedFieldsBuffer;
-    NetworkNode *graphNetworkBuffer;
+    void *graphNetworkBuffer;
     uint32_t *img_ascii_16;
     uint32_t *img_spritesheet;
 };

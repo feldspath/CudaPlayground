@@ -79,9 +79,8 @@ public:
         if (chunkId == -1) {
             return MapId::invalidId();
         }
-
         int cellId = getChunk(chunkId).cellAtPosition(pos);
-        return {chunkId, cellId};
+        return MapId(chunkId, cellId);
     }
     float2 getCellPosition(MapId &cell) const {
         return getChunk(cell.chunkId).getCellPosition(cell.cellId);
@@ -119,11 +118,11 @@ public:
     // Buffers
     // TODO: cells in order of chunkId
     template <typename Function>
-    CellBuffer<MapId> selectCells(Allocator *allocator, Function &&filter) {
+    CellBuffer<MapId> selectCells(Allocator &allocator, Function &&filter) {
         auto grid = cg::this_grid();
 
         // count occurences
-        uint32_t &cellCount = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
+        uint32_t &cellCount = *allocator.alloc<uint32_t *>(sizeof(uint32_t));
         if (grid.thread_rank() == 0) {
             cellCount = 0;
         }
@@ -143,7 +142,7 @@ public:
         }
 
         // allocate buffer
-        MapId *cellIds = allocator->alloc<MapId *>(sizeof(MapId) * cellCount);
+        MapId *cellIds = allocator.alloc<MapId *>(sizeof(MapId) * cellCount);
         grid.sync();
 
         // fill buffer

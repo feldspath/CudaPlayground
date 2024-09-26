@@ -28,13 +28,13 @@ public:
         for_blockwise(count, [&](int idx) { function(content[idx]); });
     }
 
-    template <typename Function> CellBuffer subBuffer(Allocator *allocator, Function &&filter) {
+    template <typename Function> CellBuffer subBuffer(Allocator &allocator, Function &&filter) {
         CellBuffer result;
 
         auto grid = cg::this_grid();
 
         // count occurences
-        uint32_t &count = *allocator->alloc<uint32_t *>(sizeof(uint32_t));
+        uint32_t &count = *allocator.alloc<uint32_t *>(sizeof(uint32_t));
         if (grid.thread_rank() == 0) {
             count = 0;
         }
@@ -53,7 +53,7 @@ public:
         }
 
         // allocate buffer
-        result.content = allocator->alloc<T *>(sizeof(T) * count);
+        result.content = allocator.alloc<T *>(sizeof(T) * count);
 
         grid.sync();
 
