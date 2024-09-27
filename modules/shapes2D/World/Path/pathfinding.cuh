@@ -271,9 +271,11 @@ public:
 
     void invalidateCache(Chunk &chunk) {
         chunk.invalidateCachedFlowfields();
+        invalidateSavedFields();
+    }
+    void invalidateSavedFields() {
         processRange(gridDim.x, [&](int idx) { savedFields[idx].ongoingComputation = false; });
     }
-
     static int maxFlowfieldsPerFrame() { return gridDim.x; };
 
 private:

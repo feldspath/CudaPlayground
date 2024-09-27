@@ -283,7 +283,7 @@ void rasterizeFlowfield(Map &map, Framebuffer &framebuffer) {
 
     chunk.processEachCell([&](int cellId) {
         float2 dir = directionFromEnum(
-            Direction(chunk.cachedFlowfields[flowfieldId.cellId].directions[cellId]));
+            Direction(chunk.cachedFlowfields[flowfieldId.cellId].directions[cellId] & 0b111));
 
         float2 cellCenter = chunk.getCellPosition(cellId);
         float2 screenPos = projectPosToScreenPos(make_float3(cellCenter, 0.0f), viewProj,

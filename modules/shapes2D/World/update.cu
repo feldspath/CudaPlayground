@@ -667,8 +667,10 @@ void updateGrid(Map &map, Entities &entities, curandStateXORWOW_t &rng, Allocato
         map.recomputeNetworkComponents(allocator);
         pathfindingManager->networkGraph.recompute(map, allocator);
         for (int i = 0; i < map.getCount(); i++) {
-            pathfindingManager->invalidateCache(map.getChunk(i));
+            map.getChunk(i).invalidateCachedFlowfields();
         }
+        pathfindingManager->invalidateSavedFields();
+
         entities.processAllActive([&](int idx) {
             auto &entity = entities.get(idx);
             entity.path.reset();

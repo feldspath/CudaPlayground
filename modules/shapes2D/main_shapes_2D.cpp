@@ -64,19 +64,26 @@ void saveMap() {
     Buffer chunks(numChunks * sizeof(Chunk));
     cuMemcpyDtoH(chunks.data, cptr_chunk, chunks.size);
 
-    Buffer entities(sizeof(uint32_t) + MAX_ENTITY_COUNT * sizeof(Entity));
+    int compressedChunkSize = sizeof(Cell) * CHUNK_SIZE;
+    Buffer compressedChunks(numChunks * compressedChunkSize);
+    for (int i = 0; i < numChunks; i++) {
+        memcpy(compressedChunks.data_u8 + i * compressedChunkSize,
+               chunks.data_u8 + sizeof(Chunk) * i, compressedChunkSize);
+    }
+
+    Buffer entities(2 * sizeof(uint32_t) + MAX_ENTITY_COUNT * sizeof(Entity));
     cuMemcpyDtoH(entities.data, cptr_entities, entities.size);
 
     GameState state;
     cuMemcpyDtoH(&state, cptr_gameState, sizeof(state));
 
-    Buffer buffer(chunks.size + entities.size + sizeof(state));
+    Buffer buffer(compressedChunks.size + entities.size + sizeof(state));
 
     int64_t offsetGridCells = 0;
-    int64_t offsetEntities = offsetGridCells + chunks.size;
+    int64_t offsetEntities = offsetGridCells + compressedChunks.size;
     int64_t offsetState = offsetEntities + entities.size;
 
-    memcpy(buffer.data_u8 + offsetGridCells, chunks.data, chunks.size);
+    memcpy(buffer.data_u8 + offsetGridCells, compressedChunks.data, compressedChunks.size);
     memcpy(buffer.data_u8 + offsetEntities, entities.data, entities.size);
     memcpy(buffer.data_u8 + offsetState, &state, sizeof(state));
 
@@ -93,17 +100,25 @@ void loadMap() {
     // assume map size is fixed, for now, so we dont store it in file
     int numChunks = chunksRows * chunksCols;
 
-    Buffer chunks(numChunks * sizeof(Chunk));
-    Buffer entities(sizeof(uint32_t) + MAX_ENTITY_COUNT * sizeof(Entity));
+    int compressedChunkSize = sizeof(Cell) * CHUNK_SIZE;
+    Buffer compressedChunks(numChunks * compressedChunkSize);
+    Buffer entities(2 * sizeof(uint32_t) + MAX_ENTITY_COUNT * sizeof(Entity));
     GameState state;
 
     int64_t offsetGridCells = 0;
-    int64_t offsetEntities = offsetGridCells + chunks.size;
+    int64_t offsetEntities = offsetGridCells + compressedChunks.size;
     int64_t offsetState = offsetEntities + entities.size;
 
-    memcpy(chunks.data, buffer->data_u8 + offsetGridCells, chunks.size);
+    memcpy(compressedChunks.data, buffer->data_u8 + offsetGridCells, compressedChunks.size);
     memcpy(entities.data, buffer->data_u8 + offsetEntities, entities.size);
     memcpy(&state, buffer->data_u8 + offsetState, sizeof(state));
+
+    Buffer chunks(numChunks * sizeof(Chunk));
+    for (unsigned int i = 0; i < numChunks; i++) {
+        memcpy(chunks.data_u8 + i * sizeof(Chunk),
+               compressedChunks.data_u8 + compressedChunkSize * i, compressedChunkSize);
+        ((Chunk *)chunks.data)[i].offset = int2(i % chunksCols, i / chunksCols);
+    }
 
     state.firstFrame = true;
     state.gameTime.dt = 0.0f;
