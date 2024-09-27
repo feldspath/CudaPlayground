@@ -38,14 +38,14 @@ void fillCells(Map &map, Entities &entities) {
             }
         }
     });
-
-    grid.sync();
 }
 
 void moveEntities(Map &map, Entities &entities, Allocator allocator, float dt,
                   curandStateXORWOW_t &rng) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
+
+    fillCells(map, entities);
 
     grid.sync();
 

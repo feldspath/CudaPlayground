@@ -115,7 +115,7 @@ void rasterizeGrid(Map &map, Entities *entities, SpriteSheet sprites, Framebuffe
                     if (gameData.uniforms.renderMode == RENDERMODE_NETWORK) {
                         colorId = map.getTyped<RoadCell>(cell).networkRepr.cellId;
                     } else {
-                        colorId = map.getTyped<RoadCell>(cell).chunkNetworkRepr;
+                        colorId = map.roadNetworkId(cell) + 1;
                     }
                 } else {
                     colorId = sh_cellIndex;

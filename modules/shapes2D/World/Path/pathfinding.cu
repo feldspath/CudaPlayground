@@ -115,22 +115,15 @@ void PathfindingManager::entitiesPathfinding(Map &map, Entities &entities, Alloc
         });
 
         block.sync();
+        for (int i = 0; i < networkCount; i++) {
+            processRangeBlock(networkCount * networkCount, [&](int idx) {
+                int srcIdx = idx % networkCount;
+                int dstIdx = idx / networkCount;
 
-        processRangeBlock(networkCount * networkCount, [&](int idx) {
-            int srcIdx = idx % networkCount;
-            int dstIdx = idx / networkCount;
-
-            // iterations
-            for (int i = 0; i < networkCount; i++) {
-
-                int minVal = int(Infinity / 2);
-                for (int j = 0; j < networkCount; j++) {
-                    int val = matrix[srcIdx + j * networkCount] + matrix[j + dstIdx * networkCount];
-                    minVal = min(minVal, val);
-                }
-                atomicMin(&matrix[idx], minVal);
-            }
-        });
+                atomicMin(&matrix[idx],
+                          matrix[srcIdx + i * networkCount] + matrix[i + dstIdx * networkCount]);
+            });
+        }
     }
     grid.sync();
 
@@ -207,13 +200,20 @@ void PathfindingManager::entitiesPathfinding(Map &map, Entities &entities, Alloc
             }
 
             if (!bestCell.valid()) {
-                printf("Error: entity %d cannot reach its destination.\n", info.entityIdx);
+                printf("Error: entity %d cannot reach its destination (minVal: %d). Placing it "
+                       "back at home.\n",
+                       info.entityIdx, minVal);
+                auto &entity = entities.get(info.entityIdx);
+                entity.position = map.getCellPosition(entity.house);
                 return;
             }
 
             Path path;
             auto &chunk = map.getChunk(info.origin.chunkId);
             if (chunk.cachedFlowfields[bestCell.cellId].state != VALID) {
+                if (valid) {
+                    printf("flowfield in invalid, cannot compute entity path\n");
+                }
                 return;
             }
             path = extractPath(chunk, info.origin.cellId, bestCell.cellId);
@@ -470,6 +470,7 @@ void PathfindingManager::update(Map &map, Allocator allocator) {
                 savedFields[bufferIdx].iterations[idx] = iterations[idx];
                 savedFields[bufferIdx].target = target;
                 savedFields[bufferIdx].ongoingComputation = true;
+                chunk.cachedFlowfields[target.cellId].state = INVALID;
             });
         } else {
             // Integration field is complete, create flowfield

@@ -21,7 +21,6 @@ PathfindingManager *pathfindingManager;
 uint64_t nanotime_start;
 
 struct UpdateInfo {
-    bool update;
     MapId cellToUpdate;
     TileId newTileId;
 };
@@ -37,21 +36,9 @@ void updateCell(Map &map, Entities &entities, UpdateInfo updateInfo, Allocator &
     TileId newTile = updateInfo.newTileId;
     TileId oldTile = chunk.get(cellId).tileId;
 
-    grid.sync();
-    if (grid.thread_rank() == 0) {
-        if (gameData.uniforms.creativeMode) {
-            chunk.get(cellId).tileId = newTile;
-        } else if (tileCost(newTile) <= GameState::instance->playerMoney) {
-            GameState::instance->playerMoney -= tileCost(newTile);
-            chunk.get(cellId).tileId = newTile;
-        }
-    }
-    grid.sync();
+    chunk.get(cellId).tileId = newTile;
 
-    if (chunk.get(cellId).tileId == oldTile) {
-        // tile was not updated
-        return;
-    }
+    grid.sync();
 
     switch (newTile) {
     case ROAD: {
@@ -208,6 +195,8 @@ void updateCell(Map &map, Entities &entities, UpdateInfo updateInfo, Allocator &
     default:
         break;
     }
+
+    map.get(cellToUpdate).tileId = newTile;
 }
 
 void assignHouseToWorkplace(Map &map, Entities &entities, MapId house, MapId workplace,
@@ -544,7 +533,7 @@ void handleInputs(Map &map, Entities &entities, Allocator &allocator) {
         bool mouseClicked = (gameData.uniforms.mouseButtons & 1) &
                             ((~GameState::instance->previousMouseButtons) & 1);
         bool mousePressed = gameData.uniforms.mouseButtons & 1;
-        updateInfo.update = false;
+        bool shouldUpdate = false;
 
         float2 px = float2{gameData.uniforms.cursorPos.x,
                            gameData.uniforms.height - gameData.uniforms.cursorPos.y};
@@ -556,7 +545,7 @@ void handleInputs(Map &map, Entities &entities, Allocator &allocator) {
             return;
         }
 
-        if (mouseClicked && (TileId)gameData.uniforms.modeId != GRASS) {
+        if (mouseClicked && ((TileId)gameData.uniforms.modeId != ROAD)) {
             if (grid.thread_rank() == 0) {
                 if (map.get(cell).tileId & (HOUSE | FACTORY | SHOP)) {
                     if (GameState::instance->buildingDisplay == cell) {
@@ -567,14 +556,28 @@ void handleInputs(Map &map, Entities &entities, Allocator &allocator) {
                 }
             }
         } else if (mousePressed) {
-            if (map.get(cell).tileId == GRASS || (TileId)gameData.uniforms.modeId == GRASS) {
-                updateInfo.update = true;
-                updateInfo.cellToUpdate = cell;
-                updateInfo.newTileId = (TileId)gameData.uniforms.modeId;
+            updateInfo.cellToUpdate = cell;
+            updateInfo.newTileId = (TileId)gameData.uniforms.modeId;
+            shouldUpdate = map.get(cell).tileId != (TileId)gameData.uniforms.modeId &&
+                           (gameData.uniforms.creativeMode ||
+                            tileCost(updateInfo.newTileId) <= GameState::instance->playerMoney);
+
+            if (shouldUpdate) {
+                if (grid.thread_rank() == 0 && !gameData.uniforms.creativeMode) {
+                    atomicSub(&GameState::instance->playerMoney, tileCost(updateInfo.newTileId));
+                }
+                grid.sync();
+
+                if (map.get(cell).tileId == ROAD || updateInfo.newTileId == ROAD) {
+                    UpdateInfo removeInfo;
+                    removeInfo.cellToUpdate = cell;
+                    removeInfo.newTileId = GRASS;
+
+                    updateCell(map, entities, removeInfo, allocator);
+                    grid.sync();
+                    updateCell(map, entities, updateInfo, allocator);
+                }
             }
-        }
-        if (updateInfo.update) {
-            updateCell(map, entities, updateInfo, allocator);
         }
     }
 }
@@ -684,8 +687,6 @@ void updateGrid(Map &map, Entities &entities, curandStateXORWOW_t &rng, Allocato
                   [&]() { handleInputs(map, entities, allocator); });
     grid.sync();
     printDuration("fillCellBuffers             ", [&]() { fillCellBuffers(map, allocator); });
-    grid.sync();
-    printDuration("fillCells                   ", [&]() { fillCells(map, entities); });
     grid.sync();
     printDuration("updateEntitiesState         ",
                   [&]() { updateEntitiesState(map, entities, rng); });

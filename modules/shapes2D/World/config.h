@@ -2,8 +2,8 @@
 
 static constexpr int CHUNK_X = 64;
 static constexpr int CHUNK_Y = 64;
-static constexpr int N_CHUNK_X = 12;
-static constexpr int N_CHUNK_Y = 12;
+static constexpr int N_CHUNK_X = 8;
+static constexpr int N_CHUNK_Y = 8;
 static constexpr int CHUNK_SIZE = CHUNK_X * CHUNK_Y;
 
 static int FACTORY_CAPACITY = 40;
@@ -34,4 +34,4 @@ static float REAL_SECONDS_PER_GAME_MIN = 300.0 / (60.0 * 24.0);
 // Target entity count
 static constexpr int MAX_ENTITY_COUNT = 1'000'000;
 
-static constexpr int MAX_PATHS_PER_FRAME = 10000;
+static constexpr int MAX_PATHS_PER_FRAME = 20000;

@@ -321,7 +321,7 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
             for (int y = 0; y < CHUNK_X; ++y) {
                 for (int x = 0; x < CHUNK_Y; ++x) {
                     int cellId = y * CHUNK_X + x;
-                    chunk.cells[cellId].cell.tileId = GRASS;
+                    chunk.cells[cellId].cell.tileId = ROAD;
                     chunk.cachedFlowfields[cellId].state = INVALID;
                 }
             }
