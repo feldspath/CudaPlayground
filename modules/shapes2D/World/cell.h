@@ -78,7 +78,7 @@ struct HouseCell : public BaseCell {
     HouseCell() {
         residentCount = 0;
         woodCount = 0;
-        level = 0;
+        level = 11;
     }
 
     int upgradeCost() const { return HOUSE_BASE_UPGRADE_WOOD_COUNT << level; }

@@ -2,8 +2,8 @@
 
 static constexpr int CHUNK_X = 64;
 static constexpr int CHUNK_Y = 64;
-static constexpr int N_CHUNK_X = 4;
-static constexpr int N_CHUNK_Y = 4;
+static constexpr int N_CHUNK_X = 12;
+static constexpr int N_CHUNK_Y = 12;
 static constexpr int CHUNK_SIZE = CHUNK_X * CHUNK_Y;
 
 static int FACTORY_CAPACITY = 40;
@@ -18,7 +18,7 @@ static float ENTITY_SPEED = 10.0f;
 
 static float CELL_RADIUS = 0.5f;
 
-static uint32_t SHOP_TIME_MIN = 60;
+static unsigned int SHOP_TIME_MIN = 60;
 
 static float KERNEL_RADIUS = 1.0f;
 static float REPULSIVE_STRENGTH = 30.0f;

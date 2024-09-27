@@ -216,7 +216,7 @@ void assignHouseToWorkplace(Map &map, Entities &entities, MapId house, MapId wor
     map.assignEntityToWorkplace(house, workplace);
 }
 
-void assignOneHouse(Map &map, Entities &entities, curandStateXORWOW_t &rng, Allocator allocator) {
+int assignHouses(Map &map, Entities &entities, curandStateXORWOW_t &rng, Allocator allocator) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -233,7 +233,7 @@ void assignOneHouse(Map &map, Entities &entities, curandStateXORWOW_t &rng, Allo
     });
     grid.sync();
     if (unassignedHouses.getCount() == 0) {
-        return;
+        return 0;
     }
 
     CellBuffer availableWorkplaces = map.workplaces.subBuffer(allocator, [&](MapId workplace) {
@@ -241,7 +241,7 @@ void assignOneHouse(Map &map, Entities &entities, curandStateXORWOW_t &rng, Allo
     });
     grid.sync();
     if (availableWorkplaces.getCount() == 0) {
-        return;
+        return 0;
     }
 
     unassignedHouses.processEachCell_blockwise([&](MapId house) {
@@ -255,6 +255,8 @@ void assignOneHouse(Map &map, Entities &entities, curandStateXORWOW_t &rng, Allo
             assignHouseToWorkplace(map, entities, house, workplace, rng);
         }
     });
+
+    return min(unassignedHouses.getCount(), availableWorkplaces.getCount());
 }
 
 void assignOneCustomerToShop(Map &map, Entities &entities, Allocator allocator) {
@@ -690,8 +692,14 @@ void updateGrid(Map &map, Entities &entities, curandStateXORWOW_t &rng, Allocato
     grid.sync();
     printDuration("handleEvents                ", [&]() { handleEvents(map, entities); });
     grid.sync();
-    printDuration("assignOneHouse              ",
-                  [&]() { assignOneHouse(map, entities, rng, allocator); });
+    printDuration("assignOneHouse              ", [&]() {
+        for (int i = 0; i < 100; i++) {
+            int count = assignHouses(map, entities, rng, allocator);
+            if (count == 0) {
+                break;
+            }
+        }
+    });
     grid.sync();
     printDuration("assignOneCustomerToShop     ",
                   [&]() { assignOneCustomerToShop(map, entities, allocator); });
