@@ -226,6 +226,27 @@ void PathfindingManager::entitiesPathfinding(Map &map, Entities &entities, Alloc
     });
 }
 
+// Compressing the distance on 5 bits
+static int compressDistance(int distance) {
+    int d = (distance + 6) / 10;
+
+    if (d <= 8) {
+        // 0 - 7
+        return max(d - 1, 0);
+    }
+    if (d <= 24) {
+        // 8 - 15
+        return (d - 9) / 2 + 8;
+    }
+    if (d <= 56) {
+        // 16 - 23
+        return (d - 25) / 4 + 16;
+    } else {
+        // 24 - 31
+        return min((d - 57) / 8 + 24, 31);
+    }
+}
+
 void PathfindingManager::update(Map &map, Allocator allocator) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
@@ -468,9 +489,8 @@ void PathfindingManager::update(Map &map, Allocator allocator) {
                             dir = neighborDir;
                         }
                     });
-                uint8_t approxDist = uint8_t(13 * (log2(float(minDistance)) - 3.32192809489f));
-                chunk.cachedFlowfields[target.cellId].directions[cellId] = uint8_t(dir);
-                chunk.cachedFlowfields[target.cellId].distances[cellId] = approxDist;
+                chunk.cachedFlowfields[target.cellId].directions[cellId] =
+                    uint8_t(dir) | (compressDistance(fieldBuffer[cellId]) << 3);
             });
 
             if (block.thread_rank() == 0) {
@@ -488,7 +508,7 @@ Path PathfindingManager::extractPath(Chunk &chunk, uint32_t origin, uint32_t tar
     Path path;
 
     while (current != target && path.length() < Path::MAX_LENGTH) {
-        Direction dir = Direction(chunk.cachedFlowfields[target].directions[current]);
+        Direction dir = Direction(chunk.cachedFlowfields[target].directions[current] & 0b111);
         path.append(dir);
         current = chunk.neighborCell(current, dir);
         if (current == -1) {
@@ -504,9 +524,7 @@ int PathfindingManager::pathLength(Chunk &chunk, uint32_t origin, uint32_t targe
         return int(Infinity);
     }
 
-    uint8_t approx = chunk.cachedFlowfields[target].distances[origin];
-    // uint_8 approxDist = uint_8(13 * (log2(float(minDistance)) - 3.32192809489f));
-    return pow(2.0, double(approx) / 13 + 3.32192809489f);
+    return chunk.cachedFlowfields[target].directions[origin] >> 3;
 
     // int current = origin;
     // bool reached = false;
