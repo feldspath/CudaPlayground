@@ -2,7 +2,7 @@
 
 static constexpr int CHUNK_X = 64;
 static constexpr int CHUNK_Y = 64;
-static constexpr int N_CHUNK_X = 8;
+static constexpr int N_CHUNK_X = 12;
 static constexpr int N_CHUNK_Y = 8;
 static constexpr int CHUNK_SIZE = CHUNK_X * CHUNK_Y;
 

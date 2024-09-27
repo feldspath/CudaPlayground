@@ -669,17 +669,44 @@ void updateGrid(Map &map, Entities &entities, curandStateXORWOW_t &rng, Allocato
     }
 
     if (GameState::instance->firstFrame) {
+        if (grid.thread_rank() == 0) {
+            printf("Game loading...\n");
+            printf("Computing network components...\n");
+        }
+
         map.recomputeNetworkComponents(allocator);
+
+        if (grid.thread_rank() == 0) {
+            printf("Computing graph network...\n");
+        }
         pathfindingManager->networkGraph.recompute(map, allocator);
+
+        if (grid.thread_rank() == 0) {
+            printf("Invalidating chunks cache...\n");
+        }
         for (int i = 0; i < map.getCount(); i++) {
             map.getChunk(i).invalidateCachedFlowfields();
         }
         pathfindingManager->invalidateSavedFields();
 
+        if (grid.thread_rank() == 0) {
+            printf("Resetting entities path...\n");
+        }
         entities.processAllActive([&](int idx) {
             auto &entity = entities.get(idx);
             entity.path.reset();
         });
+
+        if (grid.thread_rank() == 0) {
+            printf("Computing flowfields...\n");
+        }
+        while (!pathfindingManager->update(map, allocator)) {
+        }
+
+        if (grid.thread_rank() == 0) {
+            printf("Loading complete!\n");
+        }
+
         grid.sync();
     }
 

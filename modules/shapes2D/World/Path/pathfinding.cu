@@ -211,9 +211,6 @@ void PathfindingManager::entitiesPathfinding(Map &map, Entities &entities, Alloc
             Path path;
             auto &chunk = map.getChunk(info.origin.chunkId);
             if (chunk.cachedFlowfields[bestCell.cellId].state != VALID) {
-                if (valid) {
-                    printf("flowfield in invalid, cannot compute entity path\n");
-                }
                 return;
             }
             path = extractPath(chunk, info.origin.cellId, bestCell.cellId);
@@ -247,7 +244,7 @@ static int compressDistance(int distance) {
     }
 }
 
-void PathfindingManager::update(Map &map, Allocator allocator) {
+bool PathfindingManager::update(Map &map, Allocator allocator) {
     auto grid = cg::this_grid();
     auto block = cg::this_thread_block();
 
@@ -324,6 +321,10 @@ void PathfindingManager::update(Map &map, Allocator allocator) {
     });
 
     grid.sync();
+
+    if (flowfieldsToComputeCount == 0) {
+        return true;
+    }
 
     // if (grid.thread_rank() == 0 && flowfieldsToComputeCount > 0) {
     //     printf("flowfield to compute count: %d\n", flowfieldsToComputeCount);
@@ -501,6 +502,8 @@ void PathfindingManager::update(Map &map, Allocator allocator) {
     });
 
     grid.sync();
+
+    return false;
 }
 
 Path PathfindingManager::extractPath(Chunk &chunk, uint32_t origin, uint32_t target) const {

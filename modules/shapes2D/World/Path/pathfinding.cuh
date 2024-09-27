@@ -266,7 +266,7 @@ public:
 
     // Perform pathfinding
     // Passing a copy of the allocator so that its state is reset after computation
-    void update(Map &map, Allocator allocator);
+    bool update(Map &map, Allocator allocator);
     void entitiesPathfinding(Map &map, Entities &entities, Allocator allocator);
 
     void invalidateCache(Chunk &chunk) {
