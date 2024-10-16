@@ -25,7 +25,7 @@ constexpr uint32_t BACKGROUND_COLOR = 0x00332211ull;
 // https://coolors.co/palette/8cb369-f4e285-f4a259-5b8e7d-bc4b51
 float3 LIGHT_GREEN = float3{140.0 / 255, 179.0 / 255, 105.0 / 255};
 float3 GREEN = float3{0.8f * 140.0 / 255, 0.8f * 179.0 / 255, 0.8f * 105.0 / 255};
-float3 LIGHT_BLUE = float3{91.0 / 255, 142.0 / 255, 125.0 / 255};
+float3 LIGHT_BLUE = float3{1.3 * 91.0 / 255, 1.3 * 142.0 / 255, 1.3 * 125.0 / 255};
 float3 RED = float3{188.0 / 255, 75.0 / 255, 81.0 / 255};
 float3 YELLOW = float3{244.0 / 255, 226.0 / 255, 133.0 / 255};
 float3 GRAY = float3{0.5f, 0.5f, 0.5f};
@@ -100,7 +100,7 @@ void rasterizeGrid(Map &map, Entities *entities, SpriteSheet sprites, Framebuffe
                 color = colorFromId(chunk.get(sh_cellIndex).tileId);
                 break;
             }
-            color *= GameState::instance->gameTime.timeOfDay().toFloat() * 0.5 + 0.5;
+            // color *= GameState::instance->gameTime.timeOfDay().toFloat() * 0.5 + 0.5;
 
         } else if (gameData.uniforms.renderMode == RENDERMODE_NETWORK ||
                    gameData.uniforms.renderMode == RENDERMODE_NETWORK_CHUNK) {
@@ -126,10 +126,10 @@ void rasterizeGrid(Map &map, Entities *entities, SpriteSheet sprites, Framebuffe
                 float b = (float)(colorId % 37) / 37.0;
                 color = float3{r, g, b};
                 auto &road = map.getTyped<RoadCell>(cell);
-                if (road.chunkNetworkRepr == cell.cellId &&
-                    gameData.uniforms.renderMode == RENDERMODE_NETWORK_CHUNK) {
-                    color = float3{1.0f, 1.0f, 1.0f};
-                }
+                // if (road.chunkNetworkRepr == cell.cellId &&
+                //     gameData.uniforms.renderMode == RENDERMODE_NETWORK_CHUNK) {
+                //     color = float3{1.0f, 1.0f, 1.0f};
+                // }
 
                 // if (tileId == ROAD) {
                 //     color *= (float)(map->roadNetworkId(sh_cellIndex)) /
@@ -197,8 +197,8 @@ void rasterizeEntities(Entities *entities, Framebuffer framebuffer) {
             pixelID =
                 clamp(pixelID, 0, int(gameData.uniforms.width * gameData.uniforms.height) - 1);
 
-            float3 color = make_float3(1.0f, 0.0f, 0.0f) *
-                           (GameState::instance->gameTime.timeOfDay().toFloat() * 0.5 + 0.5);
+            float3 color = make_float3(1.0f, 0.0f, 0.0f);
+            //* (GameState::instance->gameTime.timeOfDay().toFloat() * 0.5 + 0.5);
 
             float depth = 0.9f;
             uint64_t udepth = *((uint32_t *)&depth);
