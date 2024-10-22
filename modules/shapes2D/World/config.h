@@ -1,13 +1,17 @@
 #pragma once
 
+// MODIFY THIS
+static constexpr int N_CHUNK_X = 8;
+static constexpr int N_CHUNK_Y = 8;
+static constexpr int N_ENTITIES = 100000;
+
+// DON'T TOUCH THIS
 static constexpr int CHUNK_X = 64;
 static constexpr int CHUNK_Y = 64;
-static constexpr int N_CHUNK_X = 12;
-static constexpr int N_CHUNK_Y = 8;
 static constexpr int CHUNK_SIZE = CHUNK_X * CHUNK_Y;
 
-static int FACTORY_CAPACITY = 40;
-static int SHOP_WORK_CAPACITY = 40;
+static int FACTORY_CAPACITY = 100;
+static int SHOP_WORK_CAPACITY = 100;
 static int SHOP_CUSTOMERS_PER_WORKER = 4;
 static int HOUSE_BASE_UPGRADE_WOOD_COUNT = 5;
 static int WOOD_SELL_PRICE = 5;

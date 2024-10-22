@@ -7,6 +7,7 @@
 #include <memory>
 #include <mutex>
 #include <queue>
+#include <stdlib.h>
 #include <string>
 #include <thread>
 #include <vector>
@@ -321,7 +322,28 @@ void initCudaProgram(std::shared_ptr<GLRenderer> renderer, std::vector<uint8_t> 
             for (int y = 0; y < CHUNK_X; ++y) {
                 for (int x = 0; x < CHUNK_Y; ++x) {
                     int cellId = y * CHUNK_X + x;
-                    chunk.cells[cellId].cell.tileId = ROAD;
+                    int gx = x + CHUNK_X * i;
+                    int gy = y + CHUNK_Y * j;
+
+                    float pHouse = float(N_ENTITIES) / (2048 * N_CHUNK_X * N_CHUNK_X * CHUNK_SIZE);
+                    float pFactory = (float)N_ENTITIES / 100 / (N_CHUNK_X * N_CHUNK_X * CHUNK_SIZE);
+
+                    float r = (float)rand() / RAND_MAX;
+                    if (r < pHouse) {
+                        chunk.cells[cellId].house = HouseCell();
+                    } else if (r < pFactory * 0.5) {
+                        chunk.cells[cellId].shop = ShopCell();
+                    } else if (r < pFactory) {
+                        chunk.cells[cellId].factory = FactoryCell();
+                    } else {
+                        chunk.cells[cellId].road = RoadCell();
+                    }
+
+                    if (gx == 0 || gx == CHUNK_X * N_CHUNK_X - 1 || gy == 0 ||
+                        gy == CHUNK_Y * N_CHUNK_Y - 1) {
+                        chunk.cells[cellId].cell.tileId = GRASS;
+                    }
+
                     chunk.cachedFlowfields[cellId].state = INVALID;
                 }
             }

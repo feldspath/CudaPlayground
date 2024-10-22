@@ -79,6 +79,7 @@ struct HouseCell : public BaseCell {
         residentCount = 0;
         woodCount = 0;
         level = 11;
+        tileId = HOUSE;
     }
 
     int upgradeCost() const { return HOUSE_BASE_UPGRADE_WOOD_COUNT << level; }
@@ -98,6 +99,8 @@ struct RoadCell : public BaseCell {
     int chunkNetworkRepr;
     // unique network id between 0 and num local network - 1
     int networkId;
+
+    RoadCell() { tileId = ROAD; }
 
     static TileId type() { return ROAD; }
 };
@@ -119,7 +122,10 @@ struct WorkplaceCell : public BaseCell {
 struct ShopCell : public WorkplaceCell {
     int32_t woodCount;
 
-    ShopCell() : WorkplaceCell(SHOP_WORK_CAPACITY) { woodCount = 0; }
+    ShopCell() : WorkplaceCell(SHOP_WORK_CAPACITY) {
+        woodCount = 0;
+        tileId = SHOP;
+    }
 
     static TileId type() { return SHOP; }
 };
@@ -131,6 +137,7 @@ struct FactoryCell : public WorkplaceCell {
     FactoryCell() : WorkplaceCell(FACTORY_CAPACITY) {
         stockCount = 0;
         level = 0;
+        tileId = FACTORY;
     }
 
     static TileId type() { return FACTORY; }
