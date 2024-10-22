@@ -507,7 +507,7 @@ void updateGameState(Entities &entities) {
         float dt = ((float)(nanotime_start - GameState::instance->previousFrameTime_ns)) / 1e9;
         gameState->previousFrameTime_ns = nanotime_start;
         gameState->currentTime_ms = currentTime_ms();
-        gameState->population = entities.getCount();
+        gameState->population = entities.getCount() - entities.holes();
         gameState->previousMouseButtons = gameData.uniforms.mouseButtons;
         gameState->previousGameTime = GameState::instance->gameTime;
 

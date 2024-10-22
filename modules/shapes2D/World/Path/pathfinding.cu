@@ -123,8 +123,10 @@ void PathfindingManager::entitiesPathfinding(Map &map, Entities &entities, Alloc
                 atomicMin(&matrix[idx],
                           matrix[srcIdx + i * networkCount] + matrix[i + dstIdx * networkCount]);
             });
+            block.sync();
         }
     }
+
     grid.sync();
 
     // if (grid.thread_rank() == 0) {
